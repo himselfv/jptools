@@ -1,0 +1,14 @@
+syntax: glob
+__history
+*.~*
+*.groupproj
+*.dproj
+*.dproj.local
+*.bdsproj
+*.bdsproj.local
+*.exe
+*.dcu
+*.zip
+*.rar
+Release/
+Share/update.cmd

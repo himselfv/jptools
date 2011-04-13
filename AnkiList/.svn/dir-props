@@ -1,0 +1,14 @@
+K 10
+svn:ignore
+V 82
+__history
+*.~*
+*.groupproj
+*.dproj
+*.bdsproj
+*.exe
+*.dcu
+Release
+Share\update.cmd
+
+END
