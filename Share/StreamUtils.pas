@@ -1,8 +1,13 @@
 unit StreamUtils;
 {$WEAKPACKAGEUNIT ON}
+(*
+  Набор классов для облегчения чтения-записи в потоках,
+  кеширующего чтения и т.п.
+*)
+{TODO: Объединить StreamReader/Writer и StreamReader2/Writer2}
 
 interface
-uses SysUtils, Classes, CodepageUtils, UniStrUtils, Windows;
+uses SysUtils, Classes, Graphics, UniStrUtils, Windows;
 
 type
  (*
@@ -114,6 +119,122 @@ type
     procedure WriteChars(c: PWideChar; len: integer);
     procedure WriteString(c: UniString);
   end;
+
+(*
+ A class to speed up reading from low latency streams (usually file streams).
+
+ Basically, each time you request something from file stream, it reads
+ the requested data from file. Even with all the drive caches on, it's
+ a kernel-mode operation nevertheless.
+
+ This class tries to overcome the problem by reading data in large chunks.
+ Whenever you request your byte or two, it reads the whole chunk and stores
+ it in local memory. Next time you request another two bytes you'll get
+ them right away, because they're already here.
+
+ Please remember that you CAN'T use StreamReader on a Stream "for a while".
+ The moment you read your first byte through StreamReader the underlying
+ stream is NOT YOURS ANYMORE. You shouldn't make any reads to the Stream
+ except than through StreamReader.
+*)
+
+const
+  DEFAULT_CHUNK_SIZE = 4096;
+
+type
+  TStreamReader2 = class(TObject)
+  protected
+    FStream: TStream;
+    FOwnStream: boolean;
+    FBytesRead: int64;
+  public
+    property BytesRead: int64 read FBytesRead;
+
+  protected
+    flag_reallocbuf: boolean;
+    FChunkSize: integer;
+    procedure NewChunk;
+    procedure SetChunkSize(AValue: integer);
+
+  protected
+    buf: pbyte;
+    ptr: pbyte;
+    adv: integer;
+    rem: integer; //число оставшихся байт. Нужно, поскольку можно не прочесть весь Chunk.
+    procedure ResetBuffer;
+    function ReallocBuf(size: integer): boolean;
+    procedure FreeBuf;
+
+  public
+    constructor Create(AStream: TStream; AOwnStream: boolean = false);
+    destructor Destroy; override;
+    procedure JoinStream(AStream: TStream; AOwnsStream: boolean = false);
+    procedure ReleaseStream;
+    function Seek(Offset: int64; Origin: TSeekOrigin): int64;
+    function Read(buf: pbyte; len: integer): integer;
+    function PeekByte(out b: byte): boolean;
+    property ChunkSize: integer read FChunkSize write SetChunkSize;
+    function Position: integer;
+
+  protected
+   //These are used for ReadStr. Instead of reallocating temporary pchar
+   //every time, we just keep this buffer up while alive.
+    tmpstr_ansi_s: PAnsiChar;
+    tmpstr_ansi_sz: cardinal;
+    tmpstr_wide_s: PWideChar;
+    tmpstr_wide_sz: cardinal;
+    procedure FreeTmpStr;
+  public
+    function TryReadLineA(var s: PAnsiChar; var sz: cardinal): boolean;
+    function TryReadLineW(var s: PWideChar; var sz: cardinal): boolean;
+    procedure ReadLineA(var s: PAnsiChar; var sz: cardinal);
+    procedure ReadLineW(var s: PWideChar; var sz: cardinal);
+    function TryReadStrA(out s: AnsiString): boolean;
+    function TryReadStrW(out s: WideString): boolean;
+    function ReadStrA: AnsiString;
+    function ReadStrW: WideString;
+
+  public
+    function ReadAnsiChar(out c: AnsiChar): boolean;
+    function ReadWideChar(out c: WideChar): boolean;
+    function ReadUtf8Char(out c: WideChar): boolean;
+  end;
+
+type
+  TStreamWriter2 = class(TObject)
+  protected
+    FStream: TStream;
+    FOwnStream: boolean;
+    FBytesWritten: int64;
+  public
+    property BytesWritten: int64 read FBytesWritten;
+
+  protected
+    flag_reallocbuf: boolean;
+    FChunkSize: integer;
+    procedure SetChunkSize(AValue: integer);
+
+  protected
+    buf: pbyte;
+    ptr: pbyte;
+    used: integer; //использованная длина буфера
+    rem: integer;  //оставшаяся длина буфера == (ChunkSize - used)
+    procedure FlushBuffer;
+    procedure ResetBuffer;
+    procedure FreeBuf;
+
+  public
+    constructor Create(AStream: TStream; AOwnStream: boolean = false);
+    destructor Destroy; override;
+    procedure JoinStream(AStream: TStream; AOwnsStream: boolean = false);
+    procedure ReleaseStream;
+    function Seek(Offset: int64; Origin: TSeekOrigin): int64;
+    function Write(buf: pbyte; len: integer): integer;
+    property ChunkSize: integer read FChunkSize write SetChunkSize;
+    function Position: integer;
+    
+  end;  
+
 
 implementation
 
@@ -376,7 +497,7 @@ var i: integer;
 begin
   SetLength(Result, len);
   for i := 0 to len - 1 do begin
-    Result[i] := SwapChar(s^);
+    Result[i+1] := SwapChar(s^);
     Inc(s);
   end;
 end;
@@ -574,6 +695,575 @@ begin
       Write(Bom, SizeOf(Bom));
     end;
   end;
+end;
+
+
+////////////////////////////////////////////////////////////////////////////////
+///  StreamReader2/Writer2
+
+constructor TStreamReader2.Create(AStream: TStream; AOwnStream: boolean = false);
+begin
+  inherited Create;
+  FStream := AStream;
+  FOwnStream := AOwnStream;
+
+  buf := nil;
+  ptr := nil;
+  adv := 0;
+  rem := 0;
+  SetChunkSize(DEFAULT_CHUNK_SIZE);
+end;
+
+destructor TStreamReader2.Destroy;
+begin
+  FreeTmpStr;
+  FreeBuf;
+
+  if Assigned(FStream) then
+    if FOwnStream then
+      FreeAndNil(FStream)
+    else FStream := nil;
+
+  inherited;
+end;
+
+procedure TStreamReader2.JoinStream(AStream: TStream; AOwnsStream: boolean = false);
+begin
+ //Освобождаем старый поток
+  ReleaseStream;
+
+ //Цепляемся к потоку
+  FStream := AStream;
+  FOwnStream := AOwnsStream;
+
+ //Сбрасываем буфер на всякий случай
+  ResetBuffer;
+end;
+
+//Освобождает поток, синхронизируя его положение с ожидаемым
+procedure TStreamReader2.ReleaseStream;
+begin
+  if FStream=nil then exit;
+
+ //Скроллим назад (треубется поддержка Seek!)
+  FStream.Seek(int64(-adv), soCurrent);
+
+ //Отпускаем поток
+  FStream := nil;
+  FOwnStream := false;
+
+ //Очищаем буфер
+  ResetBuffer;
+end;
+
+function TStreamReader2.Seek(Offset: int64; Origin: TSeekOrigin): int64;
+begin
+  Result := FStream.Seek(Offset, Origin);
+  ResetBuffer;
+end;
+
+function TStreamReader2.Read(buf: pbyte; len: integer): integer;
+begin
+  if len=0 then begin
+    Result := 0;
+    exit;
+  end;
+
+ //The most common case
+  if (len <= rem) then begin
+    Move(ptr^, buf^, len);
+    Inc(ptr, len);
+    Inc(adv, len);
+    Dec(rem, len);
+
+    Inc(FBytesRead, len);
+    Result := len;
+    exit;
+  end;
+
+ //Read first part
+  if (rem > 0) then begin
+    Move(ptr^, buf^, rem);
+    Inc(ptr, rem);
+    Inc(adv, rem);
+
+   //Update variables
+    Inc(buf, rem);
+    Dec(len, rem);
+
+    Result := rem;
+    rem := 0;
+  end else
+    Result := 0;
+
+ //Download the remaining part
+
+ //If it's smaller than a chunk, read the whole chunk
+  if (len < FChunkSize) then begin
+    NewChunk;
+
+    if (rem < len) then //rem уже обновился в NewChunk
+      len := rem;
+
+    Move(ptr^, buf^, len);
+    Inc(ptr, len);
+    Inc(adv, len);
+    Dec(rem, len);
+
+    Inc(Result, len);
+  end else
+   //Else just read it from stream
+    Result := Result + FStream.Read(buf^, len);
+
+  Inc(FBytesRead, Result);    
+end;
+
+//Уж один-то байт мы всегда можем подсмотреть, если в файле осталось.
+function TStreamReader2.PeekByte(out b: byte): boolean;
+begin
+ //Если буфер непуст, берём первый байт
+  if rem >= 0 then begin
+    b := ptr^;
+    Result := true;
+    exit;
+  end;
+
+ //Иначе буфер пуст. Качаем следующий кусочек.
+  NewChunk;
+
+  if rem >= 0 then begin
+    b := ptr^;
+    Result := true;
+  end else
+    Result := false;
+end;
+
+procedure TStreamReader2.SetChunkSize(AValue: integer);
+begin
+  FChunkSize := AValue;
+
+ //If we cant' realloc right now, set delayed reallocation
+  if not ReallocBuf(FChunkSize) then
+    flag_reallocbuf := true;
+end;
+
+procedure TStreamReader2.NewChunk;
+begin
+ //Delayed reallocation
+  if flag_reallocbuf then begin
+    ReallocBuf(FChunkSize);
+    flag_reallocbuf := false;
+  end;
+
+  rem := FStream.Read(buf^, FChunkSize);
+  adv := 0;
+  ptr := buf;
+end;
+
+//Сбрасывает содержимое буфера
+procedure TStreamReader2.ResetBuffer;
+begin
+  adv := 0;
+  rem := 0;
+  ptr := buf;
+end;
+
+function TStreamReader2.ReallocBuf(size: integer): boolean;
+begin
+ //We cant decrease buffer size cause there's still data inside.
+  if (adv + rem > size) then begin
+    Result := false;
+    exit;
+  end;
+
+  ReallocMem(buf, Size);
+  ptr := pointer(integer(buf) + adv);
+  Result := true;
+end;
+
+procedure TStreamReader2.FreeBuf;
+begin
+  if Assigned(buf) then
+    FreeMem(buf);
+end;
+
+//Use this instead of underlying Stream's Position
+function TStreamReader2.Position: integer;
+begin
+  Result := FStream.Position - rem;
+end;
+
+////////////////////////////////////////////////////////////////////////////////
+///  Misc useful read functions
+
+//Reads everything up to #13#10 into the buffer + sets terminating NULL.
+//If the buffer length in chars (received in "sz") is enough, it's left as it is.
+//Else the buffer is expanded, and the "sz" is updated accordingly.
+function TStreamReader2.TryReadLineA(var s: PAnsiChar; var sz: cardinal): boolean;
+var c: AnsiChar;
+  l_used: cardinal;
+begin
+  l_used := 0;
+
+  while (Read(@c, SizeOf(c))=SizeOf(c))
+    and (c <> #13) do
+  begin
+   //Reallocate memory, if needed
+    if l_used >= sz then begin
+      sz := 2*sz + 10;
+      ReallocMem(s, sz*SizeOf(AnsiChar));
+    end;
+
+    s[l_used] := c;
+    Inc(l_used);
+  end;
+
+  if not (c=#13) then
+   //If we've read nothing this time
+    if l_used = 0 then begin
+      Result := false;
+      exit;
+    end else begin
+      s[l_used] := #00;
+      Result := true;
+      exit;
+    end;
+
+  if not (Read(@c, SizeOf(c)) = SizeOf(c))
+  or not (c = #10) then
+    raise Exception.Create('Illegal linebreak detected at symbol ' + IntToStr(Position));
+
+ //Reallocate memory, if needed
+  if l_used >= sz then begin
+    sz := 2*sz + 1;
+    ReallocMem(s, sz);
+  end;
+
+  s[l_used] := #00;
+  Result := true;
+end;
+
+function TStreamReader2.TryReadLineW(var s: PWideChar; var sz: cardinal): boolean;
+var c: WideChar;
+  l_used: cardinal;
+begin
+  l_used := 0;
+
+  while (Read(@c, SizeOf(c))=SizeOf(c))
+    and (c <> #10) do
+  begin
+   //Reallocate memory, if needed
+    if l_used >= sz then begin
+      sz := 2*sz + 10;
+      ReallocMem(s, sz*SizeOf(WideChar));
+    end;
+
+    s[l_used] := c;
+    Inc(l_used);
+  end;
+
+  if not (c=#10) then
+   //If we've read nothing this time
+    if l_used = 0 then begin
+      Result := false;
+      exit;
+    end;
+
+ //Reallocate memory, if needed
+  if l_used >= sz then begin
+    sz := 2*sz + 1;
+    ReallocMem(s, sz);
+  end;
+
+  s[l_used] := #00;
+  Result := true;
+end;
+
+procedure TStreamReader2.ReadLineA(var s: PAnsiChar; var sz: cardinal);
+begin
+  if not TryReadLineA(s, sz) then
+    raise Exception.Create('Cannot read line of text.');
+end;
+
+procedure TStreamReader2.ReadLineW(var s: PWideChar; var sz: cardinal);
+begin
+  if not TryReadLineW(s, sz) then
+    raise Exception.Create('Cannot read line of text.');
+end;
+
+function TStreamReader2.ReadStrA: AnsiString;
+begin
+  ReadLineA(tmpstr_ansi_s, tmpstr_ansi_sz);
+  Result := tmpstr_ansi_s;
+end;
+
+function TStreamReader2.ReadStrW: WideString;
+begin
+  ReadLineW(tmpstr_wide_s, tmpstr_wide_sz);
+  Result := tmpstr_wide_s;
+end;
+
+function TStreamReader2.TryReadStrA(out s: AnsiString): boolean;
+begin
+  Result := TryReadLineA(tmpstr_ansi_s, tmpstr_ansi_sz);
+  if Result then
+    s := tmpstr_ansi_s;
+end;
+
+function TStreamReader2.TryReadStrW(out s: WideString): boolean;
+begin
+  Result := TryReadLineW(tmpstr_wide_s, tmpstr_wide_sz);
+  if Result then
+    s := tmpstr_wide_s;
+end;
+
+procedure TStreamReader2.FreeTmpStr;
+begin
+  FreeMem(tmpstr_ansi_s);
+  FreeMem(tmpstr_wide_s);
+  tmpstr_ansi_s := nil;
+  tmpstr_wide_s := nil;
+  tmpstr_ansi_sz := 0;
+  tmpstr_wide_sz := 0;
+end;
+
+////////////////////////////////////////////////////////////////////////////////
+
+//Пытается прочесть один байт, интерпретирует его как AnsiChar.
+function TStreamReader2.ReadAnsiChar(out c: AnsiChar): boolean;
+begin
+  Result := (Read(@c, SizeOf(AnsiChar))=SizeOf(AnsiChar));
+end;
+
+//Пытается прочесть два байта, интерпретирует их как WideChar.
+function TStreamReader2.ReadWideChar(out c: WideChar): boolean;
+begin
+  Result := (Read(@c, SizeOf(WideChar))=SizeOf(WideChar));
+end;
+
+const
+  REPL_CHAR = WideChar($FFFD);
+
+//Пытается прочесть несколько байт, интерпретирует их как Utf8-char, преобразует в WideChar.
+//Возвращает false, если поток кончился, а прочесть не удалось.
+//Возвращает REPL_CHAR, если символ не влез в UCS2 или закодирован неверно.
+function TStreamReader2.ReadUtf8Char(out c: WideChar): boolean;
+var c1, c2, c3: byte;
+begin
+  Result := (Read(@c1, 1)=1);
+  if not Result then exit;
+
+ //Один байт: 0xxxxxxx
+  if (c1 and $80) = 0 then begin
+    c := WideChar(c1);
+    Result := true;
+    exit;
+  end;
+
+ //Два байта: 110xxxxxx 10yyyyyy
+  Result := (Read(@c2, 1)=1);
+  if not Result then exit;
+
+ //У ведомых байт должно быть 10xxxxxx
+  if (c2 and $C0 <> $80) then begin
+    c := REPL_CHAR;
+    exit;
+  end;
+
+  c1 := c1 and $3F; //сбрасываем в нули два левых бита
+  if (c1 and $20) = 0 then begin //не стоит третий бит
+    c := WideChar((c1 shl 6) or (c2 and $3F));
+    Result := true;
+    exit;
+  end;
+
+ //Три байта: 1110xxxx 10yyyyyy 10zzzzzz
+  Result := (Read(@c3, 1)=1);
+  if not Result then exit;
+
+ //У ведомых байт должно быть 10xxxxxx
+  if (c3 and $C0 <> $80) then begin
+    c := REPL_CHAR;
+    exit;
+  end;
+
+  c1 := c1 and $1F; //сбрасываем в ноль третий бит
+  if (c1 and $10) = 0 then begin //не стоит четвёртый бит
+    c := WideChar((c1 shl 12) or ((c2 and $3F) shl 6) or (c3 and $3F));
+    Result := true;
+    exit;
+  end;
+
+ //Четыре байта: у нас не поддерживается. Но мы прочтём четвёртый.
+  Result := (Read(@c1, 1)=1); //уже неважно, куда
+  if not Result then exit;
+  c := REPL_CHAR;
+
+ //Больше четырёх байт мы в страшном сне представить не можем.
+end;
+
+////////////////////////////////////////////////////////////////////////////////
+///  TStreamWriter2
+
+constructor TStreamWriter2.Create(AStream: TStream; AOwnStream: boolean = false);
+begin
+  inherited Create;
+  FStream := AStream;
+  FOwnStream := AOwnStream;
+
+  buf := nil;
+  ptr := nil;
+  used := 0;
+  rem := 0;
+  SetChunkSize(DEFAULT_CHUNK_SIZE);
+end;
+
+destructor TStreamWriter2.Destroy;
+begin
+  ReleaseStream; //с записью буфера
+  FreeBuf;
+
+  if Assigned(FStream) then
+    if FOwnStream then
+      FreeAndNil(FStream)
+    else FStream := nil;
+  inherited
+end;
+
+procedure TStreamWriter2.JoinStream(AStream: TStream; AOwnsStream: boolean = false);
+begin
+ //Освобождаем старый поток
+  ReleaseStream;
+
+ //Цепляемся к потоку
+  FStream := AStream;
+  FOwnStream := AOwnsStream;
+
+ //Сбрасываем буфер на всякий случай
+  ResetBuffer;
+end;
+
+//Освобождает поток, синхронизируя его положение с ожидаемым
+procedure TStreamWriter2.ReleaseStream;
+begin
+  if FStream=nil then exit;
+
+ //Сбрасываем
+  FlushBuffer;
+
+ //Отпускаем поток
+  FStream := nil;
+  FOwnStream := false;
+end;
+
+function TStreamWriter2.Write(buf: pbyte; len: integer): integer;
+begin
+  if len=0 then begin
+    Result := 0;
+    exit;
+  end;
+
+ //Наиболее частый случай
+  if len <= rem then begin
+    Move(buf^, ptr^, len);
+    Inc(ptr, len);
+    Inc(used, len);
+    Dec(rem, len);
+
+    Inc(FBytesWritten, len);
+    Result := len;
+    exit;
+  end;
+
+ //Иначе нас просят записать нечто большее. Вначале добиваем текущий буфер
+  if used > 0 then begin
+    if (rem > 0) then begin
+      Move(buf^, ptr^, rem);
+      Inc(ptr, rem);
+      Inc(used, rem);
+
+     //Update variables
+      Inc(buf, rem);
+      Dec(len, rem);
+
+      Result := rem;
+      rem := 0;
+    end else
+      Result := 0;
+
+    FlushBuffer;
+  end else
+    Result := 0;
+
+
+ //Если остаток меньше буфера, сохраняем его в буфер
+  if len < FChunkSize then begin
+    Move(buf^, ptr^, len);
+    Inc(ptr, len);
+    Inc(used, len);
+    Dec(rem, len);
+
+    Inc(Result, len);
+  end else
+  //Иначе пишем его напрямую
+   Result := Result + FStream.Write(buf^, len);
+
+  Inc(FBytesWritten, Result);
+end;
+
+function TStreamWriter2.Seek(Offset: int64; Origin: TSeekOrigin): int64;
+begin
+ //Сбрасываем на диск буфер
+  FlushBuffer;
+
+ //Делаем переход
+  Result := FStream.Seek(Offset, Origin);
+end;
+
+procedure TStreamWriter2.SetChunkSize(AValue: integer);
+begin
+ //Если в новый буфер текущие данные не влезают, записываем их
+  if AValue < used then
+    FlushBuffer;
+
+  FChunkSize := AValue;
+  ReallocMem(buf, FChunkSize);
+
+ //Обновляем указатель на текущий байт
+  ptr := pointer(integer(buf) + used);
+  rem := FChunkSize - used;
+end;
+
+//Сбрасывает на диск содержимое буфера и обнуляет его внутренность.
+procedure TStreamWriter2.FlushBuffer;
+begin
+  if used=0 then exit;
+  FStream.Write(buf^, used);
+  rem := rem + used; //всё пространство буфера свободно
+  used := 0;
+  ptr := buf;
+end;
+
+procedure TStreamWriter2.ResetBuffer;
+begin
+  rem := FChunkSize;
+  used := 0;
+  ptr := buf;
+end;
+
+procedure TStreamWriter2.FreeBuf;
+begin
+  if Assigned(buf) then
+    FreeMem(buf);
+  used := 0;
+  rem := 0;
+  ptr := nil;
+end;
+
+//Use this instead of underlying Stream's Position
+function TStreamWriter2.Position: integer;
+begin
+  Result := FStream.Position + used;
 end;
 
 end.

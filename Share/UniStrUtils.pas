@@ -2,14 +2,14 @@ unit UniStrUtils;
 {$WEAKPACKAGEUNIT ON}
 
 interface
-uses SysUtils, WideStrUtils;
+uses SysUtils, Windows, StrUtils, WideStrUtils;
 
 (*
  В библиотеке введён дополнительный тип: UniString.
  На старых компиляторах
    UniString = WideString
  На новых
-   UniString = string (unicode)
+   UniString = UnicodeString (и == string, если включено UNICODE)
 
  Все функции существуют в следующих версиях:
    Function: агностическая функция (для типа string)
@@ -29,27 +29,60 @@ uses SysUtils, WideStrUtils;
 
  Таким образом, UniFunction/WideFunction даёт вам поддержку юникода в наилучшем
  возможном виде, а простая Function работает со строками, которые приняты
- по умолчанию на платформе.
+ по умолчанию на платформе компиляции.
 
  Следует помнить, что WideChar == UnicodeChar, и PWideChar в любом случае
  ничуть не отличается от PUnicodeChar. Поэтому функции, которые работают
- с PWideChar, продолжают работать без изменений.
+ с PWideChar, не требуют изменений.
+
+ Используются проверки:
+   IFDEF UNICODE: для проверки типа string (Ansi или Unicode)
+   IF CompilerVersion>=21: для проверки доступности новых типов и функций
+
+ Например:
+   IFDEF UNICODE          => string == UnicodeString       (по умолчанию включен юникод)
+   IF CompilerVersion>=21 => UniString == UnicodeString    (юникод ДОСТУПЕН В ПРИНЦИПЕ)
+*)
+
+(*
+О скорости разных методов работы со строками.
+
+I. Приведение к PWideChar
+==============================
+@s[1] вызывает UniqueStringU
+PWideChar(s) вызывает WCharFromUStr
+
+Поэтому если нужно просто получить указатель, делайте:
+  PWideChar(pointer(s))+offset*SizeOf(WideChar)
+
+Это самый быстрый способ (в несколько раз быстрее, никаких вызовов).
+
+
+II. Length
+=============
+Зачем-то вызывает UniqueStringU.
+Если нужно просто проверить на непустоту, используйте:
+  pointer(s) <> nil
 *)
 
 const
-  BOM_UTF16LE = #255#254;
-  BOM_UTF16BE = #254#255;
+  BOM_UTF16BE: AnsiString = #254#255; //FE FF
+  BOM_UTF16LE: AnsiString = #255#254; //FF FE
+ //должны быть ansi, иначе получится два юникод-символа
 
 type
  //UniString - это наилучший доступный на платформе Unicode-тип.
  //На старых компиляторах UniString=WideString, на новых UniString=UnicodeString.
- {$IFDEF UNICODE}
+ {$IF CompilerVersion >= 21}
   UniString = UnicodeString;
   PUniString = PUnicodeString;
  {$ELSE}
   UniString = WideString;
   PUniString = PWideString;
- {$ENDIF}
+ //Доопределяем новые символы на старых платформах для быстрой совместимости
+  UnicodeString = UniString;
+  PUnicodeString = PUniString;
+ {$IFEND}
 
   UniChar = WideChar;
   PUniChar = PWideChar;
@@ -78,6 +111,27 @@ type
  //Обратная совместимость
   TStringArrayW = TWideStringArray;
 
+ {$IF CompilerVersion < 21}
+ //В старых версиях не объявлены, а ими удобно пользоваться
+  UCS2Char = WideChar;
+  PUCS2Char = PWideChar;
+  UCS4Char = type LongWord;
+  PUCS4Char = ^UCS4Char;
+
+  TUCS4CharArray = array [0..$effffff] of UCS4Char;
+  PUCS4CharArray = ^TUCS4CharArray;
+
+  UCS4String = array of UCS4Char;
+
+ //На старом компиляторе преобразований кодировки для AnsiString не выполняется,
+ //и она безопасна для UTF8 и RawByte как есть (в новых нужно указать флаги)
+  UTF8String = AnsiString;
+  PUTF8String = ^UTF8String;
+
+  RawByteString = AnsiString;
+  PRawByteString = ^RawByteString;
+ {$IFEND}
+
 
 {$IFDEF UNICODE}
 (*
@@ -92,6 +146,13 @@ type
 
   Так что здесь представлены "честные" функции для Ansi-строк.
 *)
+
+function AnsiPos(const Substr, S: AnsiString): Integer;
+
+function AnsiStringReplace(const S, OldPattern, NewPattern: AnsiString;
+  Flags: TReplaceFlags): AnsiString;
+function AnsiReplaceStr(const AText, AFromText, AToText: AnsiString): AnsiString; inline;
+function AnsiReplaceText(const AText, AFromText, AToText: AnsiString): AnsiString; inline;
 
 function AnsiUpperCase(const S: AnsiString): AnsiString;
 function AnsiLowerCase(const S: AnsiString): AnsiString;
@@ -178,10 +239,20 @@ function AnsiSepSplit(s: AnsiString; sep: AnsiChar): TAnsiStringArray;
 function WideSepSplit(s: UniString; sep: UniChar): TUniStringArray;
 function SepSplit(s: string; sep: char): TStringArray;
 
+//Бьёт строку по нескольким разделителям, с учётом кавычек
+function StrSplitExA(s: PAnsiChar; sep: PAnsiChar; quote: AnsiChar): TAnsiStringArray;
+function StrSplitExW(s: PUnichar; sep: PUniChar; quote: UniChar): TUniStringArray;
+function StrSplitEx(s: PChar; sep: PChar; quote: Char): TStringArray;
+
 //Joins a string array usng the specified separator
-function AnsiSepJoin(s: TAnsiStringArray; sep: AnsiChar): AnsiString;
-function WideSepJoin(s: TUniStringArray; sep: UniChar): UniString;
-function SepJoin(s: TStringArray; sep: Char): string;
+function AnsiSepJoin(s: TAnsiStringArray; sep: AnsiChar): AnsiString; overload;
+function WideSepJoin(s: TUniStringArray; sep: UniChar): UniString; overload;
+function SepJoin(s: TStringArray; sep: Char): string; overload;
+
+//Same, just receives a point to a first string, and their number
+function AnsiSepJoin(s: PAnsiString; cnt: integer; sep: AnsiChar): AnsiString; overload;
+function WideSepJoin(s: PUniString; cnt: integer; sep: UniChar): UniString; overload;
+function SepJoin(s: PString; cnt: integer; sep: Char): string; overload;
 
 //Возвращает в виде WideString строку PWideChar, но не более N символов
 //Полезно для чтения всяких буферов фиксированного размера, где не гарантирован ноль.
@@ -232,6 +303,11 @@ function PrevChar(p: PAnsiChar; c: integer = 1): PAnsiChar; overload;
 function NextChar(p: PWideChar; c: integer = 1): PWideChar; overload;
 function PrevChar(p: PWideChar; c: integer = 1): PWideChar; overload;
 
+{ Арифметика указателей }
+function PwcOff(var a; n: integer): PWideChar; inline;
+function PwcCmp(var a; var b): integer; inline; overload;
+function PwcCmp(var a; an: integer; var b; bn: integer): integer; inline; overload;
+
 //Возвращает подстроку с заданного места и нужного размера.
 function StrSubLA(beg: PAnsiChar; len: integer): AnsiString;
 function StrSubLW(beg: PUniChar; len: integer): UniString;
@@ -247,10 +323,10 @@ function SubStrPch(beg, en: pchar): string;
 
 
 //Scans the specified string for the specfied character. Starts at position <start_at>.
-//Continues for <use_len> symbols. Returns first symbol index in string or -1 if not found any.
-function AnsiFindChar(s: AnsiString; c: AnsiChar; start_at: integer; use_len: integer): integer;
-function WideFindChar(s: UniString; c: UniChar; start_at: integer; use_len: integer): integer;
-function FindChar(s: string; c: char; start_at: integer; use_len: integer): integer;
+//Ends at <end_at> - 1 symbols. Returns first symbol index in string or -1 if not found any.
+function AnsiFindChar(s: AnsiString; c: AnsiChar; start_at: integer = 1; end_at: integer = -1): integer;
+function WideFindChar(s: UniString; c: UniChar; start_at: integer = 1; end_at: integer = -1): integer;
+function FindChar(s: string; c: char; start_at: integer = 1; end_at: integer = -1): integer;
 
 //Дополнения к стандартной дельфийской StrScan
 function StrScanA(str: PAnsiChar; chr: AnsiChar): PAnsiChar;
@@ -280,8 +356,18 @@ function AnsiReadUpToNext(str: PAnsiChar; cs: AnsiString; out block: AnsiString)
 function WideReadUpToNext(str: PUniChar; cs: UniString; out block: UniString): PUniChar;
 function ReadUpToNext(str: PChar; cs: string; out block: string): PChar;
 
+//Сравнивает строки до окончания любой из них.
+function StrCmpNext(a, b: PChar): boolean; inline;
+
+//Возвращает длину совпадающего участка c начала строк, в символах, включая нулевой.
+function StrMatch(a, b: PChar): integer; inline;
+
+//Пропускает все символы до первого, не входящего в chars (null-term string)
+procedure SkipChars(var pc: PChar; chars: PChar);
+
 
 //Removes quote characters from around the string, if they exist.
+//Duplicate: UniDequotedStr, although this one is more powerful
 function AnsiStripQuotes(s: AnsiString; qc1, qc2: AnsiChar): AnsiString;
 function WideStripQuotes(s: UniString; qc1, qc2: UniChar): UniString;
 function StripQuotes(s: string; qc1, qc2: char): string;
@@ -314,7 +400,7 @@ function BETrimW(beg, en: PUniChar; sep: UniChar = ' '): UniString;
 function BETrim(beg, en: PChar; sep: Char = ' '): string;
 
 
-//Binary/string conversion
+{ Binary/string conversion }
 //Преобразует данные в цепочку hex-кодов.
 function BinToHex(ptr: pbyte; sz: integer): AnsiString;
 //Преобразует массив байт в цепочку hex-кодов.
@@ -323,6 +409,28 @@ function DataToHex(data: array of byte): AnsiString;
 function HexCharValue(c: AnsiChar): byte; inline;
 //Декодирует строку из hex-пар в данные. Место под данные должно быть выделено заранее
 procedure HexToBin(s: AnsiString; p: pbyte; size: integer);
+
+
+{ Codepage utils }
+//Превращает один символ в Wide/Ansi
+function ToWideChar(c: AnsiChar; cp: cardinal): WideChar;
+function ToChar(c: WideChar; cp: cardinal): AnsiChar;
+
+//Превращает строку в Wide/Ansi
+function ToWideString(s: AnsiString; cp: cardinal): WideString;
+function ToString(s: WideString; cp: cardinal): AnsiString;
+
+//Превращает буфер заданной длины в Wide/Ansi
+function BufToWideString(s: PAnsiChar; len: integer; cp: cardinal): WideString;
+function BufToString(s: PWideChar; len: integer; cp: cardinal): AnsiString;
+
+//Меняет кодировку Ansi-строки
+function Convert(s: AnsiString; cpIn, cpOut: cardinal): AnsiString;
+
+//Меняет кодировку Ansi-строки с системной на консольную и наоборот
+function WinToOEM(s: AnsiString): AnsiString; inline;
+function OEMToWin(s: AnsiString): AnsiString; inline;
+
 
 type
  (*
@@ -366,14 +474,82 @@ type
   PStringBuilder = ^TStringBuilder;
  {$ENDIF}
 
+{ Html encoding }
+
+type
+  TUrlEncodeOption = (
+    ueNoSpacePlus //Encode space as %20, not "+"
+  );
+  TUrlEncodeOptions = set of TUrlEncodeOption;
+
+function UrlEncode(s: UniString; options: TUrlEncodeOptions = []): AnsiString;
+function HtmlEscape(s: UniString): UniString;
+function HtmlEscapeObvious(s: UniString): UniString;
+function HtmlEscapeToAnsi(s: UniString): AnsiString;
+
 implementation
-uses StrUtils, Windows;
 
 ////////////////////////////////////////////////////////////////////////////////
 {$IFDEF UNICODE}
 (*
   Все реализации скопированы у Борланд.
 *)
+
+function AnsiPos(const Substr, S: AnsiString): Integer;
+var
+  P: PAnsiChar;
+begin
+  Result := 0;
+  P := AnsiStrPos(PAnsiChar(S), PAnsiChar(SubStr));
+  if P <> nil then
+    Result := (Integer(P) - Integer(PAnsiChar(S))) div SizeOf(AnsiChar) + 1;
+end;
+
+function AnsiStringReplace(const S, OldPattern, NewPattern: AnsiString;
+  Flags: TReplaceFlags): AnsiString;
+var
+  SearchStr, Patt, NewStr: AnsiString;
+  Offset: Integer;
+begin
+  if rfIgnoreCase in Flags then
+  begin
+    SearchStr := AnsiUpperCase(S);
+    Patt := AnsiUpperCase(OldPattern);
+  end else
+  begin
+    SearchStr := S;
+    Patt := OldPattern;
+  end;
+  NewStr := S;
+  Result := '';
+  while SearchStr <> '' do
+  begin
+    Offset := AnsiPos(Patt, SearchStr);
+    if Offset = 0 then
+    begin
+      Result := Result + NewStr;
+      Break;
+    end;
+    Result := Result + Copy(NewStr, 1, Offset - 1) + NewPattern;
+    NewStr := Copy(NewStr, Offset + Length(OldPattern), MaxInt);
+    if not (rfReplaceAll in Flags) then
+    begin
+      Result := Result + NewStr;
+      Break;
+    end;
+    SearchStr := Copy(SearchStr, Offset + Length(Patt), MaxInt);
+  end;
+end;
+
+function AnsiReplaceStr(const AText, AFromText, AToText: AnsiString): AnsiString;
+begin
+  Result := AnsiStringReplace(AText, AFromText, AToText, [rfReplaceAll]);
+end;
+
+function AnsiReplaceText(const AText, AFromText, AToText: AnsiString): AnsiString;
+begin
+  Result := AnsiStringReplace(AText, AFromText, AToText, [rfReplaceAll, rfIgnoreCase]);
+end;
 
 function AnsiUpperCase(const S: AnsiString): AnsiString;
 var
@@ -511,10 +687,16 @@ begin
 {$ENDIF}
 end;
 
+(*
+Note about UpperCase/LowerCase:
+  1. SysUtils.UpperCase sucks and works only with dirty ANSI, even on unicode. Don't use it!
+  2. SysUtils.AnsiUpperCase works for Unicode on Unicode compilers.
+  3. UniStrUtils.AnsiUpperCase works as pure, but proper Ansi/multibyte, everywhere.
+*)
 function UniUpperCase(const S: UniString): UniString;
 begin
 {$IFDEF UNICODE}
-  Result := UpperCase(S);
+  Result := SysUtils.AnsiUpperCase(S);
 {$ELSE}
   Result := WideUpperCase(S);
 {$ENDIF}
@@ -523,7 +705,7 @@ end;
 function UniLowerCase(const S: UniString): UniString;
 begin
 {$IFDEF UNICODE}
-  Result := LowerCase(S);
+  Result := SysUtils.AnsiLowerCase(S);
 {$ELSE}
   Result := WideLowerCase(S);
 {$ENDIF}
@@ -864,63 +1046,211 @@ begin
 end;
 
 
+function StrSplitExA(s: PAnsiChar; sep: PAnsiChar; quote: AnsiChar): TAnsiStringArray;
+var pc: PAnsiChar;
+  i: integer;
+  in_q: boolean;
+
+  function match_q(c: AnsiChar): boolean;
+  var sc: PAnsiChar;
+  begin
+    sc := sep;
+    while (sc^<>#00) and (sc^<>c) do Inc(sc);
+    Result := (sc^=c);
+  end;
+
+begin
+ //Count the number of separator characters not between
+  i := 1;
+  pc := s;
+  in_q := false;
+  while pc^ <> #00 do begin
+    if pc^=quote then
+      in_q := not in_q
+    else
+    if (not in_q) and match_q(pc^) then
+      Inc(i);
+    Inc(pc);
+  end;
+
+ //Reserve array
+  SetLength(Result, i);
+
+ //Parse
+  i := 0;
+  pc := s;
+  in_q := false;
+  while pc^<>#00 do begin
+    if pc^=quote then begin
+      in_q := not in_q;
+      Inc(pc);
+    end else
+    if (not in_q) and match_q(pc^) then begin
+      Result[i] := StrSubA(s, pc);
+      Inc(i);
+      Inc(pc);
+      s := pc;
+    end else
+      Inc(pc);
+  end;
+
+ //Last time
+  Result[i] := StrSubA(s, pc);
+end;
+
+function StrSplitExW(s: PUnichar; sep: PUniChar; quote: UniChar): TUniStringArray;
+var pc: PUniChar;
+  i: integer;
+  in_q: boolean;
+
+  function match_q(c: UniChar): boolean;
+  var sc: PUniChar;
+  begin
+    sc := sep;
+    while (sc^<>#00) and (sc^<>c) do Inc(sc);
+    Result := (sc^=c);
+  end;
+
+begin
+ //Count the number of separator characters not between
+  i := 1;
+  pc := s;
+  in_q := false;
+  while pc^ <> #00 do begin
+    if pc^=quote then
+      in_q := not in_q
+    else
+    if (not in_q) and match_q(pc^) then
+      Inc(i);
+    Inc(pc);
+  end;
+
+ //Reserve array
+  SetLength(Result, i);
+
+ //Parse
+  i := 0;
+  pc := s;
+  in_q := false;
+  while pc^<>#00 do begin
+    if pc^=quote then begin
+      in_q := not in_q;
+      Inc(pc);
+    end else
+    if (not in_q) and match_q(pc^) then begin
+      Result[i] := StrSubW(s, pc);
+      Inc(i);
+      Inc(pc);
+      s := pc;
+    end else
+      Inc(pc);
+  end;
+
+ //Last time
+  Result[i] := StrSubW(s, pc);
+end;
+
+function StrSplitEx(s: PChar; sep: PChar; quote: Char): TStringArray;
+begin
+{$IFDEF UNICODE}
+  Result := StrSplitExW(PWideChar(s), PWideChar(sep), quote);
+{$ELSE}
+  Result := StrSplitExA(PAnsiChar(s), PAnsiChar(sep), quote);
+{$ENDIF}
+end;
+
 ////////////////////////////////////////////////////////////////////////////////
 //Joins a string array usng the specified separator.
 
 function AnsiSepJoin(s: TAnsiStringArray; sep: AnsiChar): AnsiString;
-var len, i, li: integer;
 begin
- //Считаем общий размер
-  len := Length(s) - 1; //число разделителей
-  for i := 0 to Length(s) - 1 do
-    len := len + Length(s[i]);
-
- //Выделяем память
-  SetLength(Result, len);
-  li := 0;
-  for i := 0 to Length(s) - 2 do begin
-    Move(s[i][1], Result[li], Length(s[i])*SizeOf(AnsiChar));
-    li := li + Length(s[i]);
-    Result[li] := sep;
-    li := li + 1;
-  end;
-
- //Последний кусок
-  i := Length(s) - 1;
-  if i >= 0 then
-    Move(s[i][1], Result[li], Length(s[i])*SizeOf(AnsiChar));
+  Result := AnsiSepJoin(@s[1], Length(s), sep);
 end;
 
 function WideSepJoin(s: TUniStringArray; sep: UniChar): UniString;
-var len, i, li: integer;
 begin
- //Считаем общий размер
-  len := Length(s) - 1; //число разделителей
-  for i := 0 to Length(s) - 1 do
-    len := len + Length(s[i]);
-
- //Выделяем память
-  SetLength(Result, len);
-  li := 0;
-  for i := 0 to Length(s) - 2 do begin
-    Move(s[i][1], Result[li], Length(s[i])*SizeOf(UniChar));
-    li := li + Length(s[i]);
-    Result[li] := sep;
-    li := li + 1;
-  end;
-
- //Последний кусок
-  i := Length(s) - 1;
-  if i >= 0 then
-    Move(s[i][1], Result[li], Length(s[i])*SizeOf(UniChar));
+  Result := WideSepJoin(@s[1], Length(s), sep);
 end;
 
 function SepJoin(s: TStringArray; sep: Char): string;
 begin
 {$IFDEF UNICODE}
-  Result := WideSepJoin(s, sep);
+  Result := WideSepJoin(@s[1], Length(s), sep);
 {$ELSE}
-  Result := AnsiSepJoin(s, sep);
+  Result := AnsiSepJoin(@s[1], Length(s), sep);
+{$ENDIF}
+end;
+
+function AnsiSepJoin(s: PAnsiString; cnt: integer; sep: AnsiChar): AnsiString;
+var si: PAnsiString;
+  ci: integer;
+  len, li: integer;
+begin
+ //Считаем общий размер
+  len := cnt - 1; //число разделителей
+  si := s;
+  ci := cnt;
+  while ci>0 do begin
+    len := len + Length(si^);
+    Inc(si);
+    Dec(ci);
+  end;
+
+ //Выделяем память
+  SetLength(Result, len);
+  li := 1;
+  while cnt>1 do begin
+    Move(s^[1], Result[li], Length(s^)*SizeOf(AnsiChar));
+    li := li + Length(s^);
+    Result[li] := sep;
+    li := li + 1;
+    Inc(s);
+    Dec(cnt);
+  end;
+
+ //Последний кусок
+  if cnt >= 1 then
+    Move(s^[1], Result[li], Length(s^)*SizeOf(AnsiChar));
+end;
+
+function WideSepJoin(s: PUniString; cnt: integer; sep: UniChar): UniString;
+var si: PUniString;
+  ci: integer;
+  len, li: integer;
+begin
+ //Считаем общий размер
+  len := cnt - 1; //число разделителей
+  si := s;
+  ci := cnt;
+  while ci>0 do begin
+    len := len + Length(si^);
+    Inc(si);
+    Dec(ci);
+  end;
+
+ //Выделяем память
+  SetLength(Result, len);
+  li := 1;
+  while cnt>1 do begin
+    Move(s^[1], Result[li], Length(s^)*SizeOf(UniChar));
+    li := li + Length(s^);
+    Result[li] := sep;
+    li := li + 1;
+    Inc(s);
+    Dec(cnt);
+  end;
+
+ //Последний кусок
+  if cnt >= 1 then
+    Move(s^[1], Result[li], Length(s^)*SizeOf(UniChar));
+end;
+
+function SepJoin(s: PString; cnt: integer; sep: Char): string;
+begin
+{$IFDEF UNICODE}
+  Result := WideSepJoin(s, cnt, sep);
+{$ELSE}
+  Result := AnsiSepJoin(s, cnt, sep);
 {$ENDIF}
 end;
 
@@ -1151,6 +1481,30 @@ begin
   Result := PWideChar(integer(p) - SizeOf(WideChar)*c);
 end;
 
+
+////////////////////////////////////////////////////////////////////////////////
+///  Арифметика указателей
+
+//Возвращает указатель на n-й знак строки. Быстрее и безопасней, чем дельфийская хрень.
+//Отступ считает с единицы.
+function PwcOff(var a; n: integer): PWideChar;
+begin
+  Result := PWideChar(integer(a) + (n-1)*SizeOf(WideChar));
+end;
+
+//Сравнивает указатели. Больше нуля, если a>b.
+function PwcCmp(var a; var b): integer;
+begin
+  Result := integer(a)-integer(b);
+end;
+
+//Отступ считает с единицы.
+function PwcCmp(var a; an: integer; var b; bn: integer): integer;
+begin
+  Result := integer(a)+(an-1)*SizeOf(WideChar)-integer(b)-(bn-1)*SizeOf(WideChar);
+end;
+
+
 ////////////////////////////////////////////////////////////////////////////////
 ///  Возвращает строку между заданными позициями, или заданной длины
 
@@ -1232,35 +1586,41 @@ end;
 ///  Поиск символов в строке
 
 //Scans the specified string for the specfied character. Starts at position <start_at>.
-//Continues for <use_len> symbols. Returns first symbol index in string or -1 if not found any.
-function AnsiFindChar(s: AnsiString; c: AnsiChar; start_at: integer; use_len: integer): integer;
+//Ends at <end_at> symbols - 1. Returns first symbol index in string or -1 if not found any.
+function AnsiFindChar(s: AnsiString; c: AnsiChar; start_at: integer; end_at: integer): integer;
 var i: integer;
 begin
+  if end_at=-1 then
+    end_at := Length(s);
+
   Result := -1;
-  for i := start_at to use_len - 1 do
+  for i := start_at to end_at - 1 do
     if (s[i]=c) then begin
       Result := i;
       exit;
     end;
 end;
 
-function WideFindChar(s: UniString; c: UniChar; start_at: integer; use_len: integer): integer;
+function WideFindChar(s: UniString; c: UniChar; start_at: integer; end_at: integer): integer;
 var i: integer;
 begin
+  if end_at=-1 then
+    end_at := Length(s);
+
   Result := -1;
-  for i := start_at to use_len - 1 do
+  for i := start_at to end_at - 1 do
     if (s[i]=c) then begin
       Result := i;
       exit;
     end;
 end;
 
-function FindChar(s: string; c: char; start_at: integer; use_len: integer): integer;
+function FindChar(s: string; c: char; start_at: integer; end_at: integer): integer;
 begin
 {$IFDEF UNICODE}
-  Result := WideFindChar(s, c, start_at, use_len);
+  Result := WideFindChar(s, c, start_at, end_at);
 {$ELSE}
-  Result := AnsiFindChar(s, c, start_at, use_len);
+  Result := AnsiFindChar(s, c, start_at, end_at);
 {$ENDIF}
 end;
 
@@ -1413,6 +1773,46 @@ begin
 {$ENDIF}
 end;
 
+//Проверяет, что строки совпадают до окончания одной из них
+function StrCmpNext(a, b: PChar): boolean;
+begin
+  while (a^ = b^) and (a^<>#00) do begin //#00 не выедаем даже общий
+    Inc(a);
+    Inc(b);
+  end;
+  Result := (a^=#00) or (b^=#00);
+end;
+
+//Возвращает длину совпадающего участка c начала строк, в символах, включая нулевой.
+function StrMatch(a, b: PChar): integer;
+begin
+  Result := 0;
+  while (a^ = b^) and (a^<>#00) do begin //#00 не выедаем даже общий
+    Inc(a);
+    Inc(b);
+    Inc(Result);
+  end;
+ //сверяем #00
+  if (a^=b^) then Inc(Result);
+end;
+
+procedure SkipChars(var pc: PChar; chars: PChar);
+var pcc: PChar;
+begin
+  while pc^<>#00 do begin
+    pcc := chars;
+    while pcc^<>#00 do
+      if pcc^=pc^ then begin
+        pcc := nil;
+        break;
+      end else
+        Inc(pcc);
+    if pcc=nil then //skip char
+      Inc(pc)
+    else
+      exit; //non-skip char
+  end;
+end;
 
 ////////////////////////////////////////////////////////////////////////////////
 ///  Удаление лишних символов по краям
@@ -1857,6 +2257,81 @@ end;
 
 
 ////////////////////////////////////////////////////////////////////////////////
+///  Codepage utils
+
+function ToWideChar(c: AnsiChar; cp: cardinal): WideChar;
+begin
+  if MultiByteToWideChar(cp, 0, @c, 1, @Result, 2) = 0 then
+    RaiseLastOsError;
+end;
+
+function ToChar(c: WideChar; cp: cardinal): AnsiChar;
+begin
+  if WideCharToMultiByte(cp, 0, @c, 2, @Result, 1, nil, nil) = 0 then
+    RaiseLastOsError;
+end;
+
+function ToWideString(s: AnsiString; cp: cardinal): WideString;
+begin
+  Result := BufToWideString(PAnsiChar(s), Length(s), cp);
+end;
+
+function ToString(s: WideString; cp: cardinal): AnsiString;
+begin
+  Result := BufToString(PWideChar(s), Length(s), cp);
+end;
+
+function BufToWideString(s: PAnsiChar; len: integer; cp: cardinal): WideString;
+var size: integer;
+begin
+  if s^=#00 then begin
+    Result := '';
+    exit;
+  end;
+
+  size := MultiByteToWideChar(cp, 0, s, len, nil, 0);
+  if size=0 then
+    RaiseLastOsError;
+  SetLength(Result, size);
+  if MultiByteToWideChar(cp, 0, s, len, pwidechar(Result), size) = 0 then
+    RaiseLastOsError;
+end;
+
+function BufToString(s: PWideChar; len: integer; cp: cardinal): AnsiString;
+var size: integer;
+begin
+  if s^=#00 then begin
+    Result := '';
+    exit;
+  end;
+
+  size := WideCharToMultiByte(cp, 0, s, len, nil, 0, nil, nil);
+  if size=0 then
+    RaiseLastOsError;
+  SetLength(Result, size);
+  if WideCharToMultiByte(cp, 0, s, len, PAnsiChar(Result), size, nil, nil) = 0 then
+    RaiseLastOsError;
+end;
+
+function Convert(s: AnsiString; cpIn, cpOut: cardinal): AnsiString;
+begin
+  Result := ToString(ToWideString(s, cpIn), cpOut);
+end;
+
+//Переводит строку из текущей кодировки системы в текущую кодировку консоли.
+function WinToOEM(s: AnsiString): AnsiString;
+begin
+  Result := Convert(s, CP_ACP, CP_OEMCP);
+end;
+
+//Переводит строку из текущей кодировки консоли в текущую кодировку системы.
+function OEMToWin(s: AnsiString): AnsiString;
+begin
+  Result := Convert(s, CP_OEMCP, CP_ACP);
+end;
+
+
+////////////////////////////////////////////////////////////////////////////////
 ///  StringBuilder
 
 procedure TAnsiStringBuilder.Clear;
@@ -1980,5 +2455,90 @@ begin
   else
     Used := Used - SymbolCount;
 end;
+
+
+{ Функции кодирования в HTML-форматы. Пока сделаны медленно и просто,
+ при необходимости можно ускорить. }
+
+//Кодирует строку в URI-форме: "(te)(su)(to) str" -> "%E3%83%86%E3%82%B9%E3%83%88+str"
+//Пока сделано медленно и просто, при необходимости можно ускорить
+function UrlEncode(s: UniString; options: TUrlEncodeOptions): AnsiString;
+var i, j: integer;
+  U: UTF8String;
+begin
+  Result := '';
+  for i := 1 to Length(s) do
+    if CharInSet(s[i], ['a'..'z', 'A'..'Z', '1'..'9', '0']) then
+      Result := Result + AnsiChar(s[i])
+    else
+    if s[i]=' ' then
+      if ueNoSpacePlus in options then
+        Result := Result + '%20'
+      else
+        Result := Result + '+'
+    else begin
+     //Вообще говоря, символ в UTF-16 может занимать несколько пар...
+     //Но мы здесь это игнорируем.
+      U := UTF8String(s[i]); // explicit Unicode->UTF8 conversion
+      for j := 1 to Length(U) do
+        Result := Result + '%' + AnsiString(IntToHex(Ord(U[j]), 2));
+    end;
+end;
+
+//Кодирует строку в HTML-форме. Заменяет только символы, которые не могут
+//встречаться в правильном HTML.
+//Все остальные юникод-символы остаются в нормальной форме.
+function HtmlEscape(s: UniString): UniString;
+var i: integer;
+begin
+  Result := '';
+  for i := 1 to Length(s) do
+    if s[i]='&' then Result := Result + '&amp;' else
+    if s[i]='''' then Result := Result + '&apos;' else
+    if s[i]='"' then Result := Result + '&quot;' else
+    if s[i]='<' then Result := Result + '&lt;' else
+    if s[i]='>' then Result := Result + '&gt;' else
+    Result := Result + s[i];
+end;
+
+//Кодирует строку в HTML-форме. Неизвестно, была ли строка закодирована до сих пор.
+//Пользователь мог закодировать некоторые последовательности, но забыть другие.
+//Поэтому кодируются только те символы, которые встречаться в итоговой строке
+//не могут никак:
+//   "asd &amp; bsd <esd>" --> "asd &amp; bsd &lt;esd&gt;"
+function HtmlEscapeObvious(s: UniString): UniString;
+var i: integer;
+begin
+  Result := '';
+  for i := 1 to Length(s) do
+   //& не кодируем
+    if s[i]='''' then Result := Result + '&apos;' else
+    if s[i]='"' then Result := Result + '&quot;' else
+    if s[i]='<' then Result := Result + '&lt;' else
+    if s[i]='>' then Result := Result + '&gt;' else
+    Result := Result + s[i];
+end;
+
+//Кодирует строку в HTML-форме. Заменяет все символы, не входящие в Ansi-набор.
+//  "(te)(su)(to) str" -> "&12486;&12473;&12488; str"
+//При необходимости можно сделать флаг "эскейпить в 16-ричные коды: &#x30DB;"
+function HtmlEscapeToAnsi(s: UniString): AnsiString;
+var i: integer;
+begin
+  Result := '';
+  for i := 1 to Length(s) do
+    if s[i]='&' then Result := Result + '&amp;' else
+    if s[i]='''' then Result := Result + '&apos;' else
+    if s[i]='"' then Result := Result + '&quot;' else
+    if s[i]='<' then Result := Result + '&lt;' else
+    if s[i]='>' then Result := Result + '&gt;' else
+   //ANSI-символы
+    if CharInSet(s[i], ['a'..'z', 'A'..'Z', '1'..'9', '0', ' ']) then
+      Result := Result + AnsiChar(s[i])
+    else
+      Result := Result + '&#'+AnsiString(IntToStr(word(s[i])))+';'
+end;
+
+
 
 end.
