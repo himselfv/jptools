@@ -1,0 +1,4 @@
+This project depends on Wakan:
+  http://code.google.com/p/wakan/
+
+It uses Wakan dictionary engine for fast edict lookups. It also requires a converted EDICT dictionary which can be taken from Wakan main site or converted with Wakan manually.

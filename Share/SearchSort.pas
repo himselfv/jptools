@@ -84,7 +84,10 @@ var k_left, k_right: integer;
   diff_val: integer;
 begin
   Result := false;
-  if len<=0 then exit; //Иначе потом будут странные исключительные случаи
+  if len<=0 then begin
+    k := 0;
+    exit; //Иначе потом будут странные исключительные случаи
+  end;
 
  //Ищем бинарным поиском
   k_left := 0;
