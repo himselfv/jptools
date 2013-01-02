@@ -24,19 +24,54 @@ end;
 procedure PrintUsage;
 begin
   writeln('Usage: ');
-  writeln('  '+ExtractFileName(paramstr(0))+'<ewarodai.txt> <output file>');
+  writeln('  '+ExtractFileName(paramstr(0))+' <ewarodai.txt> <output file> [flags]');
+  writeln('Flags:');
+  writeln('  --with-tags <tag-dict> --- copies grammar tags from <tag-dict> where possible.');
 end;
 
 var
-  InputFile: UnicodeString;
-  OutputFile: UnicodeString;
+  InputFile: UnicodeString; //source Warodai file
+  OutputFile: UnicodeString; //output EDICT file
+  TagDictFile: UnicodeString; //reference dictionary file with tags (Wakan format)
 
 procedure ParseCommandLine;
+var i: integer;
+ s: string;
 begin
-  if ParamCount<>2 then
-    BadUsage('Invalid number of params');
-  InputFile := ParamStr(1);
-  OutputFile := ParamStr(2);
+  InputFile := '';
+  OutputFile := '';
+  TagDictFile := '';
+
+  i := 1;
+  while i<=ParamCount() do begin
+    s := Trim(ParamStr(i));
+    if Length(s)<=0 then begin
+      Inc(i);
+      continue;
+    end;
+
+    if s='--with-tags' then begin
+      Inc(i);
+      if i>ParamCount() then
+        BadUsage('--with-tags requires tag-dict filename');
+      TagDictFile := ParamStr(i);
+    end else
+    if InputFile='' then
+      InputFile := s
+    else
+    if OutputFile='' then
+      OutputFile := s
+    else
+      BadUsage('Unknown parameter: "'+s+'"');
+
+    Inc(i);
+  end;
+
+ //Check configuration
+  if InputFile='' then
+    BadUsage('Input file required.');
+  if OutputFile='' then
+    BadUsage('Output file required');
 end;
 
 
@@ -261,7 +296,15 @@ procedure Run;
 begin
   inp := TCharReader.Create(TFileStream.Create(InputFile, fmOpenRead), true);
   outp := TCharWriter.Create(TFileStream.Create(OutputFile, fmCreate), csUtf16LE, true);
-  LoadEdict('edict.dic');
+  if TagDictFile <> '' then
+  try
+    LoadEdict(TagDictFile);
+  except
+    on E: Exception do  begin
+      E.Message := 'While loading tag dictionary "'+TagDictFile+'": '+E.Message;
+      raise;
+    end;
+  end;
   try
     outp.WriteBom;
     FillChar(stats, SizeOf(stats), 0);
@@ -277,6 +320,9 @@ begin
     writeln('Bad articles: '+IntToStr(stats.badcnt));
     writeln('Added articles (including examples): '+IntToStr(stats.addcnt));
     writeln('Wtf: '+IntToStr(stats.wtf));
+    writeln('EDICT tags -- match: '+IntToStr(edictStats.edictTagsFound));
+    writeln('EDICT tags -- cloned: '+IntToStr(edictStats.edictTagsCloned));
+    writeln('EDICT tags -- unsure: '+IntToStr(edictStats.edictTagsUnsure));
 
   finally
     FreeEdict();

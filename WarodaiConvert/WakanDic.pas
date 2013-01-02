@@ -5,7 +5,14 @@ unit WakanDic;
 }
 
 interface
-uses TextTable, JWBDic, Warodai;
+uses TextTable, JWBDic, JWBKanaConv, Warodai;
+
+var
+  edictStats: record
+    edictTagsFound: integer;  //number of articles we have clearly found a match for
+    edictTagsCloned: integer; //number of articles we have cloned from a clear match (same source article)
+    edictTagsUnsure: integer; //number of articles we have found a possible match for, but weren't sure and dropped it
+  end;
 
 procedure LoadEdict(filename: string);
 procedure FreeEdict;
@@ -51,20 +58,25 @@ uses SysUtils, JWBEdictMarkers;
 
 var
   edict: TJaletDic;
+  roma_t: TRomajiTranslator;
   cdic: TDicCursor;
 
 procedure LoadEdict(filename: string);
 begin
+  FillChar(edictStats, sizeof(edictStats), 0);
   edict:=TJaletDic.Create;
   edict.Offline := false;
   edict.LoadOnDemand := false;
   edict.FillInfo(filename);
   edict.Load;
   cdic := TDicCursor.Create(edict);
+  roma_t := TRomajiTranslator.Create;
+  roma_t.LoadFromFile('c_romaji_base.kcs');
 end;
 
 procedure FreeEdict;
 begin
+  FreeAndNil(roma_t);
   FreeAndNil(cdic);
   FreeAndNil(edict);
 end;
@@ -82,6 +94,13 @@ function EdictFind(kana: string; kanji: string; out ret: TEdictResult): boolean;
 var rcnt: integer;
   rkana: string;
 begin
+  if edict=nil then begin
+    Result := false;
+    exit;
+  end;
+
+  kana := roma_t.KanaToRomaji(kana, 1);
+
   if kanji<>'' then begin
     cdic.SetOrder('Kanji_Ind');
     cdic.Locate(cdic.stKanji,kanji,false);
@@ -104,6 +123,7 @@ begin
       end;
       ret.idx := cdic.Int(cdic.TDictIndex);
       ret.markers := cdic.Str(cdic.TDictMarkers);
+      cdic.Next;
       continue;
     end;
 
@@ -149,16 +169,23 @@ var i, m_idx: integer;
 begin
   m_idx := -1;
   for i := 0 to hdr.words_used - 1 do
-    if not FillWordMarkers(hdr.words[i], mark[i]) then
-      mark[i].found := false
-    else
-    if m_idx<0 then
-      m_idx := i;
+    if not FillWordMarkers(hdr.words[i], mark[i]) then begin
+      mark[i].found := false;
+      mark[i].markers := '';
+      mark[i].pop := false;
+    end else begin
+      Inc(edictStats.edictTagsFound);
+      if m_idx<0 then
+        m_idx := i;
+    end;
 
  //Для тех слов, для которых маркеры не нашли, копируем те, где нашли
   if m_idx>=0 then
     for i := 0 to hdr.words_used - 1 do
-      if not mark[i].found then mark[i] := mark[m_idx];
+      if not mark[i].found then begin
+        Inc(edictStats.edictTagsCloned);
+        mark[i] := mark[m_idx];
+      end;
 end;
 
 end.
