@@ -7,10 +7,38 @@
 uses
   SysUtils,
   Classes,
+  Windows,
   UniStrUtils,
   StreamUtils,
   Warodai in 'Warodai.pas',
-  WakanDic in 'WakanDic.pas';
+  WakanDic in 'WakanDic.pas',
+  WarodaiParticles in 'WarodaiParticles.pas',
+  WarodaiHeader in 'WarodaiHeader.pas',
+  WarodaiBody in 'WarodaiBody.pas';
+
+{
+Заметки по реализации.
+1. Каны в полях "перевод" быть не должно. Из описания EDICT:
+ > As the format restricts Japanese characters to the kanji and kana fields,
+ > any cross-reference data and other informational fields are omitted.
+ Значит, её надо переводить в ромадзи (опционально киридзи).
+
+2. Первая "общая" строчка. Встречаются такие:
+ > <i>неперех.</i>
+ > (<i>англ.</i> advantage)
+ Общие флаги и общий языковой источник
+
+ > 1.
+ Просто удалить
+
+ > <i>уст.</i> 嗚呼
+ > <i>уст.</i> 穴賢, 穴畏, 恐惶
+ > : ～する
+ > (<i>редко</i> 明く)
+ > (…に, …と)
+ > (を)
+
+}
 
 type
   EBadUsage = class(Exception)
@@ -76,141 +104,54 @@ end;
 
 
 var
-  inp: TCharReader;
+  inp: TWarodaiReader;
   outp: TCharWriter;
   stats: record
-    lines: integer;
     artcnt: integer;
     badcnt: integer;
     addcnt: integer;
-    wtf: integer;
+    EmptyBlocks: integer;
   end;
 
-function ReadLine(out ln: string): boolean;
-begin
-  Result := inp.ReadLine(ln);
-  if Result then
-    Inc(stats.lines);
-end;
 
 procedure ReadHeader;
 var s: string;
 begin
-  while ReadLine(s) and (s<>'') do begin end;
+  while inp.ReadLine(s) and (s<>'') do begin end;
 end;
 
-//Проматываем текущую запись до конца
-procedure SkipArticle;
-var s: string;
-begin
-  while ReadLine(s) and (s<>'') do begin end;
-end;
 
 {
-Тело состоит из нескольких статей:
-  1) знакомство;
-  …をお見知り置き下さい позвольте вам представить <i>кого-л.</i>, позвольте вас познакомить <i>с кем-л.</i>;
-  2) знакомый.
-Каждая статья имеет вид:
-  1) описание перевода
-  実例 пример с переводом
-  実例 пример с переводом
-  • комментарий
-  • комментарий
-
-В примерах встречается:
-  ～にする мариновать в мисо;
-  : ～の хорошо знакомый;
-  …をお見知り置き下さい позвольте вам представить <i>кого-л.</i>, позвольте вас познакомить <i>с кем-л.</i>;
-
-Дополнительные строки (любым номером):
-  <i>см.</i> <a href="#1-604-2-61">みしり</a>.
-  <i>ср.</i> <a href="#1-737-1-59">おおみそか</a>.
-
-Флаги могут идти в любом порядке внутри блока <i></i> либо через пробелы, либо в отд. блоках:
-  <i>юр.</i>
-  <i>уст. вежл.</i>
-  <i>ономат.</i> <i>устар.</i>
-Флаги могут смешиваться в одном блоке с не флагами:
-  <i>кн. см.</i> (номер статьи)
-Список известных флагов есть в файле warodai_abrv.dsl, который включён в DSL-сборку словаря.
-
-Пример статьи:
-  みっしゅう【密集】(миссю:)〔1-605-2-33〕
-  1) скопление;
-  ～する сгрудиться; толпиться; кишеть <i>(о насекомых)</i>;
-  人家が密集している дома стоят тесно (теснятся);
-  2): ～する <i>воен.</i> сосредоточиваться; смыкать ряды;
-  密集して進む двигаться [вперёд] сомкнутым строем.
-
-Должна превратиться в:
-  みっしゅう【密集】 = скопление;
-  みっしゅうする【密集する】 = сгрудиться; толпиться; кишеть <i>(о насекомых)</i>;
-  ??? 【人家が密集している】 = дома стоят тесно (теснятся);
-  みっしゅうする 【密集する】 = <i>воен.</i> сосредоточиваться; смыкать ряды;
-  ??? 【密集して進む】 = двигаться [вперёд] сомкнутым строем.
-
-Если в примере только кана, считаем его статьёй, иначе примером и пропускаем.
+TODO:
+  Print blocks together:
+  /(num,pref) (1) one/(suf) (2) best in/the most (...) in (where an adjective follows)/
+  Print groups as a separate entries.
 }
 
-type
-  TEntryBody = record
-    tls: array[0..49] of string;
-    tl_count: integer;
-    tl_base: string;
-    examples: array[0..49] of string;
-    example_count: integer;
-  end;
-  PEntryBody = ^TEntryBody;
-
-procedure ReadBody(out body: TEntryBody);
-const
-  B_TL = 0;
-  B_EXAMPLES = 1;
-var
-  ln: string;
-  state: integer;
-  num: string;
+procedure PrintEdictGroup(const s_pre: string; const common: string; const group: PEntryGroup; const s_post: string);
+var i: integer;
+  s: string;
+  b_no: integer;
 begin
-  body.tl_count := -1;
-  body.tl_base := '';
-  body.example_count := 0;
-  body.examples[0] := '';
-  state := B_TL;
-
-  if (not ReadLine(ln)) or (ln='')  then
-    raise EParsingException.Create('No next line.');
-
-  repeat
-    if Length(ln)<2 then begin
-      Inc(stats.wtf);
-      continue;
+  s := s_pre;
+  if common<>'' then
+    s := s + common + ' ';
+  if group.common<>'' then
+    s := s + group.common + ' ';
+  b_no := 1;
+  for i := 0 to group.block_cnt - 1 do
+    if group.blocks[i].line_cnt>0 then begin
+      if group.block_cnt>1 then
+        s := s + '('+IntToStr(b_no)+') ';
+      s := s + RemoveFormatting(group.blocks[i].lines[0])+'/'; //for now we only print line[0]
+      Inc(b_no);
     end;
-
-    if PopTranslationNumber(ln, num) then begin
-      Inc(body.tl_count);
-      if body.tl_count>=Length(body.tls) then
-        raise EParsingException.Create('Not enough cells to put another translation.');
-      body.tls[body.tl_count] := '';
-      state := B_TL;
-    end;
-
-    if state=B_TL then begin
-      if body.tl_count<0 then
-        body.tl_base := ln
-      else
-        body.tls[body.tl_count] := ln;
-      state := B_EXAMPLES;
-    end else
-    if state=B_EXAMPLES then begin
-      //skip for now!
-    end;
-
-  until (not ReadLine(ln)) or (ln='');
-  Inc(body.tl_count);
+  s := s + s_post;
+  outp.WriteLine(s);
+  Inc(stats.addcnt);
 end;
 
-procedure PrintEdictBody(const w_head: string; const body: TEntryBody; const mark: TEntryWordMarkers);
+procedure PrintEdictBody(const w_head: string; const body: PEntryBody; const mark: TEntryWordMarkers);
 var i: integer;
   s_pre, s_post: string;
 begin
@@ -219,30 +160,36 @@ begin
   else
     s_pre := w_head;
   if mark.pop then
-    s_post := s_post + '/(P)/'
+    s_post := s_post + '(P)/'
   else
-    s_post := '/';
-  if body.tl_count<=0 then begin
-    outp.WriteLine(s_pre + RemoveFormatting(body.tl_base) + s_post);
-    Inc(stats.addcnt);
-  end else
-  for i := 0 to body.tl_count-1 do begin
-    outp.WriteLine(s_pre + RemoveFormatting(body.tls[i]) + s_post);
-    Inc(stats.addcnt);
-  end;
+    s_post := '';
+  for i := 0 to body.group_cnt - 1 do
+    PrintEdictGroup(s_pre, body.common, @body.groups[i], s_post);
 end;
+
+procedure TrimLine(var ln: string);
+begin
+  TrimEndPunctuation(ln);
+  TrimStartColon(ln);
+  ln := Trim(ln);
+end;
+
+var
+  com: TCharWriter; //common meaning cases
+ //Для ускорения храним по одной копии,
+ //чтобы не создавать-удалять каждый раз.
+  hdr: TEntryHeader;
+  body: TEntryBody;
 
 function ReadArticle: boolean;
 var ln: string;
-  hdr: TEntryHeader;
-  body: TEntryBody;
   i, j: integer;
   w_head: string;
  {$IFDEF ENMARKERS}
   mark: TEntryMarkers;
  {$ENDIF}
 begin
-  while ReadLine(ln) and (ln='') do begin end;
+  while inp.ReadLine(ln) and (ln='') do begin end;
   if ln='' then begin //couldn't read another line then
     Result := false;
     exit;
@@ -250,13 +197,14 @@ begin
 
   Inc(stats.artcnt);
   try
-    DecodeEntryHeader(ln, hdr);
-    ReadBody(body);
+    DecodeEntryHeader(ln, @hdr);
+    ReadBody(inp, @body);
   except
     on E: EParsingException do begin
-      writeln('Line '+IntToStr(stats.lines) + ' article '+IntToStr(stats.artcnt)+': '
+      writeln('Line '+IntToStr(WarodaiStats.LinesRead)
+        + ' article '+IntToStr(stats.artcnt)+': '
         +E.Message);
-      SkipArticle;
+      inp.SkipArticle;
       Inc(stats.badcnt);
       Result := true;
       exit;
@@ -269,9 +217,16 @@ begin
     for j := 0 to hdr.words[i].s_kanji_used-1 do
       DropVariantIndicator(hdr.words[i].s_kanji[j]);
   end;
-  TrimEndPunctuation(body.tl_base);
-  for i := 0 to body.tl_count - 1 do
-    TrimEndPunctuation(body.tls[i]);
+  TrimLine(body.common);
+  for i := 0 to body.group_cnt - 1 do begin
+    TrimLine(body.groups[i].common);
+    for j := 0 to body.groups[i].block_cnt - 1 do begin
+      if body.groups[i].blocks[j].line_cnt<=0 then
+        Inc(stats.EmptyBlocks) //bad!
+      else
+        TrimLine(body.groups[i].blocks[j].lines[0]); //for now only lines[0]
+    end;
+  end;
 
  {$IFDEF ENMARKERS}
  //Query markers from english edict
@@ -282,20 +237,23 @@ begin
   for i := 0 to hdr.words_used - 1 do
     if hdr.words[i].s_kanji_used<=0 then begin
       w_head := hdr.words[i].s_reading + ' /';
-      PrintEdictBody(w_head, body, mark[i]);
+      PrintEdictBody(w_head, @body, mark[i]);
     end else
     for j := 0 to hdr.words[i].s_kanji_used-1 do begin
       w_head := hdr.words[i].s_kanji[j] + ' ['+hdr.words[i].s_reading+'] /';
-      PrintEdictBody(w_head, body, mark[i]);
+      PrintEdictBody(w_head, @body, mark[i]);
     end;
 
   Result := true;
 end;
 
+
 procedure Run;
+var tm: cardinal;
 begin
-  inp := TCharReader.Create(TFileStream.Create(InputFile, fmOpenRead), true);
+  inp := TWarodaiReader.Create(TFileStream.Create(InputFile, fmOpenRead), true);
   outp := TCharWriter.Create(TFileStream.Create(OutputFile, fmCreate), csUtf16LE, true);
+  com := TCharWriter.Create(TFileStream.Create('commng.txt', fmCreate), csUtf16LE, true);
   if TagDictFile <> '' then
   try
     LoadEdict(TagDictFile);
@@ -305,8 +263,10 @@ begin
       raise;
     end;
   end;
+  tm := GetTickCount;
   try
     outp.WriteBom;
+    com.WriteBom;
     FillChar(stats, SizeOf(stats), 0);
 
     ReadHeader();
@@ -315,17 +275,34 @@ begin
         writeln(IntToStr(stats.artcnt));
 
     end;
-    writeln('Lines: '+IntToStr(stats.lines));
+    writeln('');
+    writeln('Done.');
+    writeln('Parsing took '+IntToStr(GetTickCount()-tm)+' msec.');
+    writeln('');
+    writeln('Lines: '+IntToStr(WarodaiStats.LinesRead));
     writeln('Articles: '+IntToStr(stats.artcnt));
     writeln('Bad articles: '+IntToStr(stats.badcnt));
     writeln('Added articles (including examples): '+IntToStr(stats.addcnt));
-    writeln('Wtf: '+IntToStr(stats.wtf));
+    writeln('Comments: '+IntToStr(WarodaiStats.Comments));
+    writeln('Data lines: '+IntToStr(WarodaiStats.DataLines));
+
+    writeln('Group common: '+IntToStr(WarodaiStats.GroupCommon));
+    writeln('Block common: '+IntToStr(WarodaiStats.BlockCommon));
+
     writeln('EDICT tags -- match: '+IntToStr(edictStats.edictTagsFound));
     writeln('EDICT tags -- cloned: '+IntToStr(edictStats.edictTagsCloned));
     writeln('EDICT tags -- unsure: '+IntToStr(edictStats.edictTagsUnsure));
 
+    writeln('WTF -- Lines too short: '+IntToStr(WarodaiStats.LinesTooShort));
+
+    writeln('BAD -- Explicit common group blocks: '+IntToStr(WarodaiStats.ExplicitCommonGroupBlocks));
+    writeln('BAD -- Multiline group common: '+IntToStr(WarodaiStats.MultilineGroupCommon));
+    writeln('BAD -- Multiline block common: '+IntToStr(WarodaiStats.MultilineBlockCommon));
+    writeln('BAD -- Empty blocks: '+IntToStr(stats.EmptyBlocks));
+
   finally
     FreeEdict();
+    FreeAndNil(com);
     FreeAndNil(outp);
     FreeAndNil(inp);
   end;

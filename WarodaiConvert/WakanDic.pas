@@ -5,7 +5,7 @@ unit WakanDic;
 }
 
 interface
-uses TextTable, JWBDic, JWBKanaConv, Warodai;
+uses TextTable, JWBDic, JWBKanaConv, Warodai, WarodaiHeader, WarodaiBody;
 
 var
   edictStats: record
@@ -103,10 +103,10 @@ begin
 
   if kanji<>'' then begin
     cdic.SetOrder('Kanji_Ind');
-    cdic.Locate(cdic.stKanji,kanji,false);
+    cdic.Locate(cdic.stKanji,kanji);
   end else begin
     cdic.SetOrder('Phonetic_Ind');
-    cdic.Locate(cdic.stSort,kana,false);
+    cdic.Locate(cdic.stSort,kana);
   end;
 
   rcnt := 0;
