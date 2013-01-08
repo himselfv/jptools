@@ -88,7 +88,7 @@ const
 
 type
   TEntryBlock = record
-    num: string;
+    num: integer;
     lines: array[0..MaxLines-1] of string;
     line_cnt: integer;
     procedure Reset;
@@ -97,7 +97,7 @@ type
   PEntryBlock = ^TEntryBlock;
 
   TEntryGroup = record
-    num: string;
+    num: integer;
     common: string; //если блок "влитой" (без номера), эта строка всегда пустая
     blocks: array[0..MaxBlocks-1] of TEntryBlock;
     block_cnt: integer;
@@ -130,8 +130,9 @@ procedure ReadBody(inp: TWarodaiReader; body: PEntryBody);
 Так может продолжаться до двухзначных чисел включительно.
 Эта функция удаляет из строки такой элемент и возвращает его отдельно, или возвращает false.
 }
-function PopBlockNumber(var ln: string; out num: string): boolean;
-function PopGroupNumber(var ln: string; out num: string): boolean;
+function PopGroupNumber(var ln: string; out num: integer): boolean;
+function PopBlockNumber(var ln: string; out num: integer): boolean;
+function PopAlternativeId(var ln: string; out id: string): boolean;
 
 
 {
@@ -145,12 +146,14 @@ procedure TrimEndPunctuation(var s: string);
 }
 procedure TrimStartColon(var s: string);
 
+
+
 implementation
-uses StrUtils, UniStrUtils, StreamUtils;
+uses SysUtils, StrUtils, UniStrUtils, StreamUtils, WarodaiTemplates;
 
 procedure TEntryBlock.Reset;
 begin
-  num := '';
+  num := 0;
   line_cnt := 0;
 end;
 
@@ -166,7 +169,7 @@ end;
 procedure TEntryGroup.Reset;
 begin
   common := '';
-  num := '';
+  num := 0;
   block_cnt := 0;
 end;
 
@@ -194,39 +197,10 @@ begin
   Result^.Reset;
 end;
 
-{ Pops 1), 2)... etc }
-function PopBlockNumber(var ln: string; out num: string): boolean;
-var i: integer; //по какой символ включительно удалять
-begin
-  i := 0;
-  if CharIsNumber(ln[1]) then
-    if ln[2]=')' then begin
-      i := 2;
-    end else
-    if CharIsNumber(ln[2]) then
-      if ln[3]=')' then begin
-        i := 3;
-      end;
-  if i<=0 then begin
-    Result := false;
-    exit;
-  end;
-
-  num := copy(ln, 1, i-1);
-
- //Убираем пробелы, которые следуют за скобкой
-  Inc(i);
-  while (i<=Length(ln)) and (ln[i]=' ') do
-    Inc(i);
-  Dec(i);
-
-  delete(ln, 1, i);
-  Result := true;
-end;
-
 { Pops 1., 2., ... etc }
-function PopGroupNumber(var ln: string; out num: string): boolean;
+function PopGroupNumber(var ln: string; out num: integer): boolean;
 var i: integer; //по какой символ включительно удалять
+  snum: string;
 begin
   i := 0;
   if CharIsNumber(ln[1]) then
@@ -242,7 +216,64 @@ begin
     exit;
   end;
 
-  num := copy(ln, 1, i-1);
+  snum := copy(ln, 1, i-1);
+  if not TryStrToInt(snum, num) then
+    raise EParsingException.Create('Invalid block number');
+
+ //Убираем пробелы, которые следуют за скобкой
+  Inc(i);
+  while (i<=Length(ln)) and (ln[i]=' ') do
+    Inc(i);
+  Dec(i);
+
+  delete(ln, 1, i);
+  Result := true;
+end;
+
+{ Pops 1), 2)... etc }
+function PopBlockNumber(var ln: string; out num: integer): boolean;
+var i: integer; //по какой символ включительно удалять
+  snum: string;
+begin
+  i := 0;
+  if CharIsNumber(ln[1]) then
+    if ln[2]=')' then begin
+      i := 2;
+    end else
+    if CharIsNumber(ln[2]) then
+      if ln[3]=')' then begin
+        i := 3;
+      end;
+  if i<=0 then begin
+    Result := false;
+    exit;
+  end;
+
+  snum := copy(ln, 1, i-1);
+  if not TryStrToInt(snum, num) then
+    raise EParsingException.Create('Invalid block number');
+
+ //Убираем пробелы, которые следуют за скобкой
+  Inc(i);
+  while (i<=Length(ln)) and (ln[i]=' ') do
+    Inc(i);
+  Dec(i);
+
+  delete(ln, 1, i);
+  Result := true;
+end;
+
+{ Pops а), б)... etc }
+function PopAlternativeId(var ln: string; out id: string): boolean;
+var i: integer; //по какой символ включительно удалять
+begin
+  if ((ln[1]<'а') or (ln[1]>'я')) or (ln[2]<>')') then begin
+    Result := false;
+    exit;
+  end;
+  i := 2;
+
+  id := copy(ln, 1, i-1);
 
  //Убираем пробелы, которые следуют за скобкой
   Inc(i);
@@ -282,11 +313,129 @@ begin
 end;
 
 
+function IsOnlyKanaKanji(const s: string; i_beg: integer): boolean;
+var i: integer;
+begin
+  Result := true;
+  for i := i_beg to Length(s) do
+    if (s[i]<>' ') and (s[i]<>',') and not IsKana(s[i]) and not IsKanji(s[i]) then begin
+      Result := false;
+      exit;
+    end;
+end;
+
+
+{ Фикс: если номер сразу 2, и до сих пор была только автоматическая группа,
+считаем её номером 1 (номер пропущен)
+Все остальные случаи пропуска рапортуем как ошибку (мы их пока не умеем чинить) }
+procedure AutoFixGroupNumber(body: PEntryBody; group: PEntryGroup; const num: integer);
+var i: integer;
+  s: PString;
+begin
+  if num=group.num+1 then exit; //all clear
+  if (num>group.num+2)
+  or ((num>group.num+1) and (num<>2)) then begin
+    Inc(WarodaiStats.GroupNumberMissing);
+    raise EParsingException.Create('Group number skip');
+  end;
+
+ //Остался случай 2-0
+  if (group.block_cnt<=0)
+  or (group.blocks[0].line_cnt<=0) then begin
+    Inc(WarodaiStats.GroupNumberMissing);
+    raise EParsingException.Create('Group number skip 2-0 and no previous lines, wtf.');
+  end;
+
+ //Ищем только в первом блоке, только в первой строчке
+  s := @group.blocks[0].lines[0];
+  i := pos(' 1.', s^);
+  if i>0 then begin
+    body.common := copy(s^, 1, i);
+    Inc(i, Length(' 1.'));
+    delete(s^, 1, i);
+    s^ := Trim(s^);
+   //Если строка осталась пустой - исключение (наверху к этому не готовы, если такие будут - придётся писать выкидывание их из списка)
+    if s^='' then
+      raise EParsingException.Create('Empty line after doing AutoFixGroupNumber');
+    Inc(WarodaiStats.GroupNumberFixed);
+  end else
+   //Ничем не можем сделать - считаем, что он просто пропал
+    Inc(WarodaiStats.GroupNumberGuessed);
+  group.num := 1;
+end;
+
+{ То же самое с блоками }
+procedure AutoFixBlockNumber(body: PEntryBody; group: PEntryGroup; block: PEntryBlock; const num: integer);
+var i: integer;
+  s: PString;
+begin
+  if num=block.num+1 then exit; //all clear
+  if (num>block.num+2)
+  or ((num>block.num+1) and (num<>2)) then begin
+    Inc(WarodaiStats.BlockNumberMissing);
+    raise EParsingException.Create('Block number skip');
+  end;
+
+ //Остался случай 2-0
+  if (block.line_cnt<=0) then begin
+    Inc(WarodaiStats.BlockNumberMissing);
+    raise EParsingException.Create('Block number skip 2-0 and no previous lines, wtf.');
+  end;
+
+ //Ищем только в первом блоке, только в первой строчке
+  s := @block.lines[0];
+  i := pos(' 1)', s^);
+  if i>0 then begin
+    group.common := copy(s^, 1, i);
+    Inc(i, Length(' 1)'));
+    delete(s^, 1, i);
+    s^ := Trim(s^);
+   //Если строка осталась пустой - исключение (наверху к этому не готовы, если такие будут - придётся писать выкидывание их из списка)
+    if s^='' then
+      raise EParsingException.Create('Empty line after doing AutoFixBlockNumber');
+    Inc(WarodaiStats.BlockNumberFixed);
+  end else
+   //Ничем не можем сделать - считаем, что он просто пропал
+    Inc(WarodaiStats.BlockNumberGuessed);
+  block.num := 1;
+end;
+
+
+
+
+
+//Патчи, которые можно применять сразу при чтении
+procedure ApplyCompatPatches(var ln: string);
+var i: integer;
+begin
+
+ { Пропускаем блоки вида
+     <i>уст.</i> 穴賢, 穴畏, 恐惶
+   Они часто портят собой число доступных переводов, и вообще они не нужны. }
+  i := pos('<i>уст.</i>', ln);
+  if (i=1) and IsOnlyKanaKanji(ln, i + Length('<i>уст.</i>') + 1) then begin
+    ln := '';
+    exit;
+  end;
+
+ { Открытые шаблоны значат, что дальнейшие записи переводов относятся
+  уже не к главное статье.
+  Простого способа программно понять, где начинается, а где кончается зона
+  действия такого шаблона - нет. Поэтому мы такие статьи пропускаем.}
+  if IsOpenTemplate(ln) then begin
+    Inc(WarodaiStats.OpenTemplates);
+    raise EOpenTemplate.Create('Opener variation');
+  end;
+
+end;
+
+
 procedure ReadBody(inp: TWarodaiReader; body: PEntryBody);
 var ln: string;
-  num: string;
+  num: integer;
   group: PEntryGroup;
   block: PEntryBlock;
+  id: string;
 begin
   body.Reset;
   group := body.AddGroup;
@@ -299,17 +448,20 @@ begin
     end;
 
     if PopGroupNumber(ln, num) then begin
+     //Исправляем пропущенные номера групп
+      AutoFixGroupNumber(body, group, num);
+
      //Если до сих пор была только автоматическая группа, разбираем то, что в ней было
-      if (body.group_cnt=1) and (group.num='') then begin
+      if (body.group_cnt=1) and (group.num=0) then begin
        //Автоматическая группа в такой ситуации не имеет права содержать ничего,
        //кроме common single line
-        if (group.block_cnt>1) or (block.num<>'') then begin
+        if (group.block_cnt>1) or (block.num<>0) then begin
           Inc(WarodaiStats.ExplicitCommonGroupBlocks);
           raise EParsingException.Create('Explicit common group blocks!');
         end else
         if (block.line_cnt>1) then begin
           Inc(WarodaiStats.MultilineGroupCommon);
-          raise EParsingException.Create('Multiline group common');
+          raise EMultilineCommon.Create('Multiline group common');
         end;
 
         if block.line_cnt>0 then
@@ -317,8 +469,10 @@ begin
         block.Reset;
         group.Reset;
         Inc(WarodaiStats.GroupCommon);
-      end else
+      end else begin
         group := body.AddGroup;
+        block := group.AddBlock;
+      end;
       group.num := num;
     end;
 
@@ -330,13 +484,15 @@ begin
     end;
 
     if PopBlockNumber(ln, num) then begin
+     //Исправляем пропущенные номера блоков
+      AutoFixBlockNumber(body, group, block, num);
+
      //Если у нас до сих пор был только автоматический блок, пробуем перенести его в common
-      if (group.block_cnt=1) and (block.num='') then begin
-       //Автоматический блок не имеет права содержать ничего, кроме common single line
+      if (group.block_cnt=1) and (block.num=0) then begin
         if block.line_cnt>1 then begin
-          Inc(WarodaiStats.MultilineBlockCommon);
          //Лучше пропустить эту статью, чем занести какую-нибудь хренотень типа "common 1) first meaning"
-          raise EParsingException.Create('Multiline block common');
+          Inc(WarodaiStats.MultilineBlockCommon);
+          raise EMultilineCommon.Create('Multiline block common');
         end;
 
         if block.line_cnt>0 then
@@ -351,6 +507,11 @@ begin
     if Length(ln)<=0 then
       continue;
 
+    if PopAlternativeId(ln, id) then begin
+      Inc(WarodaiStats.AlternativeIds);
+      raise EAlternativeIds.Create('Alternative ids unsupported');
+    end;
+
     if ln[1]='•' then begin
       Inc(WarodaiStats.Comments);
       continue; //skip comments!
@@ -362,6 +523,17 @@ begin
     if pos('•', ln)>0 then
       raise EParsingException.Create('Comment symbol inside the line!');
    {$ENDIF}
+
+    TrimStartColon(ln);
+    TrimEndPunctuation(ln);
+    ln := Trim(ln);
+    if Length(ln)<=0 then
+      continue;
+
+    ApplyCompatPatches(ln);
+    if Length(ln)<=0 then
+      continue;
+
 
     Inc(WarodaiStats.DataLines);
     block.AddLine^ := ln;

@@ -1,4 +1,4 @@
-﻿unit WarodaiParticles;
+﻿unit WarodaiMarkers;
 {
 Функции разбора строки.
 Решают, какие в строке встречаются "флаги" (какие маркеры добавлять),
@@ -231,13 +231,6 @@ const
     (abbr: 'юр.';       desc: 'юридический термин'; fl: [tfField]; edict: '')
   );
 
-{
-type
-  TFlag = integer; //ссылка на таблицу
-  TFlags = array of integer;
-
-function ExtractFlags(var s: string): TFlags;
-}
 
 
 {
@@ -245,6 +238,9 @@ RemoveFormatting()
 Удаляет всё html-форматирование из строки, превращая её в голый текст.
 }
 function RemoveFormatting(const s: string): string;
+
+
+
 
 implementation
 uses StrUtils, UniStrUtils;

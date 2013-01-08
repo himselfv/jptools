@@ -8,26 +8,26 @@ interface
 uses TextTable, JWBDic, JWBKanaConv, Warodai, WarodaiHeader, WarodaiBody;
 
 var
-  edictStats: record
+  refStats: record
     edictTagsFound: integer;  //number of articles we have clearly found a match for
     edictTagsCloned: integer; //number of articles we have cloned from a clear match (same source article)
     edictTagsUnsure: integer; //number of articles we have found a possible match for, but weren't sure and dropped it
   end;
 
-procedure LoadEdict(filename: string);
-procedure FreeEdict;
+procedure LoadReferenceDic(filename: string);
+procedure FreeReferenceDic;
 
 {
 Ќаходит достоверный результат по кане+кандзи или просто кане, или возвращает false.
 }
 
 type
-  TEdictResult = record
+  TSearchResult = record
     idx: integer;
     markers: string;
   end;
 
-function EdictFind(kana: string; kanji: string; out ret: TEdictResult): boolean;
+function RefFind(kana: string; kanji: string; out ret: TSearchResult): boolean;
 
 {
 «аполн€ет набор маркеров дл€ каждого из слов в TEntryHeader.
@@ -61,9 +61,8 @@ var
   roma_t: TRomajiTranslator;
   cdic: TDicCursor;
 
-procedure LoadEdict(filename: string);
+procedure LoadReferenceDic(filename: string);
 begin
-  FillChar(edictStats, sizeof(edictStats), 0);
   edict:=TJaletDic.Create;
   edict.Offline := false;
   edict.LoadOnDemand := false;
@@ -74,7 +73,7 @@ begin
   roma_t.LoadFromFile('c_romaji_base.kcs');
 end;
 
-procedure FreeEdict;
+procedure FreeReferenceDic;
 begin
   FreeAndNil(roma_t);
   FreeAndNil(cdic);
@@ -90,7 +89,7 @@ kana должна быть в ромадзи.
 2. »наче kanji должно совпадать в точности. »з таких вариантов выбираетс€
  тот, где в точности совпадает и кана, а если такого нет - первый.
 }
-function EdictFind(kana: string; kanji: string; out ret: TEdictResult): boolean;
+function RefFind(kana: string; kanji: string; out ret: TSearchResult): boolean;
 var rcnt: integer;
   rkana: string;
 begin
@@ -144,10 +143,10 @@ end;
 
 function FillWordMarkers(const word: TEntryWord; out mark: TEntryWordMarkers): boolean;
 var i: integer;
-  res: TEdictResult;
+  res: TSearchResult;
 begin
   if word.s_kanji_used<=0 then begin
-    Result := EdictFind(word.s_reading, '', res);
+    Result := RefFind(word.s_reading, '', res);
     if Result then begin
       mark.found := true;
       mark.markers := MarkersToStr(res.markers, mark.pop);
@@ -155,7 +154,7 @@ begin
     end;
   end else
   for i := 0 to word.s_kanji_used - 1 do
-    if EdictFind(word.s_reading, word.s_kanji[i], res) then begin
+    if RefFind(word.s_reading, word.s_kanji[i], res) then begin
       mark.found := true;
       mark.markers := MarkersToStr(res.markers, mark.pop);
       Result := true;
@@ -174,7 +173,7 @@ begin
       mark[i].markers := '';
       mark[i].pop := false;
     end else begin
-      Inc(edictStats.edictTagsFound);
+      Inc(refStats.edictTagsFound);
       if m_idx<0 then
         m_idx := i;
     end;
@@ -183,9 +182,12 @@ begin
   if m_idx>=0 then
     for i := 0 to hdr.words_used - 1 do
       if not mark[i].found then begin
-        Inc(edictStats.edictTagsCloned);
+        Inc(refStats.edictTagsCloned);
         mark[i] := mark[m_idx];
       end;
 end;
+
+initialization
+  FillChar(refStats, sizeof(refStats), 0);
 
 end.

@@ -12,9 +12,11 @@ uses
   StreamUtils,
   Warodai in 'Warodai.pas',
   WakanDic in 'WakanDic.pas',
-  WarodaiParticles in 'WarodaiParticles.pas',
+  WarodaiMarkers in 'WarodaiMarkers.pas',
   WarodaiHeader in 'WarodaiHeader.pas',
-  WarodaiBody in 'WarodaiBody.pas';
+  WarodaiBody in 'WarodaiBody.pas',
+  WarodaiTemplates in 'WarodaiTemplates.pas',
+  EdictWriter in 'EdictWriter.pas';
 
 {
 Заметки по реализации.
@@ -105,12 +107,18 @@ end;
 
 var
   inp: TWarodaiReader;
-  outp: TCharWriter;
   stats: record
     artcnt: integer;
     badcnt: integer;
-    addcnt: integer;
     EmptyBlocks: integer;
+    TlLines: integer;
+    VarLines: integer;
+    KanaLines: integer;
+    KanjiLines: integer;
+
+    ColonAfterTl: integer; //translation lines which end with colon ':'. Suspicious.
+    SeveralTlLines: integer; //block has several basic translation lines. Not a normal case.
+    MixedTlLines: integer; //block has several lines + they are intermixed with other types of lines
   end;
 
 
@@ -121,58 +129,54 @@ begin
 end;
 
 
-{
-TODO:
-  Print blocks together:
-  /(num,pref) (1) one/(suf) (2) best in/the most (...) in (where an adjective follows)/
-  Print groups as a separate entries.
-}
 
-procedure PrintEdictGroup(const s_pre: string; const common: string; const group: PEntryGroup; const s_post: string);
-var i: integer;
-  s: string;
-  b_no: integer;
+
+
+procedure SetLineTypes(block: PEntryBlock);
+var i,ev: integer;
+  tl_lines: integer;
+  last_tl: boolean;
+  mixed_tl: boolean;
 begin
-  s := s_pre;
-  if common<>'' then
-    s := s + common + ' ';
-  if group.common<>'' then
-    s := s + group.common + ' ';
-  b_no := 1;
-  for i := 0 to group.block_cnt - 1 do
-    if group.blocks[i].line_cnt>0 then begin
-      if group.block_cnt>1 then
-        s := s + '('+IntToStr(b_no)+') ';
-      s := s + RemoveFormatting(group.blocks[i].lines[0])+'/'; //for now we only print line[0]
-      Inc(b_no);
+  last_tl := true;
+  mixed_tl := false;
+  tl_lines := 0;
+  for i := 0 to block.line_cnt - 1 do begin
+    block.lines[i] := RemoveFormatting(block.lines[i]);
+
+    ev := EvalChars(block.lines[i]);
+    if ev=EV_KANA then begin
+      Inc(stats.KanaLines);
+      last_tl := false;
+    end else
+    if ev=EV_KANJI then begin
+      Inc(stats.KanjiLines);
+      last_tl := false;
+    end else begin
+      Inc(stats.TlLines);
+      Inc(tl_lines);
+      if not last_tl then
+        mixed_tl := true;
+      last_tl := false;
     end;
-  s := s + s_post;
-  outp.WriteLine(s);
-  Inc(stats.addcnt);
+
+    if pos('～', block.lines[i])>0 then begin
+      Inc(stats.VarLines);
+      last_tl := false;
+    end;
+
+    if block.lines[i][Length(block.lines[i])]=':' then begin
+      Inc(stats.ColonAfterTl);
+      raise EColonAfterTl.Create('Colon after TL');
+    end;
+  end;
+
+  if tl_lines>1 then
+    Inc(stats.SeveralTlLines);
+  if mixed_tl then
+    Inc(stats.MixedTlLines);
 end;
 
-procedure PrintEdictBody(const w_head: string; const body: PEntryBody; const mark: TEntryWordMarkers);
-var i: integer;
-  s_pre, s_post: string;
-begin
-  if mark.markers<>'' then
-    s_pre := w_head + '(' + mark.markers + ') '
-  else
-    s_pre := w_head;
-  if mark.pop then
-    s_post := s_post + '(P)/'
-  else
-    s_post := '';
-  for i := 0 to body.group_cnt - 1 do
-    PrintEdictGroup(s_pre, body.common, @body.groups[i], s_post);
-end;
-
-procedure TrimLine(var ln: string);
-begin
-  TrimEndPunctuation(ln);
-  TrimStartColon(ln);
-  ln := Trim(ln);
-end;
 
 var
   com: TCharWriter; //common meaning cases
@@ -184,7 +188,6 @@ var
 function ReadArticle: boolean;
 var ln: string;
   i, j: integer;
-  w_head: string;
  {$IFDEF ENMARKERS}
   mark: TEntryMarkers;
  {$ENDIF}
@@ -200,6 +203,12 @@ begin
     DecodeEntryHeader(ln, @hdr);
     ReadBody(inp, @body);
   except
+    on E: ESilentParsingException do begin
+      inp.SkipArticle;
+      Inc(stats.badcnt);
+      Result := true;
+      exit;
+    end;
     on E: EParsingException do begin
       writeln('Line '+IntToStr(WarodaiStats.LinesRead)
         + ' article '+IntToStr(stats.artcnt)+': '
@@ -211,38 +220,41 @@ begin
     end;
   end;
 
- //Clean up a bit
-  for i := 0 to hdr.words_used - 1 do begin
-    DropVariantIndicator(hdr.words[i].s_reading);
-    for j := 0 to hdr.words[i].s_kanji_used-1 do
-      DropVariantIndicator(hdr.words[i].s_kanji[j]);
-  end;
-  TrimLine(body.common);
-  for i := 0 to body.group_cnt - 1 do begin
-    TrimLine(body.groups[i].common);
-    for j := 0 to body.groups[i].block_cnt - 1 do begin
-      if body.groups[i].blocks[j].line_cnt<=0 then
-        Inc(stats.EmptyBlocks) //bad!
-      else
-        TrimLine(body.groups[i].blocks[j].lines[0]); //for now only lines[0]
+  try
+   //Clean up a bit
+    for i := 0 to hdr.words_used - 1 do begin
+      DropVariantIndicator(hdr.words[i].s_reading);
+      for j := 0 to hdr.words[i].s_kanji_used-1 do
+        DropVariantIndicator(hdr.words[i].s_kanji[j]);
+    end;
+
+    for i := 0 to body.group_cnt - 1 do
+      for j := 0 to body.groups[i].block_cnt - 1 do
+        SetLineTypes(@body.groups[i].blocks[j]);
+
+   {$IFDEF ENMARKERS}
+   //Query markers from english edict
+    FillMarkers(hdr, mark);
+   {$ENDIF}
+
+   //Add to edict
+    PrintEdict(@hdr, @body, mark);
+
+  except
+    on E: ESilentParsingException do begin
+      Inc(stats.badcnt);
+      Result := true;
+      exit;
+    end;
+    on E: EParsingException do begin
+      writeln('Line '+IntToStr(WarodaiStats.LinesRead)
+        + ' article '+IntToStr(stats.artcnt)+': '
+        +E.Message);
+      Inc(stats.badcnt);
+      Result := true;
+      exit;
     end;
   end;
-
- {$IFDEF ENMARKERS}
- //Query markers from english edict
-  FillMarkers(hdr, mark);
- {$ENDIF}
-
- //Add to edict
-  for i := 0 to hdr.words_used - 1 do
-    if hdr.words[i].s_kanji_used<=0 then begin
-      w_head := hdr.words[i].s_reading + ' /';
-      PrintEdictBody(w_head, @body, mark[i]);
-    end else
-    for j := 0 to hdr.words[i].s_kanji_used-1 do begin
-      w_head := hdr.words[i].s_kanji[j] + ' ['+hdr.words[i].s_reading+'] /';
-      PrintEdictBody(w_head, @body, mark[i]);
-    end;
 
   Result := true;
 end;
@@ -252,11 +264,11 @@ procedure Run;
 var tm: cardinal;
 begin
   inp := TWarodaiReader.Create(TFileStream.Create(InputFile, fmOpenRead), true);
-  outp := TCharWriter.Create(TFileStream.Create(OutputFile, fmCreate), csUtf16LE, true);
   com := TCharWriter.Create(TFileStream.Create('commng.txt', fmCreate), csUtf16LE, true);
+  CreateOutput(OutputFile);
   if TagDictFile <> '' then
   try
-    LoadEdict(TagDictFile);
+    LoadReferenceDic(TagDictFile);
   except
     on E: Exception do  begin
       E.Message := 'While loading tag dictionary "'+TagDictFile+'": '+E.Message;
@@ -265,7 +277,6 @@ begin
   end;
   tm := GetTickCount;
   try
-    outp.WriteBom;
     com.WriteBom;
     FillChar(stats, SizeOf(stats), 0);
 
@@ -282,16 +293,33 @@ begin
     writeln('Lines: '+IntToStr(WarodaiStats.LinesRead));
     writeln('Articles: '+IntToStr(stats.artcnt));
     writeln('Bad articles: '+IntToStr(stats.badcnt));
-    writeln('Added articles (including examples): '+IntToStr(stats.addcnt));
+    writeln('Added articles: '+IntToStr(EdictStats.AddedRecords));
+    writeln('');
     writeln('Comments: '+IntToStr(WarodaiStats.Comments));
     writeln('Data lines: '+IntToStr(WarodaiStats.DataLines));
+    writeln('TL lines: '+IntToStr(stats.TlLines));
+    writeln('Var lines: '+IntToStr(stats.VarLines));
+    writeln('Kana lines: '+IntToStr(stats.KanaLines));
+    writeln('Kanji lines: '+IntToStr(stats.KanjiLines));
+    writeln('');
+    writeln('EDICT tags -- match: '+IntToStr(refStats.edictTagsFound));
+    writeln('EDICT tags -- cloned: '+IntToStr(refStats.edictTagsCloned));
+    writeln('EDICT tags -- unsure: '+IntToStr(refStats.edictTagsUnsure));
+    writeln('');
 
-    writeln('Group common: '+IntToStr(WarodaiStats.GroupCommon));
-    writeln('Block common: '+IntToStr(WarodaiStats.BlockCommon));
+    writeln('Group-common cases: '+IntToStr(WarodaiStats.GroupCommon));
+    writeln('Block-common cases: '+IntToStr(WarodaiStats.BlockCommon));
+    writeln('Multitemplate cases: '+IntToStr(WarodaiStats.Multitemplates));
+    writeln('');
 
-    writeln('EDICT tags -- match: '+IntToStr(edictStats.edictTagsFound));
-    writeln('EDICT tags -- cloned: '+IntToStr(edictStats.edictTagsCloned));
-    writeln('EDICT tags -- unsure: '+IntToStr(edictStats.edictTagsUnsure));
+    writeln('Group number fixed: '+IntToStr(WarodaiStats.GroupNumberFixed));
+    writeln('WARN -- Group number roughly guessed: '+IntToStr(WarodaiStats.GroupNumberGuessed));
+    writeln('BAD -- Group number missing: '+IntToStr(WarodaiStats.GroupNumberMissing));
+
+    writeln('Block number fixed: '+IntToStr(WarodaiStats.BlockNumberFixed));
+    writeln('WARN -- Block number roughly guessed: '+IntToStr(WarodaiStats.BlockNumberGuessed));
+    writeln('BAD -- Block number missing: '+IntToStr(WarodaiStats.BlockNumberMissing));
+    writeln('');
 
     writeln('WTF -- Lines too short: '+IntToStr(WarodaiStats.LinesTooShort));
 
@@ -299,11 +327,19 @@ begin
     writeln('BAD -- Multiline group common: '+IntToStr(WarodaiStats.MultilineGroupCommon));
     writeln('BAD -- Multiline block common: '+IntToStr(WarodaiStats.MultilineBlockCommon));
     writeln('BAD -- Empty blocks: '+IntToStr(stats.EmptyBlocks));
+    writeln('BAD -- Colon after TL: '+IntToStr(stats.ColonAfterTl));
+    writeln('BAD -- Several TL lines: '+IntToStr(stats.SeveralTlLines));
+    writeln('BAD -- Mixed TL lines: '+IntToStr(stats.MixedTlLines));
+    writeln('BAD -- Opener templates: '+IntToStr(WarodaiStats.OpenTemplates));
+    writeln('BAD -- Inside templates: '+IntToStr(WarodaiStats.InsideTemplates));
+    writeln('BAD -- AlternativeIds: '+IntToStr(WarodaiStats.AlternativeIds));
+    writeln('BAD -- SeveralProperTranslations: '+IntToStr(WarodaiStats.SeveralProperTranslations));
+    writeln('BAD -- KanjiKanaLeft: '+IntToStr(WarodaiStats.KanjiKanaLeft));
 
   finally
-    FreeEdict();
+    FreeReferenceDic();
     FreeAndNil(com);
-    FreeAndNil(outp);
+    CloseOutput();
     FreeAndNil(inp);
   end;
 end;
