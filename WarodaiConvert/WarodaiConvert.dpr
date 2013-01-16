@@ -16,7 +16,8 @@ uses
   WarodaiHeader in 'WarodaiHeader.pas',
   WarodaiBody in 'WarodaiBody.pas',
   WarodaiTemplates in 'WarodaiTemplates.pas',
-  EdictWriter in 'EdictWriter.pas';
+  EdictWriter in 'EdictWriter.pas',
+  WcUtils in 'WcUtils.pas';
 
 {
 Заметки по реализации.
@@ -107,6 +108,7 @@ end;
 
 var
   inp: TWarodaiReader;
+  outp: TArticleWriter;
   stats: record
     artcnt: integer;
     badcnt: integer;
@@ -238,7 +240,7 @@ begin
    {$ENDIF}
 
    //Add to edict
-    PrintEdict(@hdr, @body, mark);
+    outp.Print(@hdr, @body, mark);
 
   except
     on E: ESilentParsingException do begin
@@ -265,7 +267,7 @@ var tm: cardinal;
 begin
   inp := TWarodaiReader.Create(TFileStream.Create(InputFile, fmOpenRead), true);
   com := TCharWriter.Create(TFileStream.Create('commng.txt', fmCreate), csUtf16LE, true);
-  CreateOutput(OutputFile);
+  outp := TEdict2Writer.Create(OutputFile);
   if TagDictFile <> '' then
   try
     LoadReferenceDic(TagDictFile);
@@ -293,7 +295,7 @@ begin
     writeln('Lines: '+IntToStr(WarodaiStats.LinesRead));
     writeln('Articles: '+IntToStr(stats.artcnt));
     writeln('Bad articles: '+IntToStr(stats.badcnt));
-    writeln('Added articles: '+IntToStr(EdictStats.AddedRecords));
+    writeln('Added articles: '+IntToStr(outp.AddedRecords));
     writeln('');
     writeln('Comments: '+IntToStr(WarodaiStats.Comments));
     writeln('Data lines: '+IntToStr(WarodaiStats.DataLines));
@@ -339,7 +341,7 @@ begin
   finally
     FreeReferenceDic();
     FreeAndNil(com);
-    CloseOutput();
+    FreeAndNil(outp);
     FreeAndNil(inp);
   end;
 end;

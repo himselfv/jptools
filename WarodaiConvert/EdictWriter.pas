@@ -4,17 +4,19 @@
 }
 
 interface
-uses Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, WakanDic;
+uses StreamUtils, Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, WakanDic;
 
-var
-  EdictStats: record
-    AddedRecords: integer;
+type
+  TArticleWriter = class
+  protected
+    outp: TCharWriter;
+    FAddedRecords: integer;
+  public
+    constructor Create(const filename: string);
+    destructor Destroy; override;
+    procedure Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers); virtual; abstract;
+    property AddedRecords: integer read FAddedRecords;
   end;
-
-procedure CreateOutput(const filename: string);
-procedure CloseOutput;
-
-procedure PrintEdict(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers);
 
 type
   TLineHeader = record
@@ -24,30 +26,40 @@ type
   end;
   PLineHeader = ^TLineHeader;
 
-procedure PrintEdictBody(const hdr: TLineHeader; const body: PEntryBody);
-procedure PrintEdictGroup(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
-procedure PrintVersions(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
+  TEdict1Writer = class(TArticleWriter)
+  protected
+    procedure PrintEdictBody(const hdr: TLineHeader; const body: PEntryBody);
+    procedure PrintEdictGroup(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
+    procedure PrintVersions(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
+    procedure FormatLineHeader(hdr: TLineHeader; out s_pre, s_post: string);
+  public
+    procedure Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers); override;
+  end;
 
-procedure FormatLineHeader(hdr: TLineHeader; out s_pre, s_post: string);
+type
+  TEdict2Writer = class(TArticleWriter)
+  public
+    procedure Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers); override;
+  end;
 
 implementation
-uses SysUtils, Classes, StreamUtils;
+uses SysUtils, Classes, WcUtils;
 
-var
-  outp: TCharWriter;
-
-procedure CreateOutput(const filename: string);
+constructor TArticleWriter.Create(const filename: string);
 begin
+  inherited Create;
   outp := TCharWriter.Create(TFileStream.Create(filename, fmCreate), csUtf16LE, true);
   outp.WriteBom;
+  FAddedRecords := 0;
 end;
 
-procedure CloseOutput;
+destructor TArticleWriter.Destroy;
 begin
   FreeAndNil(outp);
+  inherited;
 end;
 
-procedure PrintEdict(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers);
+procedure TEdict1Writer.Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers);
 var i, j: integer;
   w_head: TLineHeader;
 begin
@@ -66,7 +78,7 @@ begin
   end;
 end;
 
-procedure PrintEdictBody(const hdr: TLineHeader; const body: PEntryBody);
+procedure TEdict1Writer.PrintEdictBody(const hdr: TLineHeader; const body: PEntryBody);
 var i: integer;
 begin
   for i := 0 to body.group_cnt - 1 do
@@ -150,7 +162,7 @@ begin
     Result:=copy(Result,1,pos(sub,Result)-1)+repl+copy(Result,pos(sub,Result)+length(sub),length(Result)-pos(sub,Result)+1-length(sub));
 end;
 
-procedure PrintEdictGroup(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
+procedure TEdict1Writer.PrintEdictGroup(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
 var i, j, k: integer;
   bl: PEntryBlock;
   bl_cnt: integer;
@@ -200,7 +212,7 @@ begin
   PrintVersions(hdr, common, group);
 end;
 
-procedure PrintVersions(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
+procedure TEdict1Writer.PrintVersions(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
 var i: integer;
   s_pre, s_com, s_post: string;
   tmp_hdr: TLineHeader;
@@ -222,11 +234,11 @@ begin
       tmp_hdr := hdr;
     FormatLineHeader(tmp_hdr, s_pre, s_post);
     outp.WriteLine(s_pre + s_com + pv.art + s_post);
-    Inc(EdictStats.AddedRecords);
+    Inc(FAddedRecords);
   end;
 end;
 
-procedure FormatLineHeader(hdr: TLineHeader; out s_pre, s_post: string);
+procedure TEdict1Writer.FormatLineHeader(hdr: TLineHeader; out s_pre, s_post: string);
 begin
   if hdr.kanji <> '' then
     s_pre := hdr.kanji + ' [' + hdr.kana + '] /'
@@ -242,8 +254,98 @@ begin
     s_post := '';
 end;
 
+{
+EDICT2
+}
 
-initialization
-  FillChar(EdictStats, sizeof(EdictStats), 0);
+function CompareStr(const a,b: string): integer;
+begin
+  Result := AnsiCompareStr(a,b);
+end;
+
+function FindKanjiForWord(word: PEntryWord; const kanji: string): integer;
+var i: integer;
+begin
+  Result := -1;
+  for i := 0 to word.s_kanji_used - 1 do
+    if word.s_kanji[i]=kanji then begin
+      Result := i;
+      break;
+    end;
+end;
+
+procedure TEdict2Writer.Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers);
+var AllKanji: TList<string>;
+  AllKanjiUsed: array[0..MaxWords-1] of boolean;
+  i, j: integer;
+
+  s_kanji: string;
+  s_kana: string;
+
+  function ReadingToStr(widx: integer): string;
+  var i: integer;
+  begin
+    Result := hdr.words[widx].s_reading;
+    if AllKanjiUsed[widx] then exit;
+    if hdr.words[widx].s_kanji_used<=0 then begin
+     //Кана - сама своё собственное кандзи
+      Result := Result + '(' + hdr.words[widx].s_reading + ')';
+      exit;
+    end;
+    Result := Result + '(' + hdr.words[widx].s_kanji[0];
+    for i := 1 to hdr.words[widx].s_kanji_used - 1 do
+      Result := Result + ';' + hdr.words[widx].s_kanji[i];
+    Result := Result + ')';
+  end;
+
+begin
+  AllKanji.Comparison := CompareStr;
+
+ { Во втором EDICT строки такие:
+     кандзи1;кандзи2;кандзи3 [кана1;кана2(кандзи1;кандзи2);кана3(кандзи2;кандзи3)]
+  Поэтому нужно составить список всех кандзи, и для каждой каны проверить,
+  соответствует ли она всем кандзи, или только некоторым }
+  for i := 0 to hdr.words_used - 1 do
+    if hdr.words[i].s_kanji_used<=0 then
+     //Если кандзей ноль, то само выражение - своя запись
+      AllKanji.AddUnique(hdr.words[i].s_reading)
+    else
+    for j := 0 to hdr.words[i].s_kanji_used-1 do
+      AllKanji.AddUnique(hdr.words[i].s_kanji[j]);
+
+ { Проверяем кану }
+  for i := 0 to hdr.words_used - 1 do begin
+    AllKanjiUsed[i] := true; //for starters
+    for j := 0 to AllKanji.Count - 1 do
+      if FindKanjiForWord(@hdr.words[i], AllKanji.items[i])<0 then begin
+        AllKanjiUsed[i] := false;
+        break;
+      end;
+  end;
+
+ { Собираем заголовок }
+  if AllKanji.Count>0 then
+    s_kanji := AllKanji.items[0]
+  else
+    s_kanji := '';
+  for i := 1 to AllKanji.Count - 1 do
+    s_kanji := s_kanji + ';' + AllKanji.items[1];
+
+  if hdr.words_used>0 then
+    s_kana := ReadingToStr(0)
+  else
+    s_kana := '';
+  for i := 1 to hdr.words_used - 1 do
+    s_kana := s_kana + ReadingToStr(i);
+
+  if s_kana<>'' then
+    s_kanji := s_kanji + ' [' + s_kana + ']';
+
+
+  outp.WriteLine(s_kanji);
+
+
+
+end;
 
 end.

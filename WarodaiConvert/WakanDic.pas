@@ -5,7 +5,7 @@ unit WakanDic;
 }
 
 interface
-uses TextTable, JWBDic, JWBKanaConv, Warodai, WarodaiHeader, WarodaiBody;
+uses TextTable, JWBDic, JWBEdictMarkers, JWBKanaConv, Warodai, WarodaiHeader, WarodaiBody;
 
 var
   refStats: record
@@ -24,7 +24,7 @@ procedure FreeReferenceDic;
 type
   TSearchResult = record
     idx: integer;
-    markers: string;
+    markers: TMarkers;
   end;
 
 function RefFind(kana: string; kanji: string; out ret: TSearchResult): boolean;
@@ -54,12 +54,12 @@ procedure FillMarkers(const hdr: TEntryHeader; out mark: TEntryMarkers);
 
 
 implementation
-uses SysUtils, JWBEdictMarkers;
+uses SysUtils;
 
 var
   edict: TJaletDic;
   roma_t: TRomajiTranslator;
-  cdic: TDicCursor;
+  cdic: TDicLookupCursor;
 
 procedure LoadReferenceDic(filename: string);
 begin
@@ -68,7 +68,7 @@ begin
   edict.LoadOnDemand := false;
   edict.FillInfo(filename);
   edict.Load;
-  cdic := TDicCursor.Create(edict);
+  cdic := edict.NewLookup(mtExactMatch);
   roma_t := TRomajiTranslator.Create;
   roma_t.LoadFromFile('c_romaji_base.kcs');
 end;
@@ -100,19 +100,13 @@ begin
 
   kana := roma_t.KanaToRomaji(kana, 1);
 
-  if kanji<>'' then begin
-    cdic.SetOrder('Kanji_Ind');
-    cdic.Locate(cdic.stKanji,kanji);
-  end else begin
-    cdic.SetOrder('Phonetic_Ind');
-    cdic.Locate(cdic.stSort,kana);
-  end;
+  if kanji<>'' then
+    cdic.LookupKanji(kanji)
+  else
+    cdic.LookupRomaji(kana);
 
   rcnt := 0;
-  while (not cdic.EOF) and(
-        ((kanji='') and (cdic.Str(cdic.TDictSort)=kana))
-    or  ((kanji<>'') and (cdic.Str(cdic.TDictKanji)=kanji))
-  ) do begin
+  while cdic.HaveMatch do begin
     Inc(rcnt);
     if kanji='' then begin
       if (rcnt>1) then begin
@@ -120,23 +114,23 @@ begin
         Result := false;
         exit;
       end;
-      ret.idx := cdic.Int(cdic.TDictIndex);
-      ret.markers := cdic.Str(cdic.TDictMarkers);
-      cdic.Next;
+      ret.idx := cdic.GetIndex;
+      ret.markers := cdic.GetArticleMarkers; //TODO: This is wrong. Separate markers for separate entries
+      cdic.NextMatch;
       continue;
     end;
 
    //Иначе кандзи <> ''
    //Если нашли тот, где точно совпадает кана, то читаем его и выходим.
    //Также читаем перевод, если мы ещё никакого пока не видели - первый найденный.
-    rkana := cdic.Str(cdic.TDictPhonetic);
+    rkana := cdic.GetPhonetic;
     if (rkana=kana) or (rcnt<=1) then begin
-      ret.idx := cdic.Int(cdic.TDictIndex);
-      ret.markers := cdic.Str(cdic.TDictMarkers);
+      ret.idx := cdic.GetIndex;
+      ret.markers := cdic.GetArticleMarkers; //TODO: This is wrong. See above.
       if rkana=kana then break;
     end;
 
-    cdic.Next;
+    cdic.NextMatch;
   end;
   Result := rcnt>0;
 end;
