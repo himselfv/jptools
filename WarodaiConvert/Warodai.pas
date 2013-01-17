@@ -17,36 +17,37 @@ var
     Multitemplates: integer; //число шаблонов, которые содержат несколько вариантов на одной строке
 
    //Всё последующее - это "# статей, которые..."
-    ExplicitCommonGroupBlocks: integer; //явные блоки в общей группе, затем появление явной группы
-    MultilineGroupCommon: integer; //несколько строк в общей части 1+ групп
-    MultilineBlockCommon: integer; //несколько строк в общей части 1+ блоков
     GroupNumberFixed: integer; //первый блок смешался с переводом, но мы починили
     GroupNumberGuessed: integer; //номер первого блока вообще потерян
     GroupNumberMissing: integer; //номер какого-то блока потерян, но не первого
     BlockNumberFixed: integer;
     BlockNumberGuessed: integer;
     BlockNumberMissing: integer;
-    OpenTemplates: integer; //# статей с открытыми шаблонами (см. шаблоны)
-    InsideTemplates: integer; //# шаблонов внутри строки (не в начале)
-    AlternativeIds: integer; //статья с 3-м уровнем разбиения ("а)", "б)", и т.п)
-    SeveralProperTranslations: integer; //статей, где блок содержит несколько строк простого перевода
-    KanjiKanaLeft: integer; //после извлечения заголовка примера/шаблона в статье остались кандзи или кана
 
   end;
 
 type
   EParsingException = class(Exception);
+   //Explicit common group blocks: явные блоки в общей группе, затем появление явной группы
   ESilentParsingException = class(EParsingException);
 
  { Некоторые типы ошибок можно делать Silent, если мы в принципе такое не поддерживаем }
 
   EOpenTemplate = class(ESilentParsingException); { В статье встречается открытый шаблон - не поддерживаем }
+    //статья с открытыми шаблонами (см. шаблоны)
   EMultilineCommon = class(ESilentParsingException); { Общий кусок больше одной строки в длину }
+    //Multiline Group Common: несколько строк в общей части 1+ групп
+    //Multiline Block Common: несколько строк в общей части 1+ блоков
   EColonAfterTl = class(ESilentParsingException); { Перевод завершается двоеточием - это неполный перевод }
+    //translation lines which end with colon ':'. Suspicious.
   EAlternativeIds = class(ESilentParsingException); { Идентификаторы третьего уровня - а) б) в) }
+    //статья с 3-м уровнем разбиения ("а)", "б)", и т.п)
   EKanjiKanaLeft = class(ESilentParsingException); { В статье остались кандзи или кана после извлечения шаблона. Обычно это ссылки, но возможно всякое }
+    //Kanji or kana left in string after doing ExtractTemplate
+    //Kanji or kana left in string after doing ExtractExample
   EInsideTemplate = class(ESilentParsingException); { Шаблоны внутри строки (не в начале) }
   ESeveralProperTranslations = class(ESilentParsingException); { Обычно все добавочные строки - это "ср." и "см. также" }
+    //статей, где блок содержит несколько строк простого перевода
 
 type
   TWarodaiReader = class(TCharReader)

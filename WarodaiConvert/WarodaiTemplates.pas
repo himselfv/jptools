@@ -152,7 +152,6 @@ begin
   Inc(i_start);
 
   if i_start<>1 then begin
-    Inc(WarodaiStats.InsideTemplates);
     raise EInsideTemplate.Create('Template is not the first thing in the line');
     Result:=false;
     exit;
@@ -165,10 +164,8 @@ begin
 
   delete(ln, i_start, i_end);
 
-  if EvalChars(ln)<>EV_NORMAL then begin
-    Inc(WarodaiStats.KanjiKanaLeft);
+  if EvalChars(ln)<>EV_NORMAL then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after doing ExtractTemplate');
-  end;
 
   Result := true;
 end;
@@ -241,10 +238,8 @@ begin
 
   delete(ln, 1, i);
 
-  if EvalChars(ln)<>EV_NORMAL then begin
-    Inc(WarodaiStats.KanjiKanaLeft);
+  if EvalChars(ln)<>EV_NORMAL then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after doing ExtractExample');
-  end;
   Result := true;
 end;
 

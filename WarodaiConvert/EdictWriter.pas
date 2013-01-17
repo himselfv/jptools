@@ -196,11 +196,9 @@ begin
       if ExtractExample(tmp, templ) then begin
         continue //потом будем разбирать ещё и примеры, и строки из каны+этого слова
       end else begin
-        if bl_cnt > 0 then begin
-          Inc(WarodaiStats.SeveralProperTranslations);
-          raise ESeveralProperTranslations.Create('Block '+IntToStr(i)+' has several proper translations')
+        if bl_cnt > 0 then
+          raise ESeveralProperTranslations.Create('Block '+IntToStr(i)+' has several proper translations');
           //мы могли бы просто добавить их, но это странная ситуация, так что не будем
-        end;
         s_base.Add(bl.lines[j]);
         Inc(bl_cnt);
       end;

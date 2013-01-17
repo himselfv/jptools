@@ -419,13 +419,11 @@ begin
   end;
 
  { Открытые шаблоны значат, что дальнейшие записи переводов относятся
-  уже не к главное статье.
+  уже не к главной статье.
   Простого способа программно понять, где начинается, а где кончается зона
   действия такого шаблона - нет. Поэтому мы такие статьи пропускаем.}
-  if IsOpenTemplate(ln) then begin
-    Inc(WarodaiStats.OpenTemplates);
-    raise EOpenTemplate.Create('Opener variation');
-  end;
+  if IsOpenTemplate(ln) then
+    raise EOpenTemplate.Create('Open template -- unsupported');
 
 end;
 
@@ -455,14 +453,11 @@ begin
       if (body.group_cnt=1) and (group.num=0) then begin
        //Автоматическая группа в такой ситуации не имеет права содержать ничего,
        //кроме common single line
-        if (group.block_cnt>1) or (block.num<>0) then begin
-          Inc(WarodaiStats.ExplicitCommonGroupBlocks);
-          raise EParsingException.Create('Explicit common group blocks!');
-        end else
-        if (block.line_cnt>1) then begin
-          Inc(WarodaiStats.MultilineGroupCommon);
+        if (group.block_cnt>1) or (block.num<>0) then
+          raise EParsingException.Create('Explicit common group blocks!')
+        else
+        if (block.line_cnt>1) then
           raise EMultilineCommon.Create('Multiline group common');
-        end;
 
         if block.line_cnt>0 then
           body.common := block.lines[0];
@@ -489,11 +484,9 @@ begin
 
      //Если у нас до сих пор был только автоматический блок, пробуем перенести его в common
       if (group.block_cnt=1) and (block.num=0) then begin
-        if block.line_cnt>1 then begin
+        if block.line_cnt>1 then
          //Лучше пропустить эту статью, чем занести какую-нибудь хренотень типа "common 1) first meaning"
-          Inc(WarodaiStats.MultilineBlockCommon);
           raise EMultilineCommon.Create('Multiline block common');
-        end;
 
         if block.line_cnt>0 then
           group.common := block.lines[0];
@@ -507,10 +500,8 @@ begin
     if Length(ln)<=0 then
       continue;
 
-    if PopAlternativeId(ln, id) then begin
-      Inc(WarodaiStats.AlternativeIds);
+    if PopAlternativeId(ln, id) then
       raise EAlternativeIds.Create('Alternative ids unsupported');
-    end;
 
     if ln[1]='•' then begin
       Inc(WarodaiStats.Comments);

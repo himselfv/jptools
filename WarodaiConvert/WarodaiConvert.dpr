@@ -17,7 +17,8 @@ uses
   WarodaiBody in 'WarodaiBody.pas',
   WarodaiTemplates in 'WarodaiTemplates.pas',
   EdictWriter in 'EdictWriter.pas',
-  WcUtils in 'WcUtils.pas';
+  WcUtils in 'WcUtils.pas',
+  WcExceptions in 'WcExceptions.pas';
 
 {
 Заметки по реализации.
@@ -112,13 +113,11 @@ var
   stats: record
     artcnt: integer;
     badcnt: integer;
-    EmptyBlocks: integer;
     TlLines: integer;
     VarLines: integer;
     KanaLines: integer;
     KanjiLines: integer;
 
-    ColonAfterTl: integer; //translation lines which end with colon ':'. Suspicious.
     SeveralTlLines: integer; //block has several basic translation lines. Not a normal case.
     MixedTlLines: integer; //block has several lines + they are intermixed with other types of lines
   end;
@@ -129,10 +128,6 @@ var s: string;
 begin
   while inp.ReadLine(s) and (s<>'') do begin end;
 end;
-
-
-
-
 
 procedure SetLineTypes(block: PEntryBlock);
 var i,ev: integer;
@@ -167,10 +162,8 @@ begin
       last_tl := false;
     end;
 
-    if block.lines[i][Length(block.lines[i])]=':' then begin
-      Inc(stats.ColonAfterTl);
+    if block.lines[i][Length(block.lines[i])]=':' then
       raise EColonAfterTl.Create('Colon after TL');
-    end;
   end;
 
   if tl_lines>1 then
@@ -206,12 +199,14 @@ begin
     ReadBody(inp, @body);
   except
     on E: ESilentParsingException do begin
+      ExceptionStats.RegisterException(E);
       inp.SkipArticle;
       Inc(stats.badcnt);
       Result := true;
       exit;
     end;
     on E: EParsingException do begin
+      ExceptionStats.RegisterException(E);
       writeln('Line '+IntToStr(WarodaiStats.LinesRead)
         + ' article '+IntToStr(stats.artcnt)+': '
         +E.Message);
@@ -244,11 +239,13 @@ begin
 
   except
     on E: ESilentParsingException do begin
+      ExceptionStats.RegisterException(E);
       Inc(stats.badcnt);
       Result := true;
       exit;
     end;
     on E: EParsingException do begin
+      ExceptionStats.RegisterException(E);
       writeln('Line '+IntToStr(WarodaiStats.LinesRead)
         + ' article '+IntToStr(stats.artcnt)+': '
         +E.Message);
@@ -265,6 +262,7 @@ end;
 procedure Run;
 var tm: cardinal;
 begin
+  ExceptionStats.Clear;
   inp := TWarodaiReader.Create(TFileStream.Create(InputFile, fmOpenRead), true);
   com := TCharWriter.Create(TFileStream.Create('commng.txt', fmCreate), csUtf16LE, true);
   outp := TEdict2Writer.Create(OutputFile);
@@ -325,18 +323,12 @@ begin
 
     writeln('WTF -- Lines too short: '+IntToStr(WarodaiStats.LinesTooShort));
 
-    writeln('BAD -- Explicit common group blocks: '+IntToStr(WarodaiStats.ExplicitCommonGroupBlocks));
-    writeln('BAD -- Multiline group common: '+IntToStr(WarodaiStats.MultilineGroupCommon));
-    writeln('BAD -- Multiline block common: '+IntToStr(WarodaiStats.MultilineBlockCommon));
-    writeln('BAD -- Empty blocks: '+IntToStr(stats.EmptyBlocks));
-    writeln('BAD -- Colon after TL: '+IntToStr(stats.ColonAfterTl));
     writeln('BAD -- Several TL lines: '+IntToStr(stats.SeveralTlLines));
     writeln('BAD -- Mixed TL lines: '+IntToStr(stats.MixedTlLines));
-    writeln('BAD -- Opener templates: '+IntToStr(WarodaiStats.OpenTemplates));
-    writeln('BAD -- Inside templates: '+IntToStr(WarodaiStats.InsideTemplates));
-    writeln('BAD -- AlternativeIds: '+IntToStr(WarodaiStats.AlternativeIds));
-    writeln('BAD -- SeveralProperTranslations: '+IntToStr(WarodaiStats.SeveralProperTranslations));
-    writeln('BAD -- KanjiKanaLeft: '+IntToStr(WarodaiStats.KanjiKanaLeft));
+    writeln('');
+
+    ExceptionStats.PrintStats;
+    writeln('');
 
   finally
     FreeReferenceDic();
