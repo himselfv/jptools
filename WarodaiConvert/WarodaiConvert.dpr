@@ -18,7 +18,8 @@ uses
   WarodaiTemplates in 'WarodaiTemplates.pas',
   EdictWriter in 'EdictWriter.pas',
   WcUtils in 'WcUtils.pas',
-  WcExceptions in 'WcExceptions.pas';
+  WcExceptions in 'WcExceptions.pas',
+  EdictConverter in 'EdictConverter.pas';
 
 {
 Заметки по реализации.
@@ -109,7 +110,9 @@ end;
 
 var
   inp: TWarodaiReader;
-  outp: TArticleWriter;
+  edict1: TArticleWriter;
+  edict2: TArticleWriter;
+  jmdict: TArticleWriter;
   stats: record
     artcnt: integer;
     badcnt: integer;
@@ -235,8 +238,9 @@ begin
    {$ENDIF}
 
    //Add to edict
-    outp.Print(@hdr, @body, mark);
-
+    edict1.Print(@hdr, @body, mark);
+    edict2.Print(@hdr, @body, mark);
+    jmdict.Print(@hdr, @body, mark);
   except
     on E: ESilentParsingException do begin
       ExceptionStats.RegisterException(E);
@@ -265,7 +269,9 @@ begin
   ExceptionStats.Clear;
   inp := TWarodaiReader.Create(TFileStream.Create(InputFile, fmOpenRead), true);
   com := TCharWriter.Create(TFileStream.Create('commng.txt', fmCreate), csUtf16LE, true);
-  outp := TEdict2Writer.Create(OutputFile);
+  edict1 := TEdict1Writer.Create(OutputFile+'.edict1');
+  edict2 := TEdict2Writer.Create(OutputFile+'.edict2');
+  jmdict := TJmDictWriter.Create(OutputFile+'.jmdict');
   if TagDictFile <> '' then
   try
     LoadReferenceDic(TagDictFile);
@@ -293,7 +299,9 @@ begin
     writeln('Lines: '+IntToStr(WarodaiStats.LinesRead));
     writeln('Articles: '+IntToStr(stats.artcnt));
     writeln('Bad articles: '+IntToStr(stats.badcnt));
-    writeln('Added articles: '+IntToStr(outp.AddedRecords));
+    writeln('EDICT1 articles: '+IntToStr(edict1.AddedRecords));
+    writeln('EDICT2 articles: '+IntToStr(edict2.AddedRecords));
+    writeln('JMDICT articles: '+IntToStr(jmdict.AddedRecords));
     writeln('');
     writeln('Comments: '+IntToStr(WarodaiStats.Comments));
     writeln('Data lines: '+IntToStr(WarodaiStats.DataLines));
@@ -333,7 +341,9 @@ begin
   finally
     FreeReferenceDic();
     FreeAndNil(com);
-    FreeAndNil(outp);
+    FreeAndNil(jmdict);
+    FreeAndNil(edict2);
+    FreeAndNil(edict1);
     FreeAndNil(inp);
   end;
 end;

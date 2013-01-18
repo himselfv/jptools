@@ -1,22 +1,137 @@
 ﻿unit EdictWriter;
 {
-Функции, связанные с записью в формат EDICT
+Функции, связанные с записью в формат EDICT.
+Все варианты формата более-менее похожи, и происходят из JMDict,
+поэтому данные передаются им в одинаковой форме,
+однако младшие форматы их немного упрощают.
 }
+
+//TODO: Iconv.dll - ссылки и т.п. перевести в транслит (см. EdictBuildArticleBody)
 
 interface
 uses StreamUtils, Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, WakanDic;
+
+const
+  MaxKanji = 8;
+  MaxKana = 8;
+  MaxGlosses = 48;
+  MaxXrefs = 2;
+  MaxAnts = 1;
+  MaxLsources = 1;
+  MaxSenses = 6;
+ //Если будет нехватать - повышайте
+
+type
+  TEdictKanjiEntry = record
+    k: string;
+    inf: string; //markers for <ke_pri>
+    pop: boolean; // см. заметку
+    procedure Reset;
+  end;
+  PEdictKanjiEntry = ^TEdictKanjiEntry;
+
+  TEdictKanaEntry = record
+    k: string;
+    inf: string; //markers for <re_pri>
+    AllKanji: boolean; //true, если кана годится для всех кандзи в статье
+    Kanji: array[0..MaxKanji-1] of integer; //kanji references
+    Kanji_used: integer;
+    pop: boolean; //см. заметку
+    procedure Reset;
+    procedure AddKanjiRef(ref: integer);
+  end;
+  PEdictKanaEntry = ^TEdictKanaEntry;
+
+ {
+  О поле POP в кане и кандзи:
+  JMDict для каны и для кандзи хранит пометки <pri>, отмечающие вхождение слова
+  в разные индексы популярности вроде WORDFREQ.
+  При экспорте в EDICT слова, имеющие пометки news1, ichi1, gai1 и spec1,
+  получают пометку (P) - либо ко всей записи, либо к кане, либо к кандзи (см. ниже).
+  Поскольку нам проверять все эти индексы не с руки, и получаем мы уже готовую
+  информацию (P или не P), мы храним только метку POP, по которой пишем в JMDict
+  метку spec1 (особая метка для выбранных вручную популярных слов).
+  Если наш JMDict будут импортировать в главный, метки <pri> там проставят самостоятельно.
+ }
+
+  TEdictLSource = record
+    lang: string; //язык оригинала
+    expr: string; //слово в языке оригинала, от которого произошло значение
+    procedure Reset;
+  end;
+  PEdictLSource = ^TEdictLSource;
+
+ {
+  Также интересны:
+    gloss g_gend -- в файле нет -- поддерживается?
+    example -- в файле нет -- даже формат неясен
+ }
+  TEdictSenseEntry = record
+    glosses: array[0..MaxGlosses-1] of string;
+    glosses_used: integer;
+    xrefs: array[0..MaxXrefs-1] of string; //ссылка на связанную запись <xref>[кана или кандзи]</xref> -- EDICT2: (See [кана или кандзи])
+    xrefs_used: integer;
+    ants: array[0..MaxAnts-1] of string; //ссылки на антонимы <ant>[кана или кандзи]</ant> -- EDICT2: (ant: [кана или кандзи])
+    ants_used: integer;
+    lsources: array[0..MaxLsources] of TEdictLSource; //язык-источник, напр. <lsource xml:lang=ru>собака</lsource>SOBAKA -- EDICT2: (ru: собака)
+    lsources_used: integer;                          //также может быть: <lsource xml:lang="lat"/>
+   //Теги. Заполняются через запятую, как в EDICT2.
+   //В готовом виде: -- JMDict: &n; &uk; -- EDICT2: (n) (uk)
+    t_pos: string; //part of speech -- EDICT2: (n,adj-no)
+    t_field: string; //field of application -- EDICT2: {math}
+    t_dial: string; //dialect -- EDICT2: (ksb:)
+    t_misc: string; //прочее -- EDICT2: (uk)
+    procedure Reset;
+    procedure AddGloss(const val: string);
+    procedure AddXref(const val: string);
+    procedure AddAnt(const val: string);
+    function AddLsource(const lang, expr: string): PEdictLSource;
+    procedure AddTPos(const tag: string);
+    procedure AddTField(const tag: string);
+    procedure AddTDial(const tag: string);
+    procedure AddTMisc(const tag: string);
+  end;
+  PEdictSenseEntry = ^TEdictSenseEntry;
+
+  TEdictArticle = record
+    ref: string;
+    kanji: array[0..MaxKanji-1] of TEdictKanjiEntry;
+    kanji_used: integer;
+    kana: array[0..MaxKana-1] of TEdictKanaEntry;
+    kana_used: integer;
+    senses: array[0..MaxSenses-1] of TEdictSenseEntry;
+    senses_used: integer;
+    procedure Reset;
+    function AddKanji: PEdictKanjiEntry;
+    function AddKana: PEdictKanaEntry;
+    function AddSense: PEdictSenseEntry;
+  end;
+  PEdictArticle = ^TEdictArticle;
 
 type
   TArticleWriter = class
   protected
     outp: TCharWriter;
     FAddedRecords: integer;
+    procedure StartFile; virtual;
+    procedure FinalizeFile; virtual;
   public
     constructor Create(const filename: string);
     destructor Destroy; override;
-    procedure Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers); virtual; abstract;
+    procedure Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers); overload; virtual; abstract;
+    procedure Print(art: PEdictArticle); overload; virtual; abstract;
     property AddedRecords: integer read FAddedRecords;
   end;
+
+type
+  TPopStats = record
+    AllKanjiPop: boolean;
+    AllKanaPop: boolean;
+    HasPop: boolean;
+  end;
+
+function GetPopStats(art: PEdictArticle): TPopStats;
+function EdictBuildArticleBody(art: PEdictArticle; Edict1: boolean): string;
 
 type
   TLineHeader = record
@@ -28,22 +143,181 @@ type
 
   TEdict1Writer = class(TArticleWriter)
   protected
-    procedure PrintEdictBody(const hdr: TLineHeader; const body: PEntryBody);
-    procedure PrintEdictGroup(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
-    procedure PrintVersions(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
-    procedure FormatLineHeader(hdr: TLineHeader; out s_pre, s_post: string);
+    procedure Print2(art: PEdictArticle; const kanji, kana: integer; const body: string);
   public
-    procedure Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers); override;
+    procedure Print(art: PEdictArticle); override;
   end;
 
 type
   TEdict2Writer = class(TArticleWriter)
+  protected
+    function KanaToStr(art: PEdictArticle; idx: integer): string;
   public
-    procedure Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers); override;
+    procedure Print(art: PEdictArticle); override;
+  end;
+
+type
+  TJmDictWriter = class(TArticleWriter)
+  protected
+    procedure StartFile; override;
+    procedure FinalizeFile; override;
+    procedure PrintTags(const tag_name, tag_vals: string);
+  public
+    procedure Print(art: PEdictArticle); override;
   end;
 
 implementation
-uses SysUtils, Classes, WcUtils;
+uses SysUtils, Classes, UniStrUtils, WcUtils;
+
+{
+Article
+}
+
+procedure TEdictKanjiEntry.Reset;
+begin
+  k := '';
+  inf := '';
+end;
+
+procedure TEdictKanaEntry.Reset;
+begin
+  k := '';
+  inf := '';
+  AllKanji := false;
+  kanji_used := 0;
+end;
+
+procedure TEdictKanaEntry.AddKanjiRef(ref: integer);
+begin
+  if Kanji_used >= Length(Kanji) then
+    raise EParsingException.Create('EdictKanaEntry: Cannot add one more kana');
+  Kanji[Kanji_used] := ref;
+  Inc(Kanji_used);
+end;
+
+procedure TEdictLSource.Reset;
+begin
+  lang:='';
+  expr:='';
+end;
+
+procedure TEdictSenseEntry.Reset;
+begin
+  glosses_used := 0;
+  xrefs_used := 0;
+  ants_used := 0;
+  lsources_used := 0;
+  t_pos := '';
+  t_field := '';
+  t_dial := '';
+  t_misc := '';
+end;
+
+procedure TEdictSenseEntry.AddGloss(const val: string);
+begin
+  if glosses_used >= Length(glosses) then
+    raise EParsingException.Create('EdictSenseEntry: Cannot add one more gloss');
+  glosses[glosses_used] := val;
+  Inc(glosses_used);
+end;
+
+procedure TEdictSenseEntry.AddXref(const val: string);
+begin
+  if xrefs_used >= Length(xrefs) then
+    raise EParsingException.Create('EdictSenseEntry: Cannot add one more xref');
+  xrefs[xrefs_used] := val;
+  Inc(xrefs_used);
+end;
+
+procedure TEdictSenseEntry.AddAnt(const val: string);
+begin
+  if ants_used >= Length(ants) then
+    raise EParsingException.Create('EdictSenseEntry: Cannot add one more ant');
+  ants[ants_used] := val;
+  Inc(ants_used);
+end;
+
+function TEdictSenseEntry.AddLsource(const lang, expr: string): PEdictLSource;
+begin
+  if lsources_used >= Length(lsources) then
+    raise EParsingException.Create('EdictSenseEntry: Cannot add one more lsources');
+  Result := @lsources[lsources_used];
+  Result^.Reset;
+  Result^.lang := lang;
+  Result^.expr := expr;
+  Inc(lsources_used);
+end;
+
+procedure TEdictSenseEntry.AddTPos(const tag: string);
+begin
+  if t_pos<>'' then
+    t_pos := t_pos+','+tag
+  else
+    t_pos := tag;
+end;
+
+procedure TEdictSenseEntry.AddTField(const tag: string);
+begin
+  if t_field<>'' then
+    t_field := t_field+','+tag
+  else
+    t_field := tag;
+end;
+
+procedure TEdictSenseEntry.AddTDial(const tag: string);
+begin
+  if t_dial<>'' then
+    t_dial := t_dial+','+tag
+  else
+    t_dial := tag;
+end;
+
+procedure TEdictSenseEntry.AddTMisc(const tag: string);
+begin
+  if t_misc<>'' then
+    t_misc := t_misc+','+tag
+  else
+    t_misc := tag;
+end;
+
+procedure TEdictArticle.Reset;
+begin
+  ref := '';
+  kanji_used := 0;
+  kana_used := 0;
+  senses_used := 0;
+end;
+
+function TEdictArticle.AddKanji: PEdictKanjiEntry;
+begin
+  if kanji_used >= Length(kanji) then
+    raise EParsingException.Create('EdictArticle: Cannot add one more kanji');
+  Result := @kanji[kanji_used];
+  Result^.Reset;
+  Inc(kanji_used);
+end;
+
+function TEdictArticle.AddKana: PEdictKanaEntry;
+begin
+  if kana_used >= Length(kana) then
+    raise EParsingException.Create('EdictArticle: Cannot add one more kana');
+  Result := @kana[kana_used];
+  Result^.Reset;
+  Inc(kana_used);
+end;
+
+function TEdictArticle.AddSense: PEdictSenseEntry;
+begin
+  if senses_used >= Length(senses) then
+    raise EParsingException.Create('EdictArticle: Cannot add one more sense');
+  Result := @senses[senses_used];
+  Result^.Reset;
+  Inc(senses_used);
+end;
+
+{
+ArticleWriter
+}
 
 constructor TArticleWriter.Create(const filename: string);
 begin
@@ -51,299 +325,330 @@ begin
   outp := TCharWriter.Create(TFileStream.Create(filename, fmCreate), csUtf16LE, true);
   outp.WriteBom;
   FAddedRecords := 0;
+  StartFile;
 end;
 
 destructor TArticleWriter.Destroy;
 begin
+  FinalizeFile;
   FreeAndNil(outp);
   inherited;
 end;
 
-procedure TEdict1Writer.Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers);
-var i, j: integer;
-  w_head: TLineHeader;
+procedure TArticleWriter.StartFile;
 begin
-  for i := 0 to hdr.words_used - 1 do begin
-    w_head.mark := mark[i];
-    if hdr.words[i].s_kanji_used<=0 then begin
-      w_head.kanji := '';
-      w_head.kana := hdr.words[i].s_reading;
-      PrintEdictBody(w_head, body);
-    end else
-    for j := 0 to hdr.words[i].s_kanji_used-1 do begin
-      w_head.kanji := hdr.words[i].s_kanji[j];
-      w_head.kana := hdr.words[i].s_reading;
-      PrintEdictBody(w_head, body);
-    end;
-  end;
 end;
 
-procedure TEdict1Writer.PrintEdictBody(const hdr: TLineHeader; const body: PEntryBody);
-var i: integer;
+procedure TArticleWriter.FinalizeFile;
 begin
-  for i := 0 to body.group_cnt - 1 do
-    PrintEdictGroup(hdr, body.common, @body.groups[i]);
+  outp.Flush;
 end;
 
 
 {
-Собираем несколько версий статьи, по числу разных шаблонов.
-"Просто статья" - это пустой шаблон
+Утилиты
+}
+function GetPopStats(art: PEdictArticle): TPopStats;
+var i: integer;
+begin
+  Result.HasPop := false;
+  Result.AllKanjiPop := true;
+  for i := 0 to art.kanji_used - 1 do
+    if art.kanji[i].pop then
+      Result.HasPop := true
+    else
+      Result.AllKanjiPop := false;
+
+  Result.AllKanaPop := true;
+  for i := 0 to art.kana_used - 1 do
+    if art.kana[i].pop then
+      Result.HasPop := true
+    else
+      Result.AllKanaPop := false;
+end;
+
+//Составляет тело статьи. Если установлено Edict1, то не включает ссылки и т.п.
+function EdictBuildArticleBody(art: PEdictArticle; Edict1: boolean): string;
+var i, j: integer;
+  se: PEdictSenseEntry;
+  se_ln: string;
+begin
+  Result := '';
+
+  for i := 0 to art.senses_used - 1 do begin
+    se := @art.senses[i];
+    se_ln := '';
+
+    if se.t_pos<>'' then
+      se_ln := '('+se.t_pos+') ';
+
+    if art.senses_used>1 then
+      se_ln := '('+IntToStr(i)+') '; //после грам. тегов -- так сделано в английском EDICT2
+
+    if se.t_field<>'' then
+      se_ln := '{'+se.t_field+'} ';
+    if se.t_dial<>'' then
+      se_ln := '('+se.t_dial+') ';
+    if se.t_misc<>'' then
+      se_ln := '('+se.t_misc+') ';
+
+    if not Edict1 then begin
+      for j := 0 to se.xrefs_used - 1 do
+        se_ln := se_ln + '(See '+se.xrefs[j]+') ';
+      for j := 0 to se.ants_used - 1 do
+        se_ln := se_ln + '(ant: '+se.ants[j]+') ';
+    end;
+
+   //языки-источники включаем даже в EDICT1, хотя там expr должно быть транслитом!
+   //TODO: подключить iconv.dll и сделать транслитом в EDICT1!
+    for j := 0 to se.lsources_used - 1 do
+      se_ln := se_ln + '('+se.lsources[j].lang+':'+se.lsources[j].expr+') '; //sic! даже когда expr==''. так в едикте
+
+    if se.glosses_used>0 then begin
+      se_ln := se_ln + se.glosses[0];
+      for j := 1 to se.glosses_used - 1 do
+        se_ln := se_ln + '/' + se.glosses[j];
+    end;
+
+    Result := Result + '/' + se_ln;
+  end;
+end;
+
+
+{
+EDICT1
 }
 
-type
-  TTemplateVersion = record
-    templ: string;
-    art: string;
-    b_no: integer;
-    procedure Reset;
-    procedure Add(s: string);
-  end;
-  PTemplateVersion = ^TTemplateVersion;
-  TTemplateMgr = record
-    versions: array[0..8] of TTemplateVersion;
-    version_cnt: integer;
-    procedure Reset;
-    function Get(_templ: string): PTemplateVersion;
-  end;
-
-procedure TTemplateVersion.Reset;
+procedure TEdict1Writer.Print(art: PEdictArticle);
+var i, j: integer;
+  body: string;
 begin
-  templ := '';
-  art := '';
-  b_no := 0;
-end;
+ //Генерируем тело статьи
+  body := EdictBuildArticleBody(art, {EDICT1=}true);
 
-procedure TTemplateVersion.Add(s: string);
-begin
-  if art='' then
-    art := s+'/'
-  else begin
-    if b_no=0 then
-     //Превращаем в нумерованный список
-     //TODO: Число нужно вставлять после любых локальных грам. флагов -- у нас пока их нет -- и первое, и второе
-      art := '(1) '+art+'(2) '+s+'/'
-    else
-      art := art + '('+IntToStr(b_no)+') '+s+'/';
-  end;
-  Inc(b_no);
-end;
-
-procedure TTemplateMgr.Reset;
-begin
-  version_cnt := 0;
-end;
-
-function TTemplateMgr.Get(_templ: string): PTemplateVersion;
-var i: integer;
-begin
-  for i := 0 to version_cnt - 1 do
-    if versions[version_cnt].templ=_templ then begin
-      Result := @versions[version_cnt];
-      exit;
-    end;
- //добавляем новую
-  Inc(version_cnt);
-  if version_cnt>Length(versions) then
-    raise EParsingException.Create('TemplateMgr: Cannot add one more article version.');
-  Result := @versions[version_cnt-1];
-  Result^.Reset;
-  Result^.templ := _templ;
-end;
-
-var
-  verMgr: TTemplateMgr;
-
-
-function repl(const s:string;const sub,repl:string):string;
-begin
-  Result := s;
-  while pos(sub,Result)>0 do
-    Result:=copy(Result,1,pos(sub,Result)-1)+repl+copy(Result,pos(sub,Result)+length(sub),length(Result)-pos(sub,Result)+1-length(sub));
-end;
-
-procedure TEdict1Writer.PrintEdictGroup(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
-var i, j, k: integer;
-  bl: PEntryBlock;
-  bl_cnt: integer;
-  s_base: PTemplateVersion;
-  templ: string;
-  tmp: string;
-  t_p: TTemplateList;
-begin
-  verMgr.Reset;
-  s_base := verMgr.Get('');
-
-  for i := 0 to group.block_cnt - 1 do begin
-    if group.blocks[i].line_cnt<0 then
-      raise EParsingException.Create('Block '+IntToStr(i)+' has no lines');
-
-    bl_cnt := 0; //block proper translation count
-    bl := @group.blocks[i];
-    for j := 0 to bl.line_cnt - 1 do begin
-      tmp := bl.lines[j];
-      if ExtractTemplate(tmp, templ) then begin
-        SplitTemplate(templ, t_p);
-        if Length(t_p)>1 then
-          Inc(WarodaiStats.MultiTemplates);
-       //Добавляем все в соотв. записи
-        for k := 0 to Length(t_p) - 1 do begin
-          if t_p[k]='' then
-            raise EParsingException.Create('Invalid empty template part.');
-          verMgr.Get(t_p[k])^.Add(tmp);
-        end;
-      end else
-      if ExtractExample(tmp, templ) then begin
-        continue //потом будем разбирать ещё и примеры, и строки из каны+этого слова
-      end else begin
-        if bl_cnt > 0 then
-          raise ESeveralProperTranslations.Create('Block '+IntToStr(i)+' has several proper translations');
-          //мы могли бы просто добавить их, но это странная ситуация, так что не будем
-        s_base.Add(bl.lines[j]);
-        Inc(bl_cnt);
-      end;
-    end;
-
-  end;
-
- //Печатаем все версии
-  PrintVersions(hdr, common, group);
-end;
-
-procedure TEdict1Writer.PrintVersions(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
-var i: integer;
-  s_pre, s_com, s_post: string;
-  tmp_hdr: TLineHeader;
-  pv: PTemplateVersion;
-begin
-  s_com := '';
-  if common<>'' then
-    s_com := s_com + common + ' ';
-  if group.common<>'' then
-    s_com := s_com + group.common + ' ';
-
-  for i := 0 to verMgr.version_cnt - 1 do  begin
-    pv := @verMgr.versions[i];
-    if pv.templ<>'' then begin
-      tmp_hdr.kanji := repl(pv.templ, '～', hdr.kanji);
-      tmp_hdr.kana := repl(pv.templ, '～', hdr.kana);
-      tmp_hdr.mark := hdr.mark;
+ //Печатаем все варианты
+  for i := 0 to art.kana_used  - 1 do
+    if art.kanji_used<=0 then begin
+      Print2(art, -1, i, body);
     end else
-      tmp_hdr := hdr;
-    FormatLineHeader(tmp_hdr, s_pre, s_post);
-    outp.WriteLine(s_pre + s_com + pv.art + s_post);
-    Inc(FAddedRecords);
-  end;
+    if art.kana[i].AllKanji then begin
+      for j := 0 to art.kanji_used - 1 do
+        Print2(art, j, i, body);
+    end else begin
+      for j := 0 to art.kana[i].Kanji_used - 1 do
+        Print2(art, art.kana[i].Kanji[j], i, body);
+    end;
 end;
 
-procedure TEdict1Writer.FormatLineHeader(hdr: TLineHeader; out s_pre, s_post: string);
+procedure TEdict1Writer.Print2(art: PEdictArticle; const kanji, kana: integer; const body: string);
+var ln: string;
+  k_flags: string;
 begin
-  if hdr.kanji <> '' then
-    s_pre := hdr.kanji + ' [' + hdr.kana + '] /'
-  else
-    s_pre := hdr.kana + ' /';
-  if hdr.mark.markers<>'' then
-    s_pre := s_pre + '(' + hdr.mark.markers + ') '
-  else
-    s_pre := s_pre;
-  if hdr.mark.pop then
-    s_post := s_post + '(P)/'
-  else
-    s_post := '';
+  if kanji>=0 then begin
+    ln := art.kanji[kanji].k;
+    if kana>=0 then
+      ln := ln + ' [' + art.kana[kana].k + ']';
+  end else
+   //kana must be set
+    ln := art.kana[kana].k;
+
+ //В EDICT1 флаги каны и кандзи пишутся перед первым вхождением sense
+  k_flags := '';
+  if (kanji>=0) and (art.kanji[kanji].inf<>'') then
+    k_flags := k_flags + '('+art.kanji[kanji].inf+') ';
+  if (kana>=0) and (art.kana[kana].inf<>'') then
+    k_flags := k_flags + '('+art.kana[kana].inf+') ';
+  if k_flags<>'' then begin
+    ln := ln + ' /'+k_flags;
+    if body<>'' then
+      ln := ln + ' ' + copy(body,2,Length(body)-1); //пропускаем стартовый '/'
+  end else
+    ln := ln + ' ' + body;
+
+  if ((kanji>=0) and art.kanji[kanji].pop)
+  or ((kana>=0) and art.kana[kana].pop) then
+    ln := ln + '/(P)';
+
+  outp.WriteLine(ln+'/');
+  Inc(FAddedRecords);
 end;
+
 
 {
 EDICT2
 }
 
-function CompareStr(const a,b: string): integer;
-begin
-  Result := AnsiCompareStr(a,b);
-end;
-
-function FindKanjiForWord(word: PEntryWord; const kanji: string): integer;
+//Генерирует запись вида кана(кандзи;кандзи) для каны #idx из статьи art
+function TEdict2Writer.KanaToStr(art: PEdictArticle; idx: integer): string;
 var i: integer;
 begin
-  Result := -1;
-  for i := 0 to word.s_kanji_used - 1 do
-    if word.s_kanji[i]=kanji then begin
-      Result := i;
-      break;
-    end;
+  Result := art.kana[idx].k;
+  if art.kana[idx].AllKanji then exit;
+  if art.kanji_used<=0 then exit; //на всякий случай, хотя тогда должен стоять AllKanji, наверное?
+
+ { Вообще-то говоря, у каны может не быть отсылок на кандзи, и в таком случае
+  единственный способ доступно это записать:
+    кандзи1;кандзи2;КАНА2[кана1(кандзи1;кандзи2);КАНА2(КАНА2)]
+  То есть, объявить кану отдельной записью. Это будет логично.
+
+  Вариант хуже - написать кану с пустыми скобками:
+    КАНА2()
+  На это мало кто рассчитывает, и вообще, что это значит? Для какой записи это чтение?
+
+  Однако по факту EDICT в таких случаях пишет кану так, как будто она годится для всех записей:
+    кандзи1;кандзи2[кана1;КАНА2]
+  Это ошибка, но раз так делает EDICT, мы поступим так же. }
+  if art.kana[idx].Kanji_used<=0 then exit;
+
+  Result := Result + '(' + art.kanji[art.kana[idx].Kanji[0]].k;
+  for i := 1 to art.kana[idx].Kanji_used - 1 do
+    Result := Result + ';' + art.kanji[art.kana[idx].Kanji[i]].k;
+  Result := Result + ')';
 end;
 
-procedure TEdict2Writer.Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers);
-var AllKanji: TList<string>;
-  AllKanjiUsed: array[0..MaxWords-1] of boolean;
-  i, j: integer;
+procedure TEdict2Writer.Print(art: PEdictArticle);
+var ln: string;
+  i: integer;
 
   s_kanji: string;
   s_kana: string;
 
-  function ReadingToStr(widx: integer): string;
-  var i: integer;
-  begin
-    Result := hdr.words[widx].s_reading;
-    if AllKanjiUsed[widx] then exit;
-    if hdr.words[widx].s_kanji_used<=0 then begin
-     //Кана - сама своё собственное кандзи
-      Result := Result + '(' + hdr.words[widx].s_reading + ')';
-      exit;
-    end;
-    Result := Result + '(' + hdr.words[widx].s_kanji[0];
-    for i := 1 to hdr.words[widx].s_kanji_used - 1 do
-      Result := Result + ';' + hdr.words[widx].s_kanji[i];
-    Result := Result + ')';
-  end;
+  PopStats: TPopStats;
 
 begin
-  AllKanji.Comparison := CompareStr;
+  PopStats := GetPopStats(art);
 
- { Во втором EDICT строки такие:
-     кандзи1;кандзи2;кандзи3 [кана1;кана2(кандзи1;кандзи2);кана3(кандзи2;кандзи3)]
-  Поэтому нужно составить список всех кандзи, и для каждой каны проверить,
-  соответствует ли она всем кандзи, или только некоторым }
-  for i := 0 to hdr.words_used - 1 do
-    if hdr.words[i].s_kanji_used<=0 then
-     //Если кандзей ноль, то само выражение - своя запись
-      AllKanji.AddUnique(hdr.words[i].s_reading)
-    else
-    for j := 0 to hdr.words[i].s_kanji_used-1 do
-      AllKanji.AddUnique(hdr.words[i].s_kanji[j]);
-
- { Проверяем кану }
-  for i := 0 to hdr.words_used - 1 do begin
-    AllKanjiUsed[i] := true; //for starters
-    for j := 0 to AllKanji.Count - 1 do
-      if FindKanjiForWord(@hdr.words[i], AllKanji.items[i])<0 then begin
-        AllKanjiUsed[i] := false;
-        break;
-      end;
+ //кандзи1;кандзи2;кандзи3
+  if art.kanji_used=0 then
+    s_kanji := ''
+  else begin
+    s_kanji := art.kanji[0].k;
+    if art.kanji[0].pop and not PopStats.AllKanjiPop then
+      s_kanji := s_kanji + '(P)';
+    for i := 1 to art.kanji_used - 1 do begin
+      s_kanji := s_kanji + ';' + art.kanji[i].k;
+      if art.kanji[i].pop and not PopStats.AllKanjiPop then
+        s_kanji := s_kanji + '(P)';
+    end;
   end;
 
- { Собираем заголовок }
-  if AllKanji.Count>0 then
-    s_kanji := AllKanji.items[0]
-  else
-    s_kanji := '';
-  for i := 1 to AllKanji.Count - 1 do
-    s_kanji := s_kanji + ';' + AllKanji.items[1];
+ //кана1;кана2(кандзи1;кандзи2);кана3(кандзи2;кандзи3)
+  if art.kana_used=0 then
+    s_kana := ''
+  else begin
+    s_kana := KanaToStr(art, 0);
+    if art.kana[0].pop and not PopStats.AllKanaPop then
+      s_kana := s_kana + '(P)';
+    for i := 1 to art.kana_used - 1 do begin
+      s_kana := s_kana + ';' + KanaToStr(art, i);
+      if art.kana[i].pop and not PopStats.AllKanaPop then
+        s_kana := s_kana + '(P)';
+    end;
+  end;
 
-  if hdr.words_used>0 then
-    s_kana := ReadingToStr(0)
-  else
-    s_kana := '';
-  for i := 1 to hdr.words_used - 1 do
-    s_kana := s_kana + ReadingToStr(i);
-
+  if s_kanji='' then begin
+    s_kanji := s_kana; //исключение: "кана1 /(статья) /"
+  end else
   if s_kana<>'' then
     s_kanji := s_kanji + ' [' + s_kana + ']';
+  s_kana := '';
+
+ //Теперь в s_kanji полный заголовок
+ //Собираем в ln значения
+  ln := EdictBuildArticleBody(art, {EDICT1=}false);
+
+  if PopStats.HasPop then
+    ln := ln + '/(P)';
+
+  outp.WriteLine(s_kanji+' '+ln+'/EntL'+art.ref+'/');
+  Inc(FAddedRecords);
+end;
 
 
-  outp.WriteLine(s_kanji);
+{
+JMDict
+}
 
+procedure TJMDictWriter.StartFile;
+begin
+  inherited;
+  outp.WriteLine('<!-- JMdict created: '+FormatDatetime('yyyy-mm-dd', now())+' -->');
+  outp.WriteLine('<JMdict>');
+end;
 
+procedure TJMDictWriter.FinalizeFile;
+begin
+  outp.WriteLine('</JMdict>');
+  inherited;
+end;
 
+//Получает строку вида "val1,val2" и печатает набор тегов
+//  <tag_name>val1</tag_name>
+//  <tag_name>val2</tag_name>
+procedure TJMDictWriter.PrintTags(const tag_name, tag_vals: string);
+var i: integer;
+  parts: TStringArray;
+begin
+  parts := StrSplit(PChar(tag_vals),',');
+  for i := 0 to Length(parts) - 1 do
+    outp.WriteLine('<'+tag_name+'>&'+parts[i]+';</'+tag_name+'>'); //каждый тег отдельно
+end;
+
+procedure TJMDictWriter.Print(art: PEdictArticle);
+var i,j: integer;
+  se: PEdictSenseEntry;
+begin
+  outp.WriteLine('<entry>');
+  outp.WriteLine('<ent_seq>'+art.ref+'</ent_seq>');
+
+  for i := 0 to art.kanji_used - 1 do begin
+    outp.WriteLine('<k_ele>');
+    outp.WriteLine('<keb>'+art.kanji[i].k+'</keb>');
+    if art.kanji[i].inf<>'' then PrintTags('ke_inf', art.kanji[i].inf);
+    if art.kanji[i].pop then
+      outp.WriteLine('<ke_pri>spec1</ke_pri>');
+    outp.WriteLine('</k_ele>');
+  end;
+
+  for i := 0 to art.kana_used - 1 do begin
+    outp.WriteLine('<r_ele>');
+    outp.WriteLine('<reb>'+art.kana[i].k+'</reb>');
+    if art.kana[i].inf<>'' then PrintTags('re_inf', art.kana[i].inf);
+    if not art.kana[i].AllKanji then begin
+      if art.kana[i].Kanji_used<=0 then
+        outp.WriteLine('<re_nokanji/>')
+      else
+        for j := 0 to art.kana[i].Kanji_used - 1 do
+          outp.WriteLine('<re_restr>'+art.kanji[art.kana[i].Kanji[j]].k+'</re_restr>');
+      if art.kana[i].pop then
+        outp.WriteLine('<re_pri>spec1</re_pri>');
+    end;
+    outp.WriteLine('</r_ele>');
+  end;
+
+  for i := 0 to art.senses_used - 1 do begin
+    outp.WriteLine('<sense>');
+    se := @art.senses[i];
+    for j := 0 to se.xrefs_used - 1 do
+      outp.WriteLine('<xref>'+se.xrefs[j]+'</xref>');
+    for j := 0 to se.ants_used - 1 do
+      outp.WriteLine('<ant>'+se.ants[j]+'</ant>');
+    for j := 0 to se.lsources_used - 1 do
+      if se.lsources[j].expr='' then
+        outp.WriteLine('<lsource xml:lang='+se.lsources[j].lang+'/>')
+      else
+        outp.WriteLine('<lsource xml:lang='+se.lsources[j].lang+'>'+se.lsources[j].expr+'</ant>');
+    if se.t_pos<>'' then PrintTags('pos', se.t_pos);
+    if se.t_field<>'' then PrintTags('field', se.t_pos);
+    if se.t_dial<>'' then PrintTags('dial', se.t_pos);
+    if se.t_misc<>'' then PrintTags('misc', se.t_pos);
+    for j := 0 to se.glosses_used - 1 do
+      outp.WriteLine('<gloss xml:lang="rus">'+se.glosses[j]+'</gloss>'); //note the gloss xml:lang attribute
+    outp.WriteLine('</sense>');
+  end;
+
+  outp.WriteLine('</entry>');
+  Inc(FAddedRecords);
 end;
 
 end.
