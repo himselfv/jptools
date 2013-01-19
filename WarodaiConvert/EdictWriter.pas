@@ -386,6 +386,7 @@ function EdictBuildArticleBody(wr: TArticleWriter; art: PEdictArticle): string;
 var i, j: integer;
   se: PEdictSenseEntry;
   se_ln: string;
+  xr_ref, xr_ant: string;
   expr: string;
   Edict1: boolean;
 begin
@@ -410,9 +411,17 @@ begin
       se_ln := '('+se.t_misc+') ';
 
     if not Edict1 then begin
+     //Ref
+      xr_ref := '';
       for j := 0 to se.xrefs_used - 1 do
-        se_ln := se_ln + '(See '+se.xrefs[j]+') ';
+        xr_ref := xr_ref + se.xrefs[j] + ',';
+      if xr_ref<>'' then
+        se_ln := se_ln + '(See '+copy(xr_ref,1,Length(xr_ref)-1)+') ';
+     //ant
+      xr_ant := '';
       for j := 0 to se.ants_used - 1 do
+        xr_ant := xr_ant + se.ants[j] + ',';
+      if xr_ant<>'' then
         se_ln := se_ln + '(ant: '+se.ants[j]+') ';
     end;
 
