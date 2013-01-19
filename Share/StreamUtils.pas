@@ -21,10 +21,10 @@ type
     function ReadWideChar(out c: WideChar): boolean;
     function ReadAnsiLine: AnsiString;
     function ReadUniLine: UniString; //assumes Windows UTF-16
-    function WriteAnsiChar(c: AnsiChar): boolean;
-    function WriteWideChar(c: WideChar): boolean;
-    procedure WriteAnsiString(s: AnsiString);
-    procedure WriteUniString(s: UniString);
+    function WriteAnsiChar(const c: AnsiChar): boolean;
+    function WriteWideChar(const c: WideChar): boolean;
+    procedure WriteAnsiString(const s: AnsiString);
+    procedure WriteUniString(const s: UniString);
   end;
 
 (*
@@ -87,8 +87,7 @@ type
     function GetInternalPosition: integer;
   public
     function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
-    function Read(var Buffer; Count: Longint): Longint; overload; override;
-    function Read(var Buffer): integer; reintroduce; overload; inline;
+    function Read(var Buffer; Count: Longint): Longint; override;
     function ReadBuf(buf: pbyte; len: integer): integer; inline;
     function Write(const Buffer; Count: Longint): Longint; override;
     function Peek(var Buffer; Size: integer): integer;
@@ -131,8 +130,7 @@ type
   public
     function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
     function Read(var Buffer; Count: Longint): Longint; override;
-    function Write(const Buffer; Count: Longint): Longint; overload; override;
-    function Write(const Buffer): integer; reintroduce; overload; inline;
+    function Write(const Buffer; Count: Longint): Longint; override;
     function WriteBuf(buf: PByte; len: integer): integer; inline;
     procedure Flush;
 
@@ -145,10 +143,15 @@ type
 const
   BOM_UTF16LE = WideChar($FEFF);
   BOM_UTF16BE = WideChar($FFFE);
-  BOM_UTF8 = WideChar($BBEF); //it's EF BB BF
+  BOM_UTF8 = $BFBBEF; //full version it's EF BB BF
 
 type
-  TCharSet = (csAnsi, csUtf16Le, csUtf16Be);
+  TCharSet = (
+    csAnsi,
+    csUtf16Le,
+    csUtf16Be,
+    csUtf8      //requires at least 4 bytes of buffer!
+  );
 
 type
   TCharReader = class(TStreamReader)
@@ -162,8 +165,8 @@ type
    //Create with specified encoding (if you don't want auto, set to your default one)
     constructor Create(AStream: TStream; ACharSet: TCharSet;
       AOwnStream: boolean = false); overload;
-    function ReadChar(var c: WideChar): boolean;
-    function PeekChar(var c: WideChar): boolean;
+    function ReadChar(out c: WideChar): boolean;
+    function PeekChar(out c: WideChar): boolean;
     function ReadLine(out s: UniString): boolean;
   end;
 
@@ -180,7 +183,8 @@ type
     procedure WriteBom;
     procedure WriteChar(const c: WideChar);
     procedure WriteChars(c: PWideChar; len: integer);
-    procedure WriteString(c: UniString);
+    procedure WriteString(const c: UniString);
+    procedure WriteLine(const s: UnicodeString);
   end;
 
 
@@ -216,6 +220,88 @@ type
 
 implementation
 
+{ UTF8 Utils }
+{ Parts based on JWBConvert by Fillip Karbt taken from Wakan source code. }
+
+const
+  UTF8_VALUE1 = $00;        // Value for set bits for single byte UTF-8 Code.
+  UTF8_MASK1 = $80;        // Mask (i.e. bits not set by the standard) 0xxxxxxx
+  UTF8_WRITE1 = $ff80;      // Mask of bits we cannot allow if we are going to write one byte code
+  UTF8_VALUE2 = $c0;        // Two byte codes
+  UTF8_MASK2 = $e0;        // 110xxxxx 10yyyyyy
+  UTF8_WRITE2 = $f800;      // Mask of bits we cannot allow if we are going to write two byte code
+  UTF8_VALUE3 = $e0;        // Three byte codes
+  UTF8_MASK3 = $f0;        // 1110xxxx 10yyyyyy 10zzzzzz
+  UTF8_VALUE4 = $f0;        // Four byte values
+  UTF8_MASK4 = $f8;        // 11110xxx ----    (These values are not supported by JWPce).
+  UTF8_VALUEC = $80;        // Continueation byte (10xxxxxx).
+  UTF8_MASKC = $c0;
+
+{ In both of the following functions UTF8 character sequences are stored as integer.
+ Remember, lowest byte first.
+ You may want to cast this for easy access: }
+type
+  TUTF8Bytes = array[0..3] of byte;
+
+{ Converts UCS2-LE character into UTF8 sequence of up to 4 bytes.
+ Returns the number of bytes used }
+function UCS2toUTF8(const ch: WideChar; out uch: integer): integer; inline;
+begin
+  if (word(ch) and UTF8_WRITE1)=0 then
+  begin
+    Result:=1;
+    uch:=byte(ch);
+  end else
+  if (word(ch) and UTF8_WRITE2)=0 then
+  begin
+    Result := 2;
+    uch := (UTF8_VALUE2 or byte(word(ch) shr 6))
+         + (UTF8_VALUEC or byte(word(ch) and $3f)) shl 8;
+  end else
+  begin
+    Result := 3;
+    uch := (UTF8_VALUE3 or byte(word(ch) shr 12))
+         + (UTF8_VALUEC or byte((word(ch) shr 6) and $3f)) shl 8
+         + (UTF8_VALUEC or byte(word(ch) and $3f)) shl 16;
+  end;
+end;
+
+{ Converts a sequence of up to 4 bytes in UTF8, all of which must be present,
+ to one UCS2-LE character, or puts DefaultChar there if the conversion is impossible.
+ Returns the number of bytes this UTF8 symbol occupied. }
+function UTF8toUCS2(const uch: integer; const DefaultChar: WideChar; out ch: WideChar): integer; inline;
+var b: TUTF8Bytes absolute uch;
+begin
+  if (b[0] and UTF8_MASK1)=UTF8_VALUE1 then
+  begin
+    ch := WideChar(b[0]);
+    Result := 1;
+  end else
+  if (b[0] and UTF8_MASK2)=UTF8_VALUE2 then
+  begin
+    ch := WideChar(((b[0] and $1f) shl 6) or (b[1] and $3f));
+    Result := 2;
+  end else
+  if (b[0] and UTF8_MASK3)=UTF8_VALUE3 then
+  begin
+    ch := WideChar(((b[0] and $0f) shl 12) or ((b[1] and $3f) shl 6) or (b[2] and $3f));
+    Result := 3;
+  end else
+  if (b[0] and UTF8_MASK4)=UTF8_VALUE4 then
+  begin
+    ch := DefaultChar;
+    Result := 4;
+  end else
+  begin
+   //Invalid character
+    ch := DefaultChar;
+    Result := 1;//because we don't know what else to do
+  end;
+end;
+
+
+{ TStreamHelper }
+
 function TStreamHelper.ReadAnsiChar(out c: AnsiChar): boolean;
 begin
   Result := Self.Read(c, SizeOf(c)) = SizeOf(c);
@@ -242,12 +328,12 @@ begin
     Result := Result + c;
 end;
 
-function TStreamHelper.WriteAnsiChar(c: AnsiChar): boolean;
+function TStreamHelper.WriteAnsiChar(const c: AnsiChar): boolean;
 begin
   Result := Self.Write(c, SizeOf(c))=SizeOf(c);
 end;
 
-function TStreamHelper.WriteWideChar(c: WideChar): boolean;
+function TStreamHelper.WriteWideChar(const c: WideChar): boolean;
 begin
   Result := Self.Write(c, SizeOf(c))=SizeOf(c);
 end;
@@ -260,13 +346,13 @@ end;
  вызвать недопонимание, а значит ошибки.
  Если готовы писать по байтам - просто пишите стандартным Write(var Buffer).
 *)
-procedure TStreamHelper.WriteAnsiString(s: AnsiString);
+procedure TStreamHelper.WriteAnsiString(const s: AnsiString);
 begin
   if Write(s[1], Length(s)*SizeOf(AnsiChar)) <> Length(s)*SizeOf(AnsiChar) then
     raise Exception.Create('Cannot write a line to '+self.ClassName);
 end;
 
-procedure TStreamHelper.WriteUniString(s: UniString);
+procedure TStreamHelper.WriteUniString(const s: UniString);
 begin
   if Write(s[1], Length(s)*SizeOf(WideChar)) <> Length(s)*SizeOf(WideChar) then
     raise Exception.Create('Cannot write a line to '+self.ClassName);
@@ -331,7 +417,7 @@ end;
 procedure TStreamReader.SetChunkSize(AValue: integer);
 begin
  //If we can't realloc right now, set delayed reallocation
-  if ReallocBuf(FChunkSize) then
+  if ReallocBuf(AValue) then
     FChunkSize := AValue
   else begin
     flag_reallocbuf := true;
@@ -480,11 +566,6 @@ begin
     Result := Result + FStream.Read(pbuf^, Count);
 
   Inc(FBytesRead, Result);
-end;
-
-function TStreamReader.Read(var Buffer): integer;
-begin
-  Result := Read(Buffer, SizeOf(Buffer));
 end;
 
 function TStreamReader.ReadBuf(buf: pbyte; len: integer): integer;
@@ -724,11 +805,6 @@ begin
   Inc(FBytesWritten, Result);
 end;
 
-function TStreamWriter.Write(const Buffer): integer;
-begin
-  Result := Write(Buffer, SizeOf(Buffer));
-end;
-
 function TStreamWriter.WriteBuf(buf: PByte; len: integer): integer;
 begin
   Result := Write(buf^, len);
@@ -779,6 +855,7 @@ end;
 //Детектируем бом и сразу вычитываем.
 function TCharReader.DetectCharset: TCharset;
 var Bom: WideChar;
+  Bom3: integer;
 begin
  //No data => ANSI
   if Peek(Bom, 2) < 2 then
@@ -795,16 +872,22 @@ begin
     Read(Bom, 2);
   end else
 
-  if Bom = BOM_UTF8 then begin
-    raise Exception.Create('CharReader: UTF8 signature detected, presently not supported.');
+  if word(Bom) = word(BOM_UTF8) then begin
+   //full bom check -- 3 bytes
+    Result := csUtf8;
+    Bom3 := 0;
+    Peek(Bom3, 3);
+    if Bom3=BOM_UTF8 then
+      Read(Bom3, 3);
   end else
 
  //No BOM => ANSI
   Result := csAnsi;
 end;
 
-function TCharReader.ReadChar(var c: WideChar): boolean;
+function TCharReader.ReadChar(out c: WideChar): boolean;
 var _c: AnsiChar;
+  u, sz: integer;
 begin
   case Charset of
     csAnsi: begin
@@ -817,13 +900,20 @@ begin
       c := SwapChar(c);
     end;
 
+    csUtf8: begin
+      Result := (Peek(u, 4) = 4);
+      sz := UTF8toUCS2(u, WideChar($FFFF), c);
+      Read(u, sz);
+    end
+
   else //Utf16Le
     Result := (Read(c, 2) = 2);
   end;
 end;
 
-function TCharReader.PeekChar(var c: WideChar): boolean;
+function TCharReader.PeekChar(out c: WideChar): boolean;
 var _c: AnsiChar;
+  u: integer;
 begin
   case Charset of
     csAnsi: begin
@@ -835,6 +925,11 @@ begin
       Result := (Peek(c, 2) = 2);
       c := SwapChar(c);
     end;
+
+    csUtf8: begin
+      Result := (Peek(u, 4) = 4);
+      UTF8toUCS2(u, WideChar($FFFF), c);
+    end
 
   else //Utf16Le
     Result := (Peek(c, 2) = 2);
@@ -894,6 +989,7 @@ end;
 procedure TCharWriter.WriteChar(const c: WideChar);
 var _c: AnsiChar;
   _c_be: WideChar;
+  u, sz: integer;
 begin
   case Charset of
     csAnsi: begin
@@ -909,6 +1005,11 @@ begin
       _c_be := SwapChar(c);
       Write(_c_be, 2);
     end;
+
+    csUtf8: begin
+      sz := UCS2toUTF8(c, u);
+      Write(u, sz);
+    end
   end;
 end;
 
@@ -929,16 +1030,31 @@ begin
       _c_be := SwapChars(c, len);
       Write(_c_be[1], len*SizeOf(WideChar));
     end;
+
+    csUtf8:
+      while len>0 do begin
+        WriteChar(c^);
+        Inc(c);
+        Dec(len);
+      end;
   end;
 end;
 
-procedure TCharWriter.WriteString(c: UniString);
+procedure TCharWriter.WriteString(const c: UnicodeString);
 begin
   WriteChars(@c[1], Length(c));
 end;
 
+procedure TCharWriter.WriteLine(const s: UnicodeString);
+const CRLF: UnicodeString = #$000D#$000A;
+begin
+  WriteString(s);
+  WriteString(CRLF);
+end;
+
 procedure TCharWriter.WriteBom;
 var Bom: WideChar;
+  Bom3: integer;
 begin
   case Charset of
    //Nothing to write
@@ -954,6 +1070,12 @@ begin
     begin
       Bom := BOM_UTF16BE;
       Write(Bom, SizeOf(Bom));
+    end;
+
+    csUtf8:
+    begin
+      Bom3 := BOM_UTF8;
+      Write(Bom3, 3);
     end;
   end;
 end;
@@ -977,7 +1099,7 @@ var c: AnsiChar;
 begin
   l_used := 0;
 
-  while (Read(c)=SizeOf(c))
+  while (Read(c, SizeOf(c))=SizeOf(c))
     and (c <> #13) do
   begin
    //Reallocate memory, if needed
@@ -1001,7 +1123,7 @@ begin
       exit;
     end;
 
-  if not (Read(c) = SizeOf(c))
+  if not (Read(c, SizeOf(c)) = SizeOf(c))
   or not (c = #10) then
     raise Exception.Create('Illegal linebreak detected at symbol ' + IntToStr(Position));
 
@@ -1021,7 +1143,7 @@ var c: WideChar;
 begin
   l_used := 0;
 
-  while (Read(c)=SizeOf(c))
+  while (Read(c, SizeOf(c))=SizeOf(c))
     and (c <> #10) do
   begin
    //Reallocate memory, if needed
@@ -1104,13 +1226,13 @@ end;
 //Пытается прочесть один байт, интерпретирует его как AnsiChar.
 function TStreamReader2.ReadAnsiChar(out c: AnsiChar): boolean;
 begin
-  Result := (Read(c)=SizeOf(AnsiChar));
+  Result := (Read(c, SizeOf(c))=SizeOf(AnsiChar));
 end;
 
 //Пытается прочесть два байта, интерпретирует их как WideChar.
 function TStreamReader2.ReadWideChar(out c: WideChar): boolean;
 begin
-  Result := (Read(c)=SizeOf(WideChar));
+  Result := (Read(c, SizeOf(c))=SizeOf(WideChar));
 end;
 
 const
@@ -1122,7 +1244,7 @@ const
 function TStreamReader2.ReadUtf8Char(out c: WideChar): boolean;
 var c1, c2, c3: byte;
 begin
-  Result := (Read(c1)=1);
+  Result := (Read(c1, 1)=1);
   if not Result then exit;
 
  //Один байт: 0xxxxxxx
@@ -1133,7 +1255,7 @@ begin
   end;
 
  //Два байта: 110xxxxxx 10yyyyyy
-  Result := (Read(c2)=1);
+  Result := (Read(c2, 1)=1);
   if not Result then exit;
 
  //У ведомых байт должно быть 10xxxxxx
@@ -1150,7 +1272,7 @@ begin
   end;
 
  //Три байта: 1110xxxx 10yyyyyy 10zzzzzz
-  Result := (Read(c3)=1);
+  Result := (Read(c3, 1)=1);
   if not Result then exit;
 
  //У ведомых байт должно быть 10xxxxxx
@@ -1167,7 +1289,7 @@ begin
   end;
 
  //Четыре байта: у нас не поддерживается. Но мы прочтём четвёртый.
-  Result := (Read(c1)=1); //уже неважно, куда
+  Result := (Read(c1, 1)=1); //уже неважно, куда
   if not Result then exit;
   c := REPL_CHAR;
 
