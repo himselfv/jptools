@@ -25,7 +25,8 @@ uses
   EdictWriter in 'EdictWriter.pas',
   WcUtils in 'WcUtils.pas',
   WcExceptions in 'WcExceptions.pas',
-  EdictConverter in 'EdictConverter.pas';
+  EdictConverter in 'EdictConverter.pas',
+  PerlRegExUtils in 'PerlRegExUtils.pas';
 
 {
 Заметки по реализации.

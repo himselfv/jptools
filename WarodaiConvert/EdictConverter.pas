@@ -2,7 +2,7 @@
 
 interface
 uses Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, EdictWriter, WcUtils,
-  PerlRegEx;
+  PerlRegEx, PerlRegExUtils;
 
 {
 Собираем несколько версий статьи, по числу разных шаблонов.
@@ -40,14 +40,8 @@ procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody; mg: PTemplateMgr; ex
 implementation
 uses SysUtils, UniStrUtils, WarodaiMarkers;
 
-const
-  pHiragana = '\x{3040}-\x{309F}';
-  pKatakana = '\x{30A0}-\x{30FF}';
-  pCJKUnifiedIdeographs = '\x{4E00}-\x{9FFF}';
-  pCJKUnifiedIdeographsExtA = '\x{3400}-\x{4DBF}';
-  pCJKUnifiedIdeographsExtB = '\x{20000}-\x{2A6DF}';
-  pCJKUnifiedIdeographsExtC = '\x{2A700}-\x{2B73F}';
-  pCJKSymbolsAndPunctuation = '\x{3000}-\x{303F}';
+var
+  preHref: TPerlRegEx;
 
 procedure TTemplateVersion.Reset;
 begin
@@ -131,9 +125,6 @@ begin
       end;
   end;
 end;
-
-
-
 
 
 
@@ -370,14 +361,6 @@ const
 var
   preEmptyParenth: TPerlRegEx;
 
-procedure RemEmptyParenth(var ln: string);
-begin
-  preEmptyParenth.Subject := UTF8String(ln);
-  preEmptyParenth.Replacement := '';
-  if preEmptyParenth.ReplaceAll then
-    ln := UnicodeString(preEmptyParenth.Subject); //after replacements
-end;
-
 
 procedure ParseLn(const ln: string; sn: PEdictSenseEntry);
 var tmp: string;
@@ -385,11 +368,11 @@ var tmp: string;
 begin
   tmp := ln;
   EatXrefs(tmp, sn);
-  RemEmptyParenth(tmp); //удаляем оставшиеся пустыми скобки
+  preEmptyParenth.DeleteAll(tmp); //удаляем оставшиеся пустыми скобки
   if EvalChars(tmp)<>EV_NORMAL then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after all extractions');
   for gloss in SplitGlosses(tmp) do
-    sn.AddGloss(gloss); //TODO: markers, xrefs, lsources
+    sn.AddGloss(gloss); //TODO: markers, lsources
 end;
 
 
@@ -438,16 +421,11 @@ end;
 
 
 
-initialization
-  preXref := TPerlRegEx.Create;
-  preXref.RegEx := pXref;
-  preXref.Compile;
-  preXref.Study;
 
-  preEmptyParenth := TPerlRegEx.Create;
-  preEmptyParenth.RegEx := pEmptyParenth;
-  preEmptyParenth.Compile;
-  preEmptyParenth.Study;
+initialization
+  preXref := Regex(pXref);
+  preEmptyParenth := Regex('pEmptyParenth');
+  preHref := Regex
 
 finalization
   FreeAndNil(preEmptyParenth);
