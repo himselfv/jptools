@@ -8,7 +8,7 @@
 }
 
 interface
-uses Warodai;
+uses Warodai, WcUtils;
 {$INCLUDE 'Warodai.inc'}
 
 { Возвращает номер символа подстановки в шаблоне или 0 }
@@ -31,18 +31,40 @@ function IsOpenTemplate(const ln: string): boolean;
  False => в строке нет шаблона }
 function ExtractTemplate(var ln: string; out t: string): boolean;
 
+{ Преобразует слово согласно шаблону. Подходит и для каны, и для кандзи.
+ Пустые шаблоны тоже поддерживаются. }
+function ApplyTemplate(const templ: string; const word: string): string;
+
 {
 Некоторые правила содержат несколько шаблонов сразу:
   ～たる, ～とした <i>см.</i> <a href="#1-046-1-45">ばくばく</a>.
+Предпочтительнее для разных (грам.) слов иметь разные статьи, поэтому мы считаем это
+за два раздельных шаблона.
 }
-
-function HasMultipleTemplates(const t: string): boolean;
 
 type
   TTemplateList = array of string;
 
-{ Разбивает список шаблонов на шаблоны }
 procedure SplitTemplate(const t: string; out t_p: TTemplateList);
+
+{
+Правила могут содержать опциональные блоки:
+  ～[の] абстрактный;
+Или альтернативные блоки:
+  ～とした(とし)
+Поэтому из одного шаблона мы генерируем список его фиксированных вариантов.
+Для шаблона будет создана отдельная статья, в которой будут указаны все
+получившиеся комбинации всех вариантов кандзи и каны статьи с вариантами шаблона.
+
+Можно было бы поступить как с запятыми, и сделать из опциональных блоков
+тоже отдельные шаблоны, но похоже, что обычно варианты в квадратных скобках
+ближе к одному шаблону, чем к разным.
+}
+type
+  TTemplateVariants = TList<string>;
+  PTemplateVariants = ^TTemplateVariants;
+
+procedure GenerateTemplateVariants(const templ: string; tvars: PTemplateVariants);
 
 {
 Некоторые шаблоны не нужно применять, поскольку они означают определённое
@@ -215,17 +237,12 @@ begin
  //Эти вещи пока не поддерживаем, так что лучше в корявом виде в словарь их не класть
   if pos('(',t)>0 then
     raise ETemplateParsingException.Create('Alternative template parts -- unsupported');
-  if pos('[',t)>0 then
-    raise ETemplateParsingException.Create('Optional template parts -- unsupported');
-  if pos(',',t)>0 then
-    raise ETemplateParsingException.Create('Multiple template variants -- unsupported');
+  if countc(t,'[')>1 then //поддерживаем макс. 1
+    raise ETemplateParsingException.Create('Multiple optional template parts -- unsupported');
+  if pos('…',t)>0 then
+    raise ETemplateParsingException.Create('Partial expression templates -- unsupported');
 
   Result := true;
-end;
-
-function HasMultipleTemplates(const t: string): boolean;
-begin
-  Result := pos(',',t)>0;
 end;
 
 procedure SplitTemplate(const t: string; out t_p: TTemplateList);
@@ -236,6 +253,32 @@ begin
   SetLength(t_p, Length(parts));
   for i := 0 to Length(parts) - 1 do
     t_p[i] := Trim(parts[i]);
+end;
+
+{ Из множественного шаблона типа "строка [опциональная часть]" делаем набор фиксированных.
+ Поддерживается только одна опциональная часть. }
+procedure GenerateTemplateVariants(const templ: string; tvars: PTemplateVariants);
+var po, pc: integer;
+begin
+  tvars^.Reset;
+  po := pos('[', templ);
+  if po<=0 then begin
+    tvars^.Add(templ);
+    exit;
+  end;
+  pc := pos(']', templ);
+  Assert(pc>po);
+
+  tvars^.Add(copy(templ, 1, po-1)+copy(templ,pc+1,Length(templ)-pc));
+  tvars^.Add(copy(templ, 1, po-1)+copy(templ,po+1,pc-po-1)+copy(templ,pc+1,Length(templ)-pc))
+end;
+
+function ApplyTemplate(const templ: string; const word: string): string;
+begin
+  if templ='' then
+    Result := word
+  else
+    Result := repl(templ, '～', word);
 end;
 
 

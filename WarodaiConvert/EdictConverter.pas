@@ -1,7 +1,7 @@
 ﻿unit EdictConverter;
 
 interface
-uses Warodai, WarodaiHeader, WarodaiBody, EdictWriter, WcUtils;
+uses Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, EdictWriter, WcUtils;
 
 {
 Собираем несколько версий статьи, по числу разных шаблонов.
@@ -17,6 +17,7 @@ uses Warodai, WarodaiHeader, WarodaiBody, EdictWriter, WcUtils;
 type
   TTemplateVersion = record
     templ: string;
+    tvars: TTemplateVariants; //template variants!
     art: TEdictArticle;
     procedure Reset;
   end;
@@ -46,7 +47,7 @@ procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody; mg: PTemplateMgr; ex
 }
 
 implementation
-uses SysUtils, UniStrUtils, WarodaiMarkers, WarodaiTemplates;
+uses SysUtils, UniStrUtils, WarodaiMarkers;
 
 procedure TTemplateVersion.Reset;
 begin
@@ -134,6 +135,8 @@ end;
 
 
 
+
+
 var
   AllKanji: TList<string>;
   AllKanjiUsed: TWordFlagSet;
@@ -142,9 +145,13 @@ procedure ProcessBlock(const body_common, group_common: string; bl: PEntryBlock;
   mg: PTemplateMgr; examples: PExampleList); forward;
 
 procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody; mg: PTemplateMgr; examples: PExampleList);
-var i, j, v: integer;
+var i, j, v, ti: integer;
   idx: integer;
+  ver: PTemplateVersion;
   art: PEdictArticle;
+  pkj: PEdictKanjiEntry;
+  pkn: PEdictKanaEntry;
+
 begin
   mg.Reset;
 
@@ -153,38 +160,40 @@ begin
     for j := 0 to body.groups[i].block_cnt - 1 do
       ProcessBlock(body.common, body.groups[i].common, @body.groups[i].blocks[j], mg, examples);
 
+ //Генерируем варианты шаблонов -- раскрываем опциональные и альтернативные варианты
+  for v := 0 to mg.version_cnt - 1 do
+    GenerateTemplateVariants(mg.versions[v].templ, @mg.versions[v].tvars);
+
  //Пишем хедеры
   AllKanji := GetUniqueKanji(hdr, {KanaIfNone=}false);
   AllKanjiUsed := GetAllKanjiUsed(hdr,AllKanji);
 
   for v := 0 to mg.version_cnt - 1 do begin
-    art := @mg.versions[v].art;
+    ver := @mg.versions[v];
+    art := @ver.art;
     art.ref := hdr.s_ref+'-'+IntToStr(v);
 
-    art.kanji_used := AllKanji.Count;
-    for j := 0 to art.kanji_used - 1 do begin
-      art.kanji[j].Reset;
-      art.kanji[j].k := AllKanji.items[j];
-      if mg.versions[v].templ<>'' then
-        art.kanji[j].k := repl(mg.versions[v].templ, '～', art.kanji[j].k);
-     //TODO: markers, POP
-    end;
+    for i := 0 to AllKanji.Count - 1 do
+      for ti := 0 to ver.tvars.Count-1 do begin
+        pkj := art.AddKanji;
+        pkj.k := ApplyTemplate(ver.tvars.items[ti], AllKanji.items[i]);
+       //TODO: markers, POP
+      end;
 
-    art.kana_used := hdr.words_used;
-    for i := 0 to hdr.words_used - 1 do begin
-      art.kana[i].Reset;
-      art.kana[i].k := hdr.words[i].s_reading;
-      if mg.versions[v].templ<>'' then
-        art.kana[i].k := repl(mg.versions[v].templ, '～', art.kana[i].k);
-      art.kana[i].AllKanji := AllKanjiUsed[i];
-      if not art.kana[i].AllKanji then
-        for j := 0 to hdr.words[i].s_kanji_used - 1 do begin
-          idx := AllKanji.Find(hdr.words[i].s_kanji[j]);
-          Assert(idx>=0, 'Kanji not found in AllKanji');
-          art.kana[i].AddKanjiRef(idx);
-        end;
-     //TODO: markers, POP
-    end;
+    for i := 0 to hdr.words_used - 1 do
+      for ti := 0 to ver.tvars.Count-1 do begin
+        pkn := art.AddKana;
+        pkn.k := ApplyTemplate(ver.tvars.items[ti], hdr.words[i].s_reading);
+        pkn.AllKanji := AllKanjiUsed[i];
+
+        if not art.kana[i].AllKanji then
+          for j := 0 to hdr.words[i].s_kanji_used - 1 do begin
+            idx := AllKanji.Find(hdr.words[i].s_kanji[j]);
+            Assert(idx>=0, 'Kanji not found in AllKanji');
+            art.kana[i].AddKanjiRef(idx);
+          end;
+       //TODO: markers, POP
+      end;
   end;
 
 end;
@@ -259,7 +268,7 @@ end;
 procedure ProcessBlock(const body_common, group_common: string; bl: PEntryBlock;
   mg: PTemplateMgr; examples: PExampleList);
 var j, k: integer;
-  tmp: string;
+  tmp, gloss: string;
   templ: string;
   t_p: TTemplateList;
   sn: PEdictSenseEntry;
@@ -280,8 +289,8 @@ begin
         if t_p[k]='' then
           raise EParsingException.Create('Invalid empty template part.');
         sn := mg.Get(t_p[k])^.AddSense;
-        for tmp in SplitGlosses(tmp) do
-          sn.AddGloss(tmp); //TODO: markers, xrefs, lsources
+        for gloss in SplitGlosses(tmp) do
+          sn.AddGloss(gloss); //TODO: markers, xrefs, lsources
       end;
     end else
     if ExtractExample(tmp, templ) then begin
@@ -292,83 +301,13 @@ begin
         raise ESeveralProperTranslations.Create('Block has several proper translations');
         //мы могли бы просто добавить их, но это странная ситуация, так что не будем
       sn := mg.Get('').AddSense;
-      for tmp in SplitGlosses(tmp) do
-        sn.AddGloss(tmp); //TODO: markers, xrefs, lsources
+      for gloss in SplitGlosses(tmp) do
+        sn.AddGloss(gloss); //TODO: markers, xrefs, lsources
       Inc(bl_cnt);
     end;
   end;
 
 end;
-
-{
-
-procedure TEdict1Writer.PrintEdictGroup(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
-var i, j, k: integer;
-  bl: PEntryBlock;
-  bl_cnt: integer;
-  s_base: PTemplateVersion;
-  templ: string;
-  tmp: string;
-  t_p: TTemplateList;
-begin
-  verMgr.Reset;
-  s_base := verMgr.Get('');
-
-  for i := 0 to group.block_cnt - 1 do begin
-    if group.blocks[i].line_cnt<0 then
-      raise EParsingException.Create('Block '+IntToStr(i)+' has no lines');
-
-    bl_cnt := 0; //block proper translation count
-    bl := @group.blocks[i];
-
-
- //Печатаем все версии
-  PrintVersions(hdr, common, group);
-end;
-
-procedure TEdict1Writer.PrintVersions(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
-var i: integer;
-  s_pre, s_com, s_post: string;
-  tmp_hdr: TLineHeader;
-  pv: PTemplateVersion;
-begin
-  s_com := '';
-  if common<>'' then
-    s_com := s_com + common + ' ';
-  if group.common<>'' then
-    s_com := s_com + group.common + ' ';
-
-  for i := 0 to verMgr.version_cnt - 1 do  begin
-    pv := @verMgr.versions[i];
-    if pv.templ<>'' then begin
-      tmp_hdr.kanji := repl(pv.templ, '～', hdr.kanji);
-      tmp_hdr.kana := repl(pv.templ, '～', hdr.kana);
-      tmp_hdr.mark := hdr.mark;
-    end else
-      tmp_hdr := hdr;
-    FormatLineHeader(tmp_hdr, s_pre, s_post);
-    outp.WriteLine(s_pre + s_com + pv.art + s_post);
-    Inc(FAddedRecords);
-  end;
-end;
-
-procedure TEdict1Writer.FormatLineHeader(hdr: TLineHeader; out s_pre, s_post: string);
-begin
-  if hdr.kanji <> '' then
-    s_pre := hdr.kanji + ' [' + hdr.kana + '] /'
-  else
-    s_pre := hdr.kana + ' /';
-  if hdr.mark.markers<>'' then
-    s_pre := s_pre + '(' + hdr.mark.markers + ') '
-  else
-    s_pre := s_pre;
-  if hdr.mark.pop then
-    s_post := s_post + '(P)/'
-  else
-    s_post := '';
-end;
-}
-
 
 
 

@@ -25,6 +25,7 @@ type
 
 function repl(const s:string;const sub,repl:string):string;
 function join(const a:array of string; const sep: string): string;
+function countc(const s:string;const c:char): integer;
 
 implementation
 
@@ -103,6 +104,15 @@ begin
     Result := a[0];
   for i := 1 to Length(a) - 1 do
     Result := Result + sep + a[i];
+end;
+
+//Число вхождений символа в строку
+function countc(const s:string;const c:char): integer;
+var i: integer;
+begin
+  Result := 0;
+  for i := 1 to Length(s) do
+    if s[i]=c then Inc(Result);
 end;
 
 
