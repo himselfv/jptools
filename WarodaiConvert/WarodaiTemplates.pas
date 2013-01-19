@@ -231,8 +231,13 @@ begin
  //А в i_end пробелы и так промотаны
   delete(ln, i_start, i_end-i_start+1);
 
+ {
+  Не делаем этого, т.к. кандзи и кана могут остаться в строке легальным образом -- например, в форме "см. также".
+  Вместо этого мы проверим на кандзи и кану перед самым добавлением.
+
   if EvalChars(ln)<>EV_NORMAL then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after doing ExtractTemplate');
+ }
 
  //Эти вещи пока не поддерживаем, так что лучше в корявом виде в словарь их не класть
   if pos('(',t)>0 then
@@ -319,49 +324,6 @@ begin
     or IsSupplementalExampleChar(ch);
 end;
 
-{
-function ExtractExample(var ln: string; out expr: string): boolean;
-var i: integer;
-  ex_found: boolean;
-begin
-  i := 1;
-  ex_found := false;
-  while IsExampleChar(ln[i]) or (ln[i]=',') or (ln[i]=' ') do begin
-    if IsTrueExampleChar(ln[i]) then
-      ex_found := true;
-    Inc(i);
-  end;
-  Dec(i);
-
-  if not ex_found then begin //собственно, каны или кандзи-то в цепочке не было
-    Result := false;
-    exit;
-  end;
-
-  while (i>0) and (ln[i]=' ') do
-    Dec(i);
-  if i = 0 then begin
-    Result := false;
-    exit;
-  end;
-
-  expr := Trim(copy(ln, 1, i));
-
-
-
-  Inc(i);
-  while ln[i]=' ' do
-    Inc(i);
-  Dec(i);
-
-  delete(ln, 1, i);
-
-  if EvalChars(ln)<>EV_NORMAL then
-    raise EKanjiKanaLeft.Create('Kanji or kana left in string after doing ExtractExample');
-  Result := true;
-end;
-}
-
 { Вынимает заголовок примера из строки -- ср. ExtractTemplate! }
 function ExtractExample(var ln: string; out expr: string): boolean;
 var i_start, i_end, i_tmp: integer;
@@ -436,8 +398,12 @@ begin
  //А в i_end пробелы и так промотаны
   delete(ln, i_start, i_end-i_start+1);
 
+ {
+  Не делаем этого -- см. комментарий в ExtractTemplate.
+
   if EvalChars(ln)<>EV_NORMAL then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after doing ExtractExample');
+ }
 
  //Примеры на наличие (скобок), [опциональных частей] и запятых не проверяем.
  //Запятые в примерах очень даже допустимы, а скобки и прочее - всё равно примеры

@@ -3,6 +3,7 @@
 {
 Зависимости:
   libiconv2.dll
+  TPerlRegEx
 }
 
 //Look into english EDICT for markers to known words. Slow.
@@ -206,6 +207,7 @@ var ln: string;
  {$IFDEF ENMARKERS}
   mark: TEntryMarkers;
  {$ENDIF}
+  body_read: boolean;
 begin
   while inp.ReadLine(ln) and (ln='') do begin end;
   if ln='' then begin //couldn't read another line then
@@ -213,31 +215,15 @@ begin
     exit;
   end;
 
+  body_read := false;
+
   Inc(stats.artcnt);
   try
+    body_read := false;
     DecodeEntryHeader(ln, @hdr);
     ReadBody(inp, @body);
-  except
-    on E: ESilentParsingException do begin
-      ExceptionStats.RegisterException(E);
-      inp.SkipArticle;
-      Inc(stats.badcnt);
-      Result := true;
-      exit;
-    end;
-    on E: EParsingException do begin
-      ExceptionStats.RegisterException(E);
-      writeln('Line '+IntToStr(WarodaiStats.LinesRead)
-        + ' article '+IntToStr(stats.artcnt)+': '
-        +E.Message);
-      inp.SkipArticle;
-      Inc(stats.badcnt);
-      Result := true;
-      exit;
-    end;
-  end;
+    body_read := true;
 
-  try
    //Clean up a bit
     for i := 0 to hdr.words_used - 1 do begin
       DropVariantIndicator(hdr.words[i].s_reading);
@@ -269,18 +255,22 @@ begin
     end;
 
   except
-    on E: ESilentParsingException do begin
-      ExceptionStats.RegisterException(E);
-      Inc(stats.badcnt);
-      Result := true;
-      exit;
-    end;
     on E: EParsingException do begin
       ExceptionStats.RegisterException(E);
-      writeln('Line '+IntToStr(WarodaiStats.LinesRead)
-        + ' article '+IntToStr(stats.artcnt)+': '
-        +E.Message);
+      if not (E is ESilentParsingException) then
+        writeln('Line '+IntToStr(WarodaiStats.LinesRead)
+          + ' article '+IntToStr(stats.artcnt)+': '
+          +E.Message);
+      if com<>nil then begin
+        com.WriteLine('Line '+IntToStr(WarodaiStats.LinesRead)
+            + ' article '+IntToStr(stats.artcnt)+': '
+            +E.Message);
+        com.WriteLine(ln);
+        com.WriteLine('');
+      end;
       Inc(stats.badcnt);
+      if not body_read then
+        inp.SkipArticle;
       Result := true;
       exit;
     end;

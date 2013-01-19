@@ -51,6 +51,9 @@ type
      либо такие образуются в результате его разбиения на глоссы.
      Без разбиения на глоссы перевод добавить нельзя. }
 
+  EIllegalXrefChar = class(ESilentParsingException);
+   { Недопустимый или неподдерживаемый символ в ссылке на запись }
+
   ETemplateParsingException = class(ESilentParsingException); { Шаблон или пример не удалось разобрать или какие-то части его не поддерживаются. }
   EOpenTemplate = class(ESilentParsingException); { В статье встречается открытый шаблон (см. шаблоны) - не поддерживаем }
   EInsideTemplate = class(ESilentParsingException); { Шаблоны внутри строки (не в начале) }

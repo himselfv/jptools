@@ -1,7 +1,8 @@
 ﻿unit EdictConverter;
 
 interface
-uses Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, EdictWriter, WcUtils;
+uses Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, EdictWriter, WcUtils,
+  PerlRegEx;
 
 {
 Собираем несколько версий статьи, по числу разных шаблонов.
@@ -36,18 +37,17 @@ type
 //Пока что возвращаем один article -- позже нужно заполнять TemplateMgr
 procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody; mg: PTemplateMgr; examples: PExampleList);
 
-{
-Ссылки:
-  см.
-  связ.
-  связ.:
-
-Форма ссылки:
-  あわ【泡】 (в едикте через точку)
-}
-
 implementation
 uses SysUtils, UniStrUtils, WarodaiMarkers;
+
+const
+  pHiragana = '\x{3040}-\x{309F}';
+  pKatakana = '\x{30A0}-\x{30FF}';
+  pCJKUnifiedIdeographs = '\x{4E00}-\x{9FFF}';
+  pCJKUnifiedIdeographsExtA = '\x{3400}-\x{4DBF}';
+  pCJKUnifiedIdeographsExtB = '\x{20000}-\x{2A6DF}';
+  pCJKUnifiedIdeographsExtC = '\x{2A700}-\x{2B73F}';
+  pCJKSymbolsAndPunctuation = '\x{3000}-\x{303F}';
 
 procedure TTemplateVersion.Reset;
 begin
@@ -251,7 +251,6 @@ begin
     Result[Length(Result)-1] := Trim(StrSub(ps,pc));
   end;
 
-
   if b_stack<>0 then
     raise EBracketsMismatch.Create('Brackets mismatch');
 
@@ -265,10 +264,139 @@ begin
 end;
 
 
+{
+Ссылки:
+  см.
+  связ.
+  связ.:
+  тж.
+  ср.
+
+Реже:
+  производное от, редко, обычно, сокр.
+  см.</i> <a href="#1-024-1-49">あおこ</a> <i>и</i> <a href="#1-417-1-45">きなこ</a>
+
+Форма ссылки:
+  あわ【泡】 (в едикте через точку)
+  ぎんこう(眼の銀行)
+}
+const
+  pLatinNumeral='IVX'; //используются для ссылок на подзначения
+  pSomeCJKPunctuation='\x{3000}-\x{3009}\x{3012}-\x{303F}'; //без 【】
+  pCJKRefChar = pCJKUnifiedIdeographs + pCJKUnifiedIdeographsExtA
+    + pCJKUnifiedIdeographsExtB + pCJKUnifiedIdeographsExtC
+    + pHiragana + pKatakana + pSomeCJKPunctuation
+    + '\/…';
+  pCJKRefStr='['+pCJKRefChar+']+(?:['+pLatinNumeral+']+)?'; //слово и, опционально, латинский номер его вариации (см. DropVariantIndicator)
+
+  pRefBase=pCJKRefStr;
+  pRefWri1='【'+pCJKRefStr+'】'; //расшифровка в формате あわ【泡】
+  pRefWri2='\('+pCJKRefStr+'\)'; //расшифровка в формате あわ(泡)
+
+ //одна ссылка в любом формате
+  pSingleRef='('+pRefBase+')'
+    +'('+pRefWri1+'|'+pRefWri2+'|)' //любое из пояснений, или ничего -- чтобы число скобок не менялось
+    +'(?:[0-9]{1,3})?' //опционально 1-2о цифры без пробела -- ссылка на подзначение, другой формат
+    ;
+
+  pCommonRefNames='см\.|связ\.\:|связ\.|тж\.|ср\.|ант\.';
+  pRareRefNames='производное от|редко|чаще|обычно|сокр.|неправ.|уст.|тж. уст.|правильнее';
+
+ //ссылка с названием и пробелами вокруг
+  pXref=
+      '\s*'
+    +'('+pCommonRefNames+'|'+pRareRefNames+')\s'
+    +pSingleRef+'(?:\,\s'+pSingleRef+')*' //любое число ссылок больше одной, через запятую
+    +'\s*'; //заканчивается чем-нибудь
+
+var
+  preXref: TPerlRegEx;
+
+{ Находит в строке все элементы ссылочного типа и регистрирует их в записи Sense }
+procedure EatXrefs(var ln: string; sn: PEdictSenseEntry);
+var xr0, xr1, xr2: UnicodeString;
+  i: integer;
+begin
+  preXref.Subject := UTF8String(ln);
+  if not preXref.Match then exit;
+  preXref.Replacement := '';
+
+  repeat
+    xr0 := UnicodeString(preXref.Groups[1]); //тип ссылки
+
+   //Может быть несколько: "см. ОДНО, ДРУГОЕ"
+    for i := 0 to (preXref.GroupCount-1) div 2 - 1 do begin
+      xr1 := UnicodeString(preXref.Groups[2+i*2]);
+      xr2 := UnicodeString(preXref.Groups[2+i*2+1]);
+      DropVariantIndicator(xr1);
+      DropVariantIndicator(xr2);
+
+      if xr2<>'' then
+        xr1 := xr1+'・'+xr2;
+
+     //Всё это ненормально
+      if pos('…', xr1)>0 then
+        raise EIllegalXrefChar.Create('... in xref value');
+      if pos('[', xr1)>0 then
+        raise EIllegalXrefChar.Create('[ in xref value');
+      if pos('(', xr1)>0 then
+        raise EIllegalXrefChar.Create('( in xref value');
+      if pos('/', xr1)>0 then //а вот это нормально, но что с ним делать непонятно
+        raise EIllegalXrefChar.Create('/ in xref value');
+
+      if xr0='ант.' then
+        sn.AddAnt(xr1)
+      else
+      if (xr0='см.') or (xr0='ср.') or (xr0='тж.') or (xr0='связ.') or (xr0='связ.:') then
+       //эти xref-ы не требуют пояснений
+        sn.AddXref('', xr1)
+      else
+        sn.AddXref(xr0, xr1);
+    end;
+
+    preXref.Replace;
+  until not preXref.MatchAgain;
+
+  ln := UnicodeString(preXref.Subject); //after replacements
+end;
+
+
+{
+Пустые скобки после удаления всяких флагов.
+}
+const
+  pEmptyParenth= '\s*\(\s*\)\s*';
+
+var
+  preEmptyParenth: TPerlRegEx;
+
+procedure RemEmptyParenth(var ln: string);
+begin
+  preEmptyParenth.Subject := UTF8String(ln);
+  preEmptyParenth.Replacement := '';
+  if preEmptyParenth.ReplaceAll then
+    ln := UnicodeString(preEmptyParenth.Subject); //after replacements
+end;
+
+
+procedure ParseLn(const ln: string; sn: PEdictSenseEntry);
+var tmp: string;
+  gloss: string;
+begin
+  tmp := ln;
+  EatXrefs(tmp, sn);
+  RemEmptyParenth(tmp); //удаляем оставшиеся пустыми скобки
+  if EvalChars(tmp)<>EV_NORMAL then
+    raise EKanjiKanaLeft.Create('Kanji or kana left in string after all extractions');
+  for gloss in SplitGlosses(tmp) do
+    sn.AddGloss(gloss); //TODO: markers, xrefs, lsources
+end;
+
+
 procedure ProcessBlock(const body_common, group_common: string; bl: PEntryBlock;
   mg: PTemplateMgr; examples: PExampleList);
 var j, k: integer;
-  tmp, gloss: string;
+  tmp: string;
   templ: string;
   t_p: TTemplateList;
   sn: PEdictSenseEntry;
@@ -289,8 +417,7 @@ begin
         if t_p[k]='' then
           raise EParsingException.Create('Invalid empty template part.');
         sn := mg.Get(t_p[k])^.AddSense;
-        for gloss in SplitGlosses(tmp) do
-          sn.AddGloss(gloss); //TODO: markers, xrefs, lsources
+        ParseLn(tmp, sn);
       end;
     end else
     if ExtractExample(tmp, templ) then begin
@@ -301,8 +428,7 @@ begin
         raise ESeveralProperTranslations.Create('Block has several proper translations');
         //мы могли бы просто добавить их, но это странная ситуация, так что не будем
       sn := mg.Get('').AddSense;
-      for gloss in SplitGlosses(tmp) do
-        sn.AddGloss(gloss); //TODO: markers, xrefs, lsources
+      ParseLn(tmp, sn);
       Inc(bl_cnt);
     end;
   end;
@@ -310,5 +436,21 @@ begin
 end;
 
 
+
+
+initialization
+  preXref := TPerlRegEx.Create;
+  preXref.RegEx := pXref;
+  preXref.Compile;
+  preXref.Study;
+
+  preEmptyParenth := TPerlRegEx.Create;
+  preEmptyParenth.RegEx := pEmptyParenth;
+  preEmptyParenth.Compile;
+  preEmptyParenth.Study;
+
+finalization
+  FreeAndNil(preEmptyParenth);
+  FreeAndNil(preXref);
 
 end.

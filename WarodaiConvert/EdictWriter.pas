@@ -25,7 +25,7 @@ const
   MaxKanji = 8;
   MaxKana = 8;
   MaxGlosses = 48;
-  MaxXrefs = 2;
+  MaxXrefs = 4; //бывало и 4
   MaxAnts = 1;
   MaxLsources = 1;
   MaxSenses = 32;
@@ -71,6 +71,13 @@ type
   end;
   PEdictLSource = ^TEdictLSource;
 
+  TEdictXref = record
+    tp: string;
+    val: string;
+    procedure Reset;
+  end;
+  PEdictXref = ^TEdictXref;
+
  {
   Также интересны:
     gloss g_gend -- в файле нет -- поддерживается?
@@ -79,7 +86,7 @@ type
   TEdictSenseEntry = record
     glosses: array[0..MaxGlosses-1] of string;
     glosses_used: integer;
-    xrefs: array[0..MaxXrefs-1] of string; //ссылка на связанную запись <xref>[кана или кандзи]</xref> -- EDICT2: (See [кана или кандзи])
+    xrefs: array[0..MaxXrefs-1] of TEdictXref; //ссылка на связанную запись <xref>[кана или кандзи]</xref> -- EDICT2: (See [кана или кандзи])
     xrefs_used: integer;
     ants: array[0..MaxAnts-1] of string; //ссылки на антонимы <ant>[кана или кандзи]</ant> -- EDICT2: (ant: [кана или кандзи])
     ants_used: integer;
@@ -93,7 +100,7 @@ type
     t_misc: string; //прочее -- EDICT2: (uk)
     procedure Reset;
     procedure AddGloss(const val: string);
-    procedure AddXref(const val: string);
+    function AddXref(const tp, val: string): PEdictXref;
     procedure AddAnt(const val: string);
     function AddLsource(const lang, expr: string): PEdictLSource;
     procedure AddTPos(const tag: string);
@@ -215,6 +222,12 @@ begin
   expr:='';
 end;
 
+procedure TEdictXref.Reset;
+begin
+  tp := '';
+  val := '';
+end;
+
 procedure TEdictSenseEntry.Reset;
 begin
   glosses_used := 0;
@@ -235,11 +248,14 @@ begin
   Inc(glosses_used);
 end;
 
-procedure TEdictSenseEntry.AddXref(const val: string);
+function TEdictSenseEntry.AddXref(const tp, val: string): PEdictXref;
 begin
   if xrefs_used >= Length(xrefs) then
     raise EParsingException.Create('EdictSenseEntry: Cannot add one more xref');
-  xrefs[xrefs_used] := val;
+  Result := @xrefs[xrefs_used];
+  Result^.Reset;
+  Result^.tp := tp;
+  Result^.val := val;;
   Inc(xrefs_used);
 end;
 
@@ -414,7 +430,7 @@ begin
      //Ref
       xr_ref := '';
       for j := 0 to se.xrefs_used - 1 do
-        xr_ref := xr_ref + se.xrefs[j] + ',';
+        xr_ref := xr_ref + se.xrefs[j].val + ',';
       if xr_ref<>'' then
         se_ln := se_ln + '(See '+copy(xr_ref,1,Length(xr_ref)-1)+') ';
      //ant
@@ -422,7 +438,7 @@ begin
       for j := 0 to se.ants_used - 1 do
         xr_ant := xr_ant + se.ants[j] + ',';
       if xr_ant<>'' then
-        se_ln := se_ln + '(ant: '+se.ants[j]+') ';
+        se_ln := se_ln + '(ant: '+copy(xr_ant,1,Length(xr_ant)-1)+') ';
     end;
 
    //языки-источники включаем даже в EDICT1, хотя там expr должно быть транслитом!
@@ -698,7 +714,10 @@ begin
     outp.WriteLine('<sense>');
     se := @art.senses[i];
     for j := 0 to se.xrefs_used - 1 do
-      outp.WriteLine('<xref>'+se.xrefs[j]+'</xref>');
+      if se.xrefs[j].tp='' then
+        outp.WriteLine('<xref>'+se.xrefs[j].val+'</xref>')
+      else
+        outp.WriteLine('<xref type="'+se.xrefs[j].tp+'">'+se.xrefs[j].val+'</xref>');
     for j := 0 to se.ants_used - 1 do
       outp.WriteLine('<ant>'+se.ants[j]+'</ant>');
     for j := 0 to se.lsources_used - 1 do
