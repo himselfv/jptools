@@ -29,8 +29,11 @@ type
   end;
   PTemplateMgr = ^TTemplateMgr;
 
+  TExampleList = TList<string>;
+  PExampleList = ^TExampleList;
+
 //Пока что возвращаем один article -- позже нужно заполнять TemplateMgr
-procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody; mg: PTemplateMgr);
+procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody; mg: PTemplateMgr; examples: PExampleList);
 
 {
 Ссылки:
@@ -135,46 +138,55 @@ var
   AllKanji: TList<string>;
   AllKanjiUsed: TWordFlagSet;
 
-procedure ProcessBlock(const body_common, group_common: string; bl: PEntryBlock; mg: PTemplateMgr); forward;
+procedure ProcessBlock(const body_common, group_common: string; bl: PEntryBlock;
+  mg: PTemplateMgr; examples: PExampleList); forward;
 
-procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody; mg: PTemplateMgr);
-var i, j: integer;
+procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody; mg: PTemplateMgr; examples: PExampleList);
+var i, j, v: integer;
   idx: integer;
   art: PEdictArticle;
 begin
   mg.Reset;
-  art := mg.Get(''); //basic version
-  art.ref := hdr.s_ref;
 
+ //Собираем значения
+  for i := 0 to body.group_cnt - 1 do
+    for j := 0 to body.groups[i].block_cnt - 1 do
+      ProcessBlock(body.common, body.groups[i].common, @body.groups[i].blocks[j], mg, examples);
+
+ //Пишем хедеры
   AllKanji := GetUniqueKanji(hdr, {KanaIfNone=}false);
   AllKanjiUsed := GetAllKanjiUsed(hdr,AllKanji);
 
-  art.kanji_used := AllKanji.Count;
-  for i := 0 to art.kanji_used - 1 do begin
-    art.kanji[i].Reset;
-    art.kanji[i].k := AllKanji.items[i];
-   //TODO: markers, POP
+  for v := 0 to mg.version_cnt - 1 do begin
+    art := @mg.versions[v].art;
+    art.ref := hdr.s_ref+'-'+IntToStr(v);
+
+    art.kanji_used := AllKanji.Count;
+    for j := 0 to art.kanji_used - 1 do begin
+      art.kanji[j].Reset;
+      art.kanji[j].k := AllKanji.items[j];
+      if mg.versions[v].templ<>'' then
+        art.kanji[j].k := repl(mg.versions[v].templ, '～', art.kanji[j].k);
+     //TODO: markers, POP
+    end;
+
+    art.kana_used := hdr.words_used;
+    for i := 0 to hdr.words_used - 1 do begin
+      art.kana[i].Reset;
+      art.kana[i].k := hdr.words[i].s_reading;
+      if mg.versions[v].templ<>'' then
+        art.kana[i].k := repl(mg.versions[v].templ, '～', art.kana[i].k);
+      art.kana[i].AllKanji := AllKanjiUsed[i];
+      if not art.kana[i].AllKanji then
+        for j := 0 to hdr.words[i].s_kanji_used - 1 do begin
+          idx := AllKanji.Find(hdr.words[i].s_kanji[j]);
+          Assert(idx>=0, 'Kanji not found in AllKanji');
+          art.kana[i].AddKanjiRef(idx);
+        end;
+     //TODO: markers, POP
+    end;
   end;
 
-  art.kana_used := hdr.words_used;
-  for i := 0 to hdr.words_used - 1 do begin
-    art.kana[i].Reset;
-    art.kana[i].k := hdr.words[i].s_reading;
-    art.kana[i].AllKanji := AllKanjiUsed[i];
-    if not art.kana[i].AllKanji then
-      for j := 0 to hdr.words[i].s_kanji_used - 1 do begin
-        idx := AllKanji.Find(hdr.words[i].s_kanji[j]);
-        Assert(idx>=0, 'Kanji not found in AllKanji');
-        art.kana[i].AddKanjiRef(idx);
-      end;
-   //TODO: markers, POP
-  end;
-
- //TODO: Build senses.
- //TODO: Разделять статью на несколько статей по шаблонам, и возвращать в каком-то виде все эти статьи.
-  for i := 0 to body.group_cnt - 1 do
-    for j := 0 to body.groups[i].block_cnt - 1 do
-      ProcessBlock(body.common, body.groups[i].common, @body.groups[i].blocks[j], mg);
 end;
 
 procedure VerifyBrackets(const ln: string; const br_op, br_cl: WideChar);
@@ -244,19 +256,17 @@ begin
 end;
 
 
-procedure ProcessBlock(const body_common, group_common: string; bl: PEntryBlock; mg: PTemplateMgr);
+procedure ProcessBlock(const body_common, group_common: string; bl: PEntryBlock;
+  mg: PTemplateMgr; examples: PExampleList);
 var j, k: integer;
   tmp: string;
   templ: string;
   t_p: TTemplateList;
-  s_base: PEdictArticle;
   sn: PEdictSenseEntry;
   bl_cnt: integer;
 begin
   if bl.line_cnt<0 then
     raise EParsingException.Create('Block has no lines');
-
-  s_base := mg.Get('');
   bl_cnt := 0;
 
   for j := 0 to bl.line_cnt - 1 do begin
@@ -275,12 +285,13 @@ begin
       end;
     end else
     if ExtractExample(tmp, templ) then begin
-      continue //потом будем разбирать ещё и примеры, и строки из каны+этого слова
+      if examples<>nil then
+        examples^.Add(templ + ' === '+ tmp);
     end else begin
       if bl_cnt > 0 then
         raise ESeveralProperTranslations.Create('Block has several proper translations');
         //мы могли бы просто добавить их, но это странная ситуация, так что не будем
-      sn := s_base.AddSense;
+      sn := mg.Get('').AddSense;
       for tmp in SplitGlosses(tmp) do
         sn.AddGloss(tmp); //TODO: markers, xrefs, lsources
       Inc(bl_cnt);

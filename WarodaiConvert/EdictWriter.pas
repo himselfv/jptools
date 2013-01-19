@@ -6,10 +6,20 @@
 однако младшие форматы их немного упрощают.
 }
 
-//TODO: Iconv.dll - ссылки и т.п. перевести в транслит (см. EdictBuildArticleBody)
+//{$DEFINE ICONV_EDICT1}
+{ EDICT2/JMDict поддерживает любые юникод-символы в теле статьи.
+ Однако EDICT1 официально позволяет только US-ASCII (а мы расширяем это до CP1251).
+ По умолчанию мы плюём на это требование и выводим в EDICT1 идентичные данные,
+ но ICONV_EDICT1 заставляет пробовать их преобразовать, а также проверять,
+ что в статье нет символов, не умещающихся в этой кодировке.
+
+ На практике это страшно неудобно, т.к. iconv не умеет ни нормально транслитеровать
+ большинство не умеющающихся символов, ни отбрасывать символы ударения в русском,
+ и поэтому очень много статей оказываются выброшены. }
 
 interface
-uses StreamUtils, Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, WakanDic;
+uses StreamUtils, Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, WakanDic,
+  iconv;
 
 const
   MaxKanji = 8;
@@ -130,7 +140,7 @@ type
   end;
 
 function GetPopStats(art: PEdictArticle): TPopStats;
-function EdictBuildArticleBody(art: PEdictArticle; Edict1: boolean): string;
+function EdictBuildArticleBody(wr: TArticleWriter; art: PEdictArticle): string;
 
 type
   TLineHeader = record
@@ -142,8 +152,13 @@ type
 
   TEdict1Writer = class(TArticleWriter)
   protected
+   {$IFDEF ICONV_EDICT1}
+    conv: iconv_t;
+   {$ENDIF}
     procedure Print2(art: PEdictArticle; const kanji, kana: integer; const body: string);
   public
+    constructor Create(const filename: string);
+    destructor Destroy; override;
     procedure Print(art: PEdictArticle); override;
   end;
 
@@ -366,13 +381,16 @@ begin
       Result.AllKanaPop := false;
 end;
 
-//Составляет тело статьи. Если установлено Edict1, то не включает ссылки и т.п.
-function EdictBuildArticleBody(art: PEdictArticle; Edict1: boolean): string;
+//Составляет тело статьи.
+function EdictBuildArticleBody(wr: TArticleWriter; art: PEdictArticle): string;
 var i, j: integer;
   se: PEdictSenseEntry;
   se_ln: string;
+  expr: string;
+  Edict1: boolean;
 begin
   Result := '';
+  Edict1 := wr is TEdict1Writer;
 
   for i := 0 to art.senses_used - 1 do begin
     se := @art.senses[i];
@@ -399,9 +417,19 @@ begin
     end;
 
    //языки-источники включаем даже в EDICT1, хотя там expr должно быть транслитом!
-   //TODO: подключить iconv.dll и сделать транслитом в EDICT1!
-    for j := 0 to se.lsources_used - 1 do
-      se_ln := se_ln + '('+se.lsources[j].lang+':'+se.lsources[j].expr+') '; //sic! даже когда expr==''. так в едикте
+    for j := 0 to se.lsources_used - 1 do begin
+     {$IFDEF ICONV_EDICT1}
+      if Edict1 then try
+        expr := UnicodeString(iconv2(TEdict1Writer(wr).conv conv,se.lsources[j].expr))
+      except
+        on E: EIConvError do
+          expr := ''; //cannot convert!
+      end
+      else
+     {$ENDIF}
+        expr := se.lsources[j].expr;
+      se_ln := se_ln + '('+se.lsources[j].lang+':'+expr+') '; //sic! даже когда expr==''. так в едикте
+    end;
 
     if se.glosses_used>0 then begin
       se_ln := se_ln + se.glosses[0];
@@ -411,6 +439,20 @@ begin
 
     Result := Result + '/' + se_ln;
   end;
+
+ {$IFDEF ICONV_EDICT1}
+ //По условию, все символы в поле "значение" Едикта-1 должны входить в US-ASCII.
+ //В нашем случае допустимо также CP1251, поскольку словарь русский, но не больше.
+ //Конвертируем и проверяем, будет ли ошибка.
+ //Вообще-то, мы должны были отфильтровать это ещё раньше, но на всякий случай.
+  if Edict1 then try
+    iconv2(conv,Result);
+  except
+    on E: EIConvError do
+      raise EParsingException.Create('Invalid target codepage symbols in article body');
+  end;
+ {$ENDIF}
+
 end;
 
 
@@ -418,12 +460,30 @@ end;
 EDICT1
 }
 
+constructor TEdict1Writer.Create(const filename: string);
+begin
+  inherited;
+ {$IFDEF ICONV_EDICT1}
+  conv := iconv_open('CP1251//TRANSLIT', 'UTF-16LE');
+  if conv=iconv_t(-1) then
+    raise Exception.Create('Cannot initialize iconv');
+ {$ENDIF}
+end;
+
+destructor TEdict1Writer.Destroy;
+begin
+ {$IFDEF ICONV_EDICT1}
+  iconv_close(conv);
+ {$ENDIF}
+  inherited;
+end;
+
 procedure TEdict1Writer.Print(art: PEdictArticle);
 var i, j: integer;
   body: string;
 begin
  //Генерируем тело статьи
-  body := EdictBuildArticleBody(art, {EDICT1=}true);
+  body := EdictBuildArticleBody(Self, art);
 
  //Печатаем все варианты
   for i := 0 to art.kana_used  - 1 do
@@ -554,7 +614,7 @@ begin
 
  //Теперь в s_kanji полный заголовок
  //Собираем в ln значения
-  ln := EdictBuildArticleBody(art, {EDICT1=}false);
+  ln := EdictBuildArticleBody(Self, art);
 
   if PopStats.HasPop then
     ln := ln + '/(P)';

@@ -1,5 +1,9 @@
 ﻿program WarodaiConvert;
 {$APPTYPE CONSOLE}
+{
+Зависимости:
+  libiconv2.dll
+}
 
 //Look into english EDICT for markers to known words. Slow.
 {$DEFINE ENMARKERS}
@@ -10,6 +14,7 @@ uses
   Windows,
   UniStrUtils,
   StreamUtils,
+  iconv,
   Warodai in 'Warodai.pas',
   WakanDic in 'WakanDic.pas',
   WarodaiMarkers in 'WarodaiMarkers.pas',
@@ -66,6 +71,7 @@ var
   InputFile: UnicodeString; //source Warodai file
   OutputFile: UnicodeString; //output EDICT file
   TagDictFile: UnicodeString; //reference dictionary file with tags (Wakan format)
+  ExamplesFile: UnicodeString;
 
 procedure ParseCommandLine;
 var i: integer;
@@ -74,6 +80,7 @@ begin
   InputFile := '';
   OutputFile := '';
   TagDictFile := '';
+  ExamplesFile := '';
 
   i := 1;
   while i<=ParamCount() do begin
@@ -88,6 +95,12 @@ begin
       if i>ParamCount() then
         BadUsage('--with-tags requires tag-dict filename');
       TagDictFile := ParamStr(i);
+    end else
+    if s='--examples' then begin
+      Inc(i);
+      if i>ParamCount() then
+        BadUsage('--examples requires output filename');
+      ExamplesFile := ParamStr(i);
     end else
     if InputFile='' then
       InputFile := s
@@ -113,6 +126,7 @@ var
   edict1: TArticleWriter;
   edict2: TArticleWriter;
   jmdict: TArticleWriter;
+  examples: TCharWriter;
   stats: record
     artcnt: integer;
     badcnt: integer;
@@ -123,6 +137,7 @@ var
 
     SeveralTlLines: integer; //block has several basic translation lines. Not a normal case.
     MixedTlLines: integer; //block has several lines + they are intermixed with other types of lines
+    ex_cnt: integer;
   end;
 
 
@@ -183,6 +198,7 @@ var
   hdr: TEntryHeader;
   body: TEntryBody;
   mg: TTemplateMgr;
+  ex_list: TExampleList;
 
 function ReadArticle: boolean;
 var ln: string;
@@ -190,7 +206,6 @@ var ln: string;
  {$IFDEF ENMARKERS}
   mark: TEntryMarkers;
  {$ENDIF}
-  art0: PEdictArticle;
 begin
   while inp.ReadLine(ln) and (ln='') do begin end;
   if ln='' then begin //couldn't read another line then
@@ -240,23 +255,18 @@ begin
    {$ENDIF}
 
    //Add to edict
-    ProcessEntry(@hdr, @body, @mg);
-    art0 := mg.Get(''); //word info
+    ex_list.Reset;
+    ProcessEntry(@hdr, @body, @mg, @ex_list);
     for i := 0 to mg.version_cnt - 1 do begin
-      if mg.versions[i].templ<>'' then begin
-        mg.versions[i].art.ref := art0.ref;
-        mg.versions[i].art.kanji := art0.kanji;
-        mg.versions[i].art.kanji_used := art0.kanji_used;
-        mg.versions[i].art.kana := art0.kana;
-        mg.versions[i].art.kana_used := art0.kana_used;
-      end;
       edict1.Print(@mg.versions[i].art);
       edict2.Print(@mg.versions[i].art);
       jmdict.Print(@mg.versions[i].art);
     end;
-
-
-
+    if examples<>nil then begin
+      for i := 0 to ex_list.Count - 1 do
+        examples.WriteLine(ex_list.items[i]);
+      Inc(stats.ex_cnt, ex_list.Count);
+    end;
 
   except
     on E: ESilentParsingException do begin
@@ -281,14 +291,22 @@ end;
 
 
 procedure Run;
+const loc: AnsiString='English_United States.1252';
 var tm: cardinal;
 begin
   ExceptionStats.Clear;
+  writeln(setlocale(LC_ALL, PAnsiChar(loc)));
   inp := TWarodaiReader.Create(TFileStream.Create(InputFile, fmOpenRead), true);
   com := TCharWriter.Create(TFileStream.Create('commng.txt', fmCreate), csUtf16LE, true);
   edict1 := TEdict1Writer.Create(OutputFile+'.edict1');
   edict2 := TEdict2Writer.Create(OutputFile+'.edict2');
   jmdict := TJmDictWriter.Create(OutputFile+'.jmdict');
+  if ExamplesFile<>'' then begin
+    examples := TCharWriter.Create(TFileStream.Create(ExamplesFile, fmCreate), csUtf16LE, true);
+    examples.WriteBom();
+  end else
+    examples := nil;
+
   if TagDictFile <> '' then
   try
     LoadReferenceDic(TagDictFile);
@@ -307,8 +325,10 @@ begin
     while ReadArticle() do begin
       if stats.artcnt mod 1000 = 0 then
         writeln(IntToStr(stats.artcnt));
-
     end;
+    com.Flush;
+    examples.Flush;
+
     writeln('');
     writeln('Done.');
     writeln('Parsing took '+IntToStr(GetTickCount()-tm)+' msec.');
@@ -319,6 +339,7 @@ begin
     writeln('EDICT1 articles: '+IntToStr(edict1.AddedRecords));
     writeln('EDICT2 articles: '+IntToStr(edict2.AddedRecords));
     writeln('JMDICT articles: '+IntToStr(jmdict.AddedRecords));
+    writeln('Examples: '+IntToStr(stats.ex_cnt));
     writeln('');
     writeln('Comments: '+IntToStr(WarodaiStats.Comments));
     writeln('Data lines: '+IntToStr(WarodaiStats.DataLines));
@@ -357,6 +378,7 @@ begin
 
   finally
     FreeReferenceDic();
+    FreeAndNil(examples);
     FreeAndNil(com);
     FreeAndNil(jmdict);
     FreeAndNil(edict2);
