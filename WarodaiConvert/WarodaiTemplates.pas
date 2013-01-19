@@ -95,14 +95,28 @@ begin
   Result := pos('～', ln);
 end;
 
-{ True, если указанный символ не разрывает шаблона. }
-function IsTemplateChar(const ch: char): boolean;
+{ True, если наличие указанного символа относит слово к шаблону }
+function IsTrueTemplateChar(const ch: char): boolean;
 begin
   Result := IsKana(ch) or IsKanji(ch)
     or IsCJKSymbolOrPunctuation(ch)
     or (ch='～') //сама подстановка
-    or (ch='[') or (ch=']') //необязательные части шаблона
-    or (ch='…'); //обозначает "какое-нибудь слово"
+end;
+
+{ True, если указанный символ не разрывает шаблона }
+function IsSupplementalTemplateChar(const ch: char): boolean;
+begin
+  Result :=
+       (ch='[') or (ch=']') //необязательные части шаблона
+    or (ch='(') or (ch=')') //альтернативные варианты шаблона
+    or (ch='…')  //обозначает "какое-нибудь слово"
+    or (ch=',');
+end;
+
+function IsTemplateChar(const ch: char): boolean;
+begin
+  Result := IsTrueTemplateChar(ch)
+    or IsSupplementalTemplateChar(ch);
 end;
 
 function IsOpenTemplate(const ln: string): boolean;
@@ -114,13 +128,14 @@ begin
     exit;
   end;
   Inc(i);
-  while IsTemplateChar(ln[i]) or (ln[i]=' ') or (ln[i]=',') do
+  while IsTemplateChar(ln[i]) or (ln[i]=' ') do
     Inc(i);
   Result := (ln[i]=#00);
 end;
 
 function ExtractTemplate(var ln: string; out t: string): boolean;
-var i_start, i_end: integer;
+var i_start, i_end, i_tmp: integer;
+  w_true: boolean;
 begin
   i_start := FindTemplate(ln);
   if i_start<=0 then begin
@@ -128,22 +143,56 @@ begin
     exit;
   end;
   i_end := i_start;
-  Dec(i_start);
-  Inc(i_end);
 
- //Находим начало и конец шаблонов (их может быть несколько, через запятую)
-  while IsTemplateChar(ln[i_end]) or (ln[i_end]=' ') or (ln[i_end]=',') do
-    Inc(i_end);
-  Dec(i_end);
-  while (i_start>0) and IsTemplateChar(ln[i_start]) do
+ //Находим начало шаблона
+ //Тут мы не будем особо аккуратными, т.к. в целом шаблоны должны идти с начала строки.
+ //Поэтому можно не опасаться случайно откусить лишнего.
+  Dec(i_start);
+  while (i_start>0) and (IsTemplateChar(ln[i_start]) or (ln[i_start]=' ')) do
     Dec(i_start);
   Inc(i_start);
 
- //Пробелы в конце отматываем назад
-  while (i_end>0) and (ln[i_end]=' ') do
-    Dec(i_end);
+ //Находим конец шаблона. Тут нужно быть осторожными. Откусываем по словам.
+  Inc(i_end);
+  repeat
+   //i_end указывает на первый непробельный символ слова
 
-  t := copy(ln, i_start, i_end);
+   //Проматываем следующее слово
+    w_true := false;
+    i_tmp := i_end;
+    repeat
+      if IsTrueTemplateChar(ln[i_tmp]) then
+        w_true := true
+      else
+      if not IsSupplementalTemplateChar(ln[i_tmp]) then
+        break;
+      Inc(i_tmp);
+    until false;
+
+   //Теперь мы либо на пробеле, либо на первом символе слова, который не относится к шаблону
+   //Хотя вообще говоря, шаблон со словом стыковаться не должен.
+    if not w_true then //шаблонные символы не были найдены -- слово разрывает шаблон
+      break;
+
+   //Единственный символ, которому допускается прерывать нас - пробел
+    if ln[i_tmp]<>' ' then begin
+     //Шаблон стыкуется со словом! В очередном слове шаблонные символы найдены,
+     //но потом найдены и разрывающие шаблон.
+     //Сделаем-ка для порядка ошибку. Так не должно быть.
+      raise ETemplateParsingException.Create('Template word merged with normal word');
+    end;
+
+   //Проматываем пробелы
+    i_end := i_tmp;
+    while ln[i_end]=' ' do Inc(i_end);
+
+  until false;
+  Dec(i_end); //вернулись на последний пробел
+
+ //Отматываем пробелы и копируем
+  i_tmp := i_end;
+  while (ln[i_tmp]=' ') do Dec(i_tmp);
+  t := copy(ln, i_start, i_tmp-i_start+1);
 
  //Удаляем вместе с пробелами по обе стороны
   Dec(i_start);
@@ -157,15 +206,19 @@ begin
     exit;
   end;
 
-  Inc(i_end);
-  while ln[i_end]=' ' do
-    Inc(i_end);
-  Dec(i_end);
-
-  delete(ln, i_start, i_end);
+ //А в i_end пробелы и так промотаны
+  delete(ln, i_start, i_end-i_start+1);
 
   if EvalChars(ln)<>EV_NORMAL then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after doing ExtractTemplate');
+
+ //Эти вещи пока не поддерживаем, так что лучше в корявом виде в словарь их не класть
+  if pos('(',t)>0 then
+    raise ETemplateParsingException.Create('Alternative template parts -- unsupported');
+  if pos('[',t)>0 then
+    raise ETemplateParsingException.Create('Optional template parts -- unsupported');
+  if pos(',',t)>0 then
+    raise ETemplateParsingException.Create('Multiple template variants -- unsupported');
 
   Result := true;
 end;
@@ -198,25 +251,49 @@ end;
   ああいった, ああした такой;
 }
 
-{ True, если указанный символ не разрывает шаблона. }
-function IsExampleChar(const ch: char): boolean;
+{ True, если наличие указанного символа относит слово к шаблону }
+function IsTrueExampleChar(const ch: char): boolean;
 begin
   Result := IsKana(ch) or IsKanji(ch)
     or IsCJKSymbolOrPunctuation(ch)
-    or (ch='/') //с помощью этих символов пишется чтение
-    or (ch='[') or (ch=']') //необязательные части шаблона
-    or (ch='(') or (ch=')') //альтернативный вариант записи
     or (ch='…') //обозначает "какое-нибудь слово"
     or (ch='◇'); //иногда встречается, вырезаем
 end;
 
+function IsSupplementalExampleChar(const ch: char): boolean;
+begin
+  Result :=
+       (ch=',')
+    or (ch='/') //с помощью этих символов пишется чтение
+    or (ch='[') or (ch=']') //необязательные части шаблона
+    or (ch='(') or (ch=')'); //альтернативный вариант записи
+end;
+
+{ True, если указанный символ не разрывает шаблона. }
+function IsExampleChar(const ch: char): boolean;
+begin
+  Result := IsTrueExampleChar(ch)
+    or IsSupplementalExampleChar(ch);
+end;
+
+{
 function ExtractExample(var ln: string; out expr: string): boolean;
 var i: integer;
+  ex_found: boolean;
 begin
   i := 1;
-  while IsExampleChar(ln[i]) or (ln[i]=',') or (ln[i]=' ') do
+  ex_found := false;
+  while IsExampleChar(ln[i]) or (ln[i]=',') or (ln[i]=' ') do begin
+    if IsTrueExampleChar(ln[i]) then
+      ex_found := true;
     Inc(i);
+  end;
   Dec(i);
+
+  if not ex_found then begin //собственно, каны или кандзи-то в цепочке не было
+    Result := false;
+    exit;
+  end;
 
   while (i>0) and (ln[i]=' ') do
     Dec(i);
@@ -227,9 +304,7 @@ begin
 
   expr := Trim(copy(ln, 1, i));
 
- { В начале примеров иногда встречаются мусорные ромбики }
-  if (Length(expr)>0) and (expr[1]='◇') then
-    delete(expr,1,1);
+
 
   Inc(i);
   while ln[i]=' ' do
@@ -240,6 +315,90 @@ begin
 
   if EvalChars(ln)<>EV_NORMAL then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after doing ExtractExample');
+  Result := true;
+end;
+}
+
+{ Вынимает заголовок примера из строки -- ср. ExtractTemplate! }
+function ExtractExample(var ln: string; out expr: string): boolean;
+var i_start, i_end, i_tmp: integer;
+  w_true: boolean;
+begin
+  i_start := 1;
+  i_end := i_start-1;
+
+ //Находим конец шаблона. Тут нужно быть осторожными. Откусываем по словам.
+  Inc(i_end);
+  repeat
+   //i_end указывает на первый непробельный символ слова
+
+   //Проматываем следующее слово
+    w_true := false;
+    i_tmp := i_end;
+    repeat
+      if IsTrueExampleChar(ln[i_tmp]) then
+        w_true := true
+      else
+      if not IsSupplementalExampleChar(ln[i_tmp]) then
+        break;
+      Inc(i_tmp);
+    until false;
+
+   //Теперь мы либо на пробеле, либо на первом символе слова, который не относится к шаблону
+   //Хотя вообще говоря, шаблон со словом стыковаться не должен.
+    if not w_true then //шаблонные символы не были найдены -- слово разрывает шаблон
+      break;
+
+   //Единственный символ, которому допускается прерывать нас - пробел
+    if ln[i_tmp]<>' ' then begin
+     //Шаблон стыкуется со словом! В очередном слове шаблонные символы найдены,
+     //но потом найдены и разрывающие шаблон.
+     //Сделаем-ка для порядка ошибку. Так не должно быть.
+      raise ETemplateParsingException.Create('Example word merged with normal word');
+    end;
+
+   //Проматываем пробелы
+    i_end := i_tmp;
+    while ln[i_end]=' ' do Inc(i_end);
+
+  until false;
+  Dec(i_end); //вернулись на последний пробел
+
+  if i_end<=0 then begin
+    Result := false;
+    exit;
+  end;
+
+ //Отматываем пробелы и копируем
+  i_tmp := i_end;
+  while (ln[i_tmp]=' ') do Dec(i_tmp);
+  expr := copy(ln, i_start, i_tmp-i_start+1);
+
+ { В начале примеров иногда встречаются мусорные ромбики }
+  if (Length(expr)>0) and (expr[1]='◇') then
+    delete(expr,1,1);
+
+ //Удаляем вместе с пробелами по обе стороны
+  Dec(i_start);
+  while (i_start>0) and (ln[i_start]=' ') do
+    Dec(i_start);
+  Inc(i_start);
+
+  if i_start<>1 then begin
+    raise EInsideTemplate.Create('Example is not the first thing in the line');
+    Result:=false;
+    exit;
+  end;
+
+ //А в i_end пробелы и так промотаны
+  delete(ln, i_start, i_end-i_start+1);
+
+  if EvalChars(ln)<>EV_NORMAL then
+    raise EKanjiKanaLeft.Create('Kanji or kana left in string after doing ExtractExample');
+
+ //Примеры на наличие (скобок), [опциональных частей] и запятых не проверяем.
+ //Запятые в примерах очень даже допустимы, а скобки и прочее - всё равно примеры
+ //пишутся в неформальном виде. Разбираться с ними можно будет потом, по готовому файлу.
   Result := true;
 end;
 

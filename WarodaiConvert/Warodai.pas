@@ -33,8 +33,6 @@ type
 
  { Некоторые типы ошибок можно делать Silent, если мы в принципе такое не поддерживаем }
 
-  EOpenTemplate = class(ESilentParsingException); { В статье встречается открытый шаблон - не поддерживаем }
-    //статья с открытыми шаблонами (см. шаблоны)
   EMultilineCommon = class(ESilentParsingException); { Общий кусок больше одной строки в длину }
     //Multiline Group Common: несколько строк в общей части 1+ групп
     //Multiline Block Common: несколько строк в общей части 1+ блоков
@@ -45,9 +43,18 @@ type
   EKanjiKanaLeft = class(ESilentParsingException); { В статье остались кандзи или кана после извлечения шаблона. Обычно это ссылки, но возможно всякое }
     //Kanji or kana left in string after doing ExtractTemplate
     //Kanji or kana left in string after doing ExtractExample
-  EInsideTemplate = class(ESilentParsingException); { Шаблоны внутри строки (не в начале) }
   ESeveralProperTranslations = class(ESilentParsingException); { Обычно все добавочные строки - это "ср." и "см. также" }
     //статей, где блок содержит несколько строк простого перевода
+
+  EBracketsMismatch = class(ESilentParsingException);
+   { Серьёзная ошибка: либо сам перевод содержит непарные/неверно парные скобки,
+     либо такие образуются в результате его разбиения на глоссы.
+     Без разбиения на глоссы перевод добавить нельзя. }
+
+  ETemplateParsingException = class(ESilentParsingException); { Шаблон или пример не удалось разобрать или какие-то части его не поддерживаются. }
+  EOpenTemplate = class(ESilentParsingException); { В статье встречается открытый шаблон (см. шаблоны) - не поддерживаем }
+  EInsideTemplate = class(ESilentParsingException); { Шаблоны внутри строки (не в начале) }
+
 
 type
   TWarodaiReader = class(TCharReader)

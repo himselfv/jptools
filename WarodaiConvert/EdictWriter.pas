@@ -18,7 +18,7 @@ const
   MaxXrefs = 2;
   MaxAnts = 1;
   MaxLsources = 1;
-  MaxSenses = 6;
+  MaxSenses = 32;
  //Если будет нехватать - повышайте
 
 type
@@ -118,7 +118,6 @@ type
   public
     constructor Create(const filename: string);
     destructor Destroy; override;
-    procedure Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers); overload; virtual; abstract;
     procedure Print(art: PEdictArticle); overload; virtual; abstract;
     property AddedRecords: integer read FAddedRecords;
   end;
@@ -383,7 +382,7 @@ begin
       se_ln := '('+se.t_pos+') ';
 
     if art.senses_used>1 then
-      se_ln := '('+IntToStr(i)+') '; //после грам. тегов -- так сделано в английском EDICT2
+      se_ln := '('+IntToStr(i+1)+') '; //после грам. тегов -- так сделано в английском EDICT2
 
     if se.t_field<>'' then
       se_ln := '{'+se.t_field+'} ';

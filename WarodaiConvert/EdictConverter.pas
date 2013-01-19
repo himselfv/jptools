@@ -3,49 +3,52 @@
 interface
 uses Warodai, WarodaiHeader, WarodaiBody, EdictWriter, WcUtils;
 
-
 {
 Собираем несколько версий статьи, по числу разных шаблонов.
 "Просто статья" - это пустой шаблон
 }
 
-{
+//TODO: Когда буду парсить указания:
+// Любые указания типа (поэт.) относятся ко всему sense, не к отдельным глоссам.
+// Нужно проверять, что они идут перед первым глоссом.
+// Но бывает так: (поэт.) красивая девушка; (непоэт.) курица
+// Что делать? Разбивать на два sense?
+
 type
   TTemplateVersion = record
     templ: string;
-    art: string;
-    b_no: integer;
+    art: TEdictArticle;
     procedure Reset;
-    procedure Add(s: string);
   end;
   PTemplateVersion = ^TTemplateVersion;
   TTemplateMgr = record
     versions: array[0..8] of TTemplateVersion;
     version_cnt: integer;
     procedure Reset;
-    function Get(_templ: string): PTemplateVersion;
+    function Get(_templ: string): PEdictArticle;
   end;
+  PTemplateMgr = ^TTemplateMgr;
+
+//Пока что возвращаем один article -- позже нужно заполнять TemplateMgr
+procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody; mg: PTemplateMgr);
+
+{
+Ссылки:
+  см.
+  связ.
+  связ.:
+
+Форма ссылки:
+  あわ【泡】 (в едикте через точку)
+}
+
+implementation
+uses SysUtils, UniStrUtils, WarodaiMarkers, WarodaiTemplates;
 
 procedure TTemplateVersion.Reset;
 begin
   templ := '';
-  art := '';
-  b_no := 0;
-end;
-
-procedure TTemplateVersion.Add(s: string);
-begin
-  if art='' then
-    art := s+'/'
-  else begin
-    if b_no=0 then
-     //Превращаем в нумерованный список
-     //TODO: Число нужно вставлять после любых локальных грам. флагов -- у нас пока их нет -- и первое, и второе
-      art := '(1) '+art+'(2) '+s+'/'
-    else
-      art := art + '('+IntToStr(b_no)+') '+s+'/';
-  end;
-  Inc(b_no);
+  art.Reset;
 end;
 
 procedure TTemplateMgr.Reset;
@@ -53,35 +56,30 @@ begin
   version_cnt := 0;
 end;
 
-function TTemplateMgr.Get(_templ: string): PTemplateVersion;
+function TTemplateMgr.Get(_templ: string): PEdictArticle;
 var i: integer;
+  pt: PTemplateVersion;
 begin
   for i := 0 to version_cnt - 1 do
-    if versions[version_cnt].templ=_templ then begin
-      Result := @versions[version_cnt];
+    if versions[i].templ=_templ then begin
+      Result := @versions[i].art;
       exit;
     end;
  //добавляем новую
   Inc(version_cnt);
-  if version_cnt>Length(versions) then
+  if version_cnt>=Length(versions) then
     raise EParsingException.Create('TemplateMgr: Cannot add one more article version.');
-  Result := @versions[version_cnt-1];
-  Result^.Reset;
-  Result^.templ := _templ;
+  pt := @versions[version_cnt-1];
+  pt.Reset;
+  pt.templ := _templ;
+  Result := @pt.art;
 end;
 
-var
-  verMgr: TTemplateMgr;
-}
 
-procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody);
-
-implementation
-uses SysUtils;
 
 function CompareStr(const a,b: string): integer;
 begin
-  Result := AnsiCompareStr(a,b);
+  Result := UniCompareStr(a,b);
 end;
 
 { Возвращает список всех объявленных в заголовке статьи кандзи.
@@ -134,15 +132,18 @@ end;
 
 
 var
-  art: TEdictArticle;
   AllKanji: TList<string>;
   AllKanjiUsed: TWordFlagSet;
 
-procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody);
+procedure ProcessBlock(const body_common, group_common: string; bl: PEntryBlock; mg: PTemplateMgr); forward;
+
+procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody; mg: PTemplateMgr);
 var i, j: integer;
   idx: integer;
+  art: PEdictArticle;
 begin
-  art.Reset;
+  mg.Reset;
+  art := mg.Get(''); //basic version
   art.ref := hdr.s_ref;
 
   AllKanji := GetUniqueKanji(hdr, {KanaIfNone=}false);
@@ -171,38 +172,124 @@ begin
 
  //TODO: Build senses.
  //TODO: Разделять статью на несколько статей по шаблонам, и возвращать в каком-то виде все эти статьи.
+  for i := 0 to body.group_cnt - 1 do
+    for j := 0 to body.groups[i].block_cnt - 1 do
+      ProcessBlock(body.common, body.groups[i].common, @body.groups[i].blocks[j], mg);
+end;
+
+procedure VerifyBrackets(const ln: string; const br_op, br_cl: WideChar);
+var cnt, i: integer;
+begin
+  cnt := 0;
+  for i := 1 to Length(ln) do
+    if ln[i]=br_op then Inc(cnt) else
+    if ln[i]=br_cl then begin
+      Dec(cnt);
+      if cnt<0 then
+        raise EBracketsMismatch.Create('Brackets mismatch '+br_op+' and '+br_cl);
+    end;
+  if cnt<>0 then
+    raise EBracketsMismatch.Create('Brackets mismatch '+br_op+' and '+br_cl);
+end;
+
+{ Разбивает строку на глоссы }
+function SplitGlosses(const ln: string): TStringArray;
+var ps, pc: PWideChar;
+  b_stack: integer;
+  i: integer;
+begin
+  SetLength(Result, 0);
+  if ln='' then exit;
+
+ { Мы ищем "," и ";", но не внутри никаких скобок.
+  Пока предполагаем, что скобки в формате файла везде расположены правильно,
+  и достаточно считать их число, а проверять типы нет необходимости }
+  b_stack := 0;
+
+  ps := PWideChar(ln);
+  pc := ps;
+  while pc^<>#00 do begin
+    if (pc^='(') or (pc^='[') or (pc^='{') or (pc^='<') then
+      Inc(b_stack)
+    else
+    if (pc^=')') or (pc^=']') or (pc^='}') or (pc^='>') then begin
+      Dec(b_stack);
+      if b_stack<0 then
+        raise EBracketsMismatch.Create('Brackets mismatch');
+    end else
+    if (b_stack<=0) and ((pc^=',') or (pc^=';')) then begin
+      SetLength(Result, Length(Result)+1);
+      Result[Length(Result)-1] := Trim(StrSub(ps,pc));
+      ps := PChar(integer(pc)+SizeOf(char));
+    end;
+    Inc(pc);
+  end;
+
+  if pc>=ps then begin
+    SetLength(Result, Length(Result)+1);
+    Result[Length(Result)-1] := Trim(StrSub(ps,pc));
+  end;
+
+
+  if b_stack<>0 then
+    raise EBracketsMismatch.Create('Brackets mismatch');
+
+ //Проверяем, что мы случайно не порезали внутри скобки
+  for i := 0 to Length(Result) - 1 do begin
+    VerifyBrackets(Result[i], '[', ']');
+    VerifyBrackets(Result[i], '(', ')');
+    VerifyBrackets(Result[i], '{', '}');
+    VerifyBrackets(Result[i], '<', '>');
+  end;
+end;
+
+
+procedure ProcessBlock(const body_common, group_common: string; bl: PEntryBlock; mg: PTemplateMgr);
+var j, k: integer;
+  tmp: string;
+  templ: string;
+  t_p: TTemplateList;
+  s_base: PEdictArticle;
+  sn: PEdictSenseEntry;
+  bl_cnt: integer;
+begin
+  if bl.line_cnt<0 then
+    raise EParsingException.Create('Block has no lines');
+
+  s_base := mg.Get('');
+  bl_cnt := 0;
+
+  for j := 0 to bl.line_cnt - 1 do begin
+    tmp := bl.lines[j];
+    if ExtractTemplate(tmp, templ) then begin
+      SplitTemplate(templ, t_p);
+      if Length(t_p)>1 then
+        Inc(WarodaiStats.MultiTemplates);
+     //Добавляем все в соотв. записи
+      for k := 0 to Length(t_p) - 1 do begin
+        if t_p[k]='' then
+          raise EParsingException.Create('Invalid empty template part.');
+        sn := mg.Get(t_p[k])^.AddSense;
+        for tmp in SplitGlosses(tmp) do
+          sn.AddGloss(tmp); //TODO: markers, xrefs, lsources
+      end;
+    end else
+    if ExtractExample(tmp, templ) then begin
+      continue //потом будем разбирать ещё и примеры, и строки из каны+этого слова
+    end else begin
+      if bl_cnt > 0 then
+        raise ESeveralProperTranslations.Create('Block has several proper translations');
+        //мы могли бы просто добавить их, но это странная ситуация, так что не будем
+      sn := s_base.AddSense;
+      for tmp in SplitGlosses(tmp) do
+        sn.AddGloss(tmp); //TODO: markers, xrefs, lsources
+      Inc(bl_cnt);
+    end;
+  end;
 
 end;
 
 {
-
-procedure TEdict1Writer.Print(hdr: PEntryHeader; body: PEntryBody; mark: TEntryMarkers);
-var i, j: integer;
-  w_head: TLineHeader;
-begin
-  for i := 0 to hdr.words_used - 1 do begin
-    w_head.mark := mark[i];
-    if hdr.words[i].s_kanji_used<=0 then begin
-      w_head.kanji := '';
-      w_head.kana := hdr.words[i].s_reading;
-      PrintEdictBody(w_head, body);
-    end else
-    for j := 0 to hdr.words[i].s_kanji_used-1 do begin
-      w_head.kanji := hdr.words[i].s_kanji[j];
-      w_head.kana := hdr.words[i].s_reading;
-      PrintEdictBody(w_head, body);
-    end;
-  end;
-end;
-
-procedure TEdict1Writer.PrintEdictBody(const hdr: TLineHeader; const body: PEntryBody);
-var i: integer;
-begin
-  for i := 0 to body.group_cnt - 1 do
-    PrintEdictGroup(hdr, body.common, @body.groups[i]);
-end;
-
-
 
 procedure TEdict1Writer.PrintEdictGroup(const hdr: TLineHeader; const common: string; const group: PEntryGroup);
 var i, j, k: integer;
@@ -222,31 +309,7 @@ begin
 
     bl_cnt := 0; //block proper translation count
     bl := @group.blocks[i];
-    for j := 0 to bl.line_cnt - 1 do begin
-      tmp := bl.lines[j];
-      if ExtractTemplate(tmp, templ) then begin
-        SplitTemplate(templ, t_p);
-        if Length(t_p)>1 then
-          Inc(WarodaiStats.MultiTemplates);
-       //Добавляем все в соотв. записи
-        for k := 0 to Length(t_p) - 1 do begin
-          if t_p[k]='' then
-            raise EParsingException.Create('Invalid empty template part.');
-          verMgr.Get(t_p[k])^.Add(tmp);
-        end;
-      end else
-      if ExtractExample(tmp, templ) then begin
-        continue //потом будем разбирать ещё и примеры, и строки из каны+этого слова
-      end else begin
-        if bl_cnt > 0 then
-          raise ESeveralProperTranslations.Create('Block '+IntToStr(i)+' has several proper translations');
-          //мы могли бы просто добавить их, но это странная ситуация, так что не будем
-        s_base.Add(bl.lines[j]);
-        Inc(bl_cnt);
-      end;
-    end;
 
-  end;
 
  //Печатаем все версии
   PrintVersions(hdr, common, group);

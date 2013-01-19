@@ -182,6 +182,7 @@ var
  //чтобы не создавать-удалять каждый раз.
   hdr: TEntryHeader;
   body: TEntryBody;
+  mg: TTemplateMgr;
 
 function ReadArticle: boolean;
 var ln: string;
@@ -189,6 +190,7 @@ var ln: string;
  {$IFDEF ENMARKERS}
   mark: TEntryMarkers;
  {$ENDIF}
+  art0: PEdictArticle;
 begin
   while inp.ReadLine(ln) and (ln='') do begin end;
   if ln='' then begin //couldn't read another line then
@@ -238,9 +240,24 @@ begin
    {$ENDIF}
 
    //Add to edict
-    edict1.Print(@hdr, @body, mark);
-    edict2.Print(@hdr, @body, mark);
-    jmdict.Print(@hdr, @body, mark);
+    ProcessEntry(@hdr, @body, @mg);
+    art0 := mg.Get(''); //word info
+    for i := 0 to mg.version_cnt - 1 do begin
+      if mg.versions[i].templ<>'' then begin
+        mg.versions[i].art.ref := art0.ref;
+        mg.versions[i].art.kanji := art0.kanji;
+        mg.versions[i].art.kanji_used := art0.kanji_used;
+        mg.versions[i].art.kana := art0.kana;
+        mg.versions[i].art.kana_used := art0.kana_used;
+      end;
+      edict1.Print(@mg.versions[i].art);
+      edict2.Print(@mg.versions[i].art);
+      jmdict.Print(@mg.versions[i].art);
+    end;
+
+
+
+
   except
     on E: ESilentParsingException do begin
       ExceptionStats.RegisterException(E);
