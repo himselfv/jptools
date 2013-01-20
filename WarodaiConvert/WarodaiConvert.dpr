@@ -9,6 +9,9 @@
 //Look into english EDICT for markers to known words. Slow.
 {$DEFINE ENMARKERS}
 
+//Считаем число ссылок <a href=>, и различные виды слов, им предшествующий
+//{$DEFINE COUNT_HREFS}
+
 uses
   SysUtils,
   Classes,
@@ -26,7 +29,8 @@ uses
   WcUtils in 'WcUtils.pas',
   WcExceptions in 'WcExceptions.pas',
   EdictConverter in 'EdictConverter.pas',
-  PerlRegExUtils in 'PerlRegExUtils.pas';
+  PerlRegExUtils in 'PerlRegExUtils.pas',
+  WarodaiXrefs in 'WarodaiXrefs.pas';
 
 {
 Заметки по реализации.
@@ -159,6 +163,9 @@ begin
   mixed_tl := false;
   tl_lines := 0;
   for i := 0 to block.line_cnt - 1 do begin
+   {$IFDEF COUNT_HREFS}
+    MatchHrefs(block.lines[i]);
+   {$ENDIF}
     block.lines[i] := RemoveFormatting(block.lines[i]);
 
     ev := EvalChars(block.lines[i]);
@@ -284,6 +291,10 @@ end;
 procedure Run;
 const loc: AnsiString='English_United States.1252';
 var tm: cardinal;
+ {$IFDEF COUNT_HREFS}
+  i: integer;
+  outp: TCharWriter;
+ {$ENDIF}
 begin
   ExceptionStats.Clear;
   writeln(setlocale(LC_ALL, PAnsiChar(loc)));
@@ -319,6 +330,17 @@ begin
     end;
     com.Flush;
     examples.Flush;
+
+   {$IFDEF COUNT_HREFS}
+    writeln('');
+    writeln('Simple hrefs: '+IntToStr(xrefStats.SimpleHref)+', Href expr: '+IntToStr(xrefStats.HrefExpr));
+    writeln('Saving href types...');
+    outp :=  TCharWriter.Create(TFileStream.Create('out-href-types.txt', fmCreate), csUtf16LE, true);
+    outp.WriteBom;
+    for i := 0 to AllHrefTypes.Count - 1 do
+      outp.WriteLine(AllHrefTypes.items[i]);
+    FreeAndNil(outp);
+   {$ENDIF}
 
     writeln('');
     writeln('Done.');

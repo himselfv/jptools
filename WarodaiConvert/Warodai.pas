@@ -75,10 +75,15 @@ const
 function EvalChars(const s: string): integer;
 
 implementation
+uses WcUtils;
 
 function TWarodaiReader.ReadLine(out ln: string): boolean;
 begin
   Result := inherited ReadLine(ln);
+ //От беспорядочно расставленных тегов <i> больше беды, чем пользы.
+ //Выкидываем их все, как если бы их и не было!
+  repl(ln,'<i>','');
+  repl(ln,'</i>','');
   if Result then
     Inc(WarodaiStats.LinesRead);
 end;
