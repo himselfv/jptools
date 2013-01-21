@@ -25,7 +25,7 @@ const
   MaxKanji = 8;
   MaxKana = 8;
   MaxGlosses = 48;
-  MaxXrefs = 4; //бывало и 4
+  MaxXrefs = 12; //бывало и 12
   MaxAnts = 1;
   MaxLsources = 1;
   MaxSenses = 32;
