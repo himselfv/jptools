@@ -122,6 +122,7 @@ function IsTrueTemplateChar(const ch: char): boolean;
 begin
   Result := IsKana(ch) or IsKanji(ch)
     or IsCJKSymbolOrPunctuation(ch)
+    or IsFullWidthCharacter(ch)
     or (ch='～') //сама подстановка
 end;
 
@@ -304,6 +305,7 @@ function IsTrueExampleChar(const ch: char): boolean;
 begin
   Result := IsKana(ch) or IsKanji(ch)
     or IsCJKSymbolOrPunctuation(ch)
+    or IsFullWidthCharacter(ch)
     or (ch='…') //обозначает "какое-нибудь слово"
     or (ch='◇'); //иногда встречается, вырезаем
 end;

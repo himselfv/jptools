@@ -117,8 +117,8 @@ begin
 
  //От беспорядочно расставленных тегов <i> больше беды, чем пользы.
  //Выкидываем их все, как если бы их и не было!
-  repl(ln,'<i>','');
-  repl(ln,'</i>','');
+  ln := repl(ln,'<i>','');
+  ln := repl(ln,'</i>','');
   Inc(WarodaiStats.LinesRead);
   if FArticleLineCount<Length(FArticleLines) then begin
     Inc(FArticleLineCount);

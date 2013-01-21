@@ -295,6 +295,7 @@ function IsKatakana(c: UniChar): boolean;
 function IsKana(c: UniChar): boolean;
 function IsKanji(c: UniChar): boolean;
 function IsCJKSymbolOrPunctuation(c: UniChar): boolean;
+function IsFullWidthCharacter(c: UniChar): boolean;
 function ContainsKanji(const s: UniString): boolean;
 
 //Возвращает номер символа, на который указывает ptr, в строке str
@@ -1421,9 +1422,17 @@ begin
          or ((Ord(c) >= $F900) and (Ord(c) <= $FAFF)); //CJK Compatibility Ideographs
 end;
 
+//Символ относится к диапазону "CJK Symbols and Punctuation"
 function IsCJKSymbolOrPunctuation(c: UniChar): boolean;
 begin
-  Result := (Ord(c) >= $3000) and (Ord(c) <= $303F) or (c='！');
+  Result := (Ord(c) >= $3000) and (Ord(c) <= $303F);
+end;
+
+//Символ относится к диапазонам "Fullwidth Characters"
+function IsFullWidthCharacter(c: UniChar): boolean;
+begin
+  Result := (Ord(c) >= $FF01) and (Ord(c) <= $FF5E)
+         or (Ord(c) >= $FFE0) and (Ord(c) <= $FFE6);
 end;
 
 function ContainsKanji(const s: UniString): boolean;
