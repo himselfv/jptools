@@ -71,18 +71,20 @@ const
   pXref=
       '\s*'
     +'('+pRefNames+')\s'
-    +pSingleRef+'(?:\s*[\,\;и]\s+'+pSingleRef+')*' //любое число ссылок больше одной, через запятую
+    +'('+pSingleRef+'(?:\s*[\,\;и]\s+'+pSingleRef+')*)' //любое число ссылок больше одной, через запятую
     +'\s*'; //заканчивается чем-нибудь
+
+ //К сожалению, регэкспы не могут матчить повторяющиеся группы (будет заматчена последняя),
+ //так что элементы внутри наборы ссылок надо матчить отдельно
 
 var
   preXref: TPerlRegEx;
-
+  preSingleRef: TPerlRegEx;
 
 
 { Находит в строке все элементы ссылочного типа и регистрирует их в записи Sense }
 procedure EatXrefs(var ln: string; sn: PEdictSenseEntry);
 var xr0, xr1, xr2: UnicodeString;
-  i: integer;
 begin
   preXref.Subject := UTF8String(ln);
   if not preXref.Match then exit;
@@ -92,9 +94,12 @@ begin
     xr0 := UnicodeString(preXref.Groups[1]); //тип ссылки
 
    //Может быть несколько: "см. ОДНО, ДРУГОЕ"
-    for i := 0 to (preXref.GroupCount-1) div 2 - 1 do begin
-      xr1 := UnicodeString(preXref.Groups[2+i*2]);
-      xr2 := UnicodeString(preXref.Groups[2+i*2+1]);
+   //Матчим все
+    preSingleRef.Subject := preXref.Groups[2];
+    Assert(preSingleRef.Match); //не может быть чтоб не матчилось
+    repeat
+      xr1 := UnicodeString(preSingleRef.Groups[1]);
+      xr2 := UnicodeString(preSingleRef.Groups[2]);
       DropVariantIndicator(xr1);
       DropVariantIndicator(xr2);
 
@@ -137,7 +142,8 @@ begin
         sn.AddAnt(xr1)
       else
         sn.AddXref(xr0, xr1);
-    end;
+
+    until not preSingleRef.MatchAgain;
 
     preXref.Replace;
   until not preXref.MatchAgain;
@@ -187,6 +193,8 @@ end;
 
 initialization
   preXref := Regex(pXref);
+  preSingleRef := Regex(pSingleRef);
+
   preHrefExpr := Regex(pHrefExpr);
   preSimpleHref := Regex(pSimpleHref);
   AllHrefTypes.Reset;
@@ -196,6 +204,8 @@ initialization
 finalization
   FreeAndNil(preSimpleHref);
   FreeAndNil(preHrefExpr);
+
+  FreeAndNil(preSingleRef);
   FreeAndNil(preXref);
 
 end.

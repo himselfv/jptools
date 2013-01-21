@@ -290,6 +290,7 @@ function StrIsLnOnly(const str: string): boolean;
 
 //These have significantly different implementation when working with Ansi code page,
 //so they're implemented only in Unicode yet.
+function IsDigit(c: UniChar): boolean;
 function IsHiragana(c: UniChar): boolean;
 function IsKatakana(c: UniChar): boolean;
 function IsKana(c: UniChar): boolean;
@@ -1386,6 +1387,11 @@ begin
 {$ENDIF}
 end;
 
+
+function IsDigit(c: UniChar): boolean;
+begin
+  Result := (c>='0') and (c<='9');
+end;
 
 (*
  Following stuff isn't precise.
