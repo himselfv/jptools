@@ -244,6 +244,7 @@ procedure TEdictSenseEntry.AddGloss(const val: string);
 begin
   if glosses_used >= Length(glosses) then
     raise EParsingException.Create('EdictSenseEntry: Cannot add one more gloss');
+  if val='' then exit; //пустые не добавляем
   glosses[glosses_used] := val;
   Inc(glosses_used);
 end;

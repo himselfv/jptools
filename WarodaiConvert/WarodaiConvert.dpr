@@ -217,71 +217,73 @@ var ln: string;
  {$ENDIF}
   body_read: boolean;
 begin
-  while inp.ReadLine(ln) and (ln='') do begin end;
-  if ln='' then begin //couldn't read another line then
-    Result := false;
-    exit;
-  end;
+  Result := inp.NextArticle(ln);
+  if not Result then exit;
+
+  err.Reset;
 
   body_read := false;
-
   Inc(stats.artcnt);
   try
-    body_read := false;
-    DecodeEntryHeader(ln, @hdr);
-    ReadBody(inp, @body);
-    body_read := true;
+    try
+      DecodeEntryHeader(ln, @hdr);
+      ReadBody(inp, @body);
+      body_read := true;
 
-   //Clean up a bit
-    for i := 0 to hdr.words_used - 1 do begin
-      DropVariantIndicator(hdr.words[i].s_reading);
-      for j := 0 to hdr.words[i].s_kanji_used-1 do
-        DropVariantIndicator(hdr.words[i].s_kanji[j]);
-    end;
+     //Clean up a bit
+      for i := 0 to hdr.words_used - 1 do begin
+        DropVariantIndicator(hdr.words[i].s_reading);
+        for j := 0 to hdr.words[i].s_kanji_used-1 do
+          DropVariantIndicator(hdr.words[i].s_kanji[j]);
+      end;
 
-    for i := 0 to body.group_cnt - 1 do
-      for j := 0 to body.groups[i].block_cnt - 1 do
-        SetLineTypes(@body.groups[i].blocks[j]);
+      for i := 0 to body.group_cnt - 1 do
+        for j := 0 to body.groups[i].block_cnt - 1 do
+          SetLineTypes(@body.groups[i].blocks[j]);
 
-   {$IFDEF ENMARKERS}
-   //Query markers from english edict
-    FillMarkers(hdr, mark);
-   {$ENDIF}
+     {$IFDEF ENMARKERS}
+     //Query markers from english edict
+      FillMarkers(hdr, mark);
+     {$ENDIF}
 
-   //Add to edict
-    ex_list.Reset;
-    ProcessEntry(@hdr, @body, @mg, @ex_list);
-    for i := 0 to mg.version_cnt - 1 do begin
-      edict1.Print(@mg.versions[i].art);
-      edict2.Print(@mg.versions[i].art);
-      jmdict.Print(@mg.versions[i].art);
-    end;
-    if examples<>nil then begin
-      for i := 0 to ex_list.Count - 1 do
-        examples.WriteLine(ex_list.items[i]);
-      Inc(stats.ex_cnt, ex_list.Count);
-    end;
+     //Add to edict
+      ex_list.Reset;
+      ProcessEntry(@hdr, @body, @mg, @ex_list);
+      for i := 0 to mg.version_cnt - 1 do begin
+        edict1.Print(@mg.versions[i].art);
+        edict2.Print(@mg.versions[i].art);
+        jmdict.Print(@mg.versions[i].art);
+      end;
+      if examples<>nil then begin
+        for i := 0 to ex_list.Count - 1 do
+          examples.WriteLine(ex_list.items[i]);
+        Inc(stats.ex_cnt, ex_list.Count);
+      end;
 
-  except
-    on E: EParsingException do begin
-      ExceptionStats.RegisterException(E);
-      if not (E is ESilentParsingException) then
-        writeln('Line '+IntToStr(WarodaiStats.LinesRead)
-          + ' article '+IntToStr(stats.artcnt)+': '
-          +E.Message);
-      if com<>nil then begin
-        com.WriteLine('Line '+IntToStr(WarodaiStats.LinesRead)
+    except
+      on E: EParsingException do begin
+        ExceptionStats.RegisterException(E);
+        DumpMsg(E.Message);
+        Inc(stats.badcnt);
+        if not body_read then
+          inp.SkipArticle;
+        if not (E is ESilentParsingException) then
+          writeln('Line '+IntToStr(WarodaiStats.LinesRead)
             + ' article '+IntToStr(stats.artcnt)+': '
             +E.Message);
-        com.WriteLine(ln);
+      end;
+    end;
+
+  finally
+    if com<>nil then
+      for i := 0 to err.Count - 1 do
+      begin
+        com.WriteLine('Line '+IntToStr(WarodaiStats.LinesRead)
+            + ' article '+IntToStr(stats.artcnt)+': '
+            +err.items[i]);
+        com.WriteLine(inp.ArticleText);
         com.WriteLine('');
       end;
-      Inc(stats.badcnt);
-      if not body_read then
-        inp.SkipArticle;
-      Result := true;
-      exit;
-    end;
   end;
 
   Result := true;
@@ -329,7 +331,8 @@ begin
         writeln(IntToStr(stats.artcnt));
     end;
     com.Flush;
-    examples.Flush;
+    if examples<>nil then
+      examples.Flush;
 
    {$IFDEF COUNT_HREFS}
     writeln('');

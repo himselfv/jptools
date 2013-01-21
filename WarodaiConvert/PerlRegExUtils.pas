@@ -44,7 +44,7 @@ end;
 
 function TPerlRegExHelper.DeleteAll(const subj: string): string;
 begin
-  Self.ReplaceMatches(subj,'');
+  Result := Self.ReplaceMatches(subj,'');
 end;
 
 end.

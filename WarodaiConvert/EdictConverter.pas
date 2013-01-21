@@ -270,9 +270,20 @@ var tmp: string;
 begin
   tmp := ln;
   EatXrefs(tmp, sn);
-  preEmptyParenth.DeleteAll(tmp); //удаляем оставшиеся пустыми скобки
+  tmp := Trim(preEmptyParenth.DeleteAll(tmp)); //удаляем оставшиеся пустыми скобки
+  if tmp='' then exit; //пустые строки пропускаем
   if EvalChars(tmp)<>EV_NORMAL then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after all extractions');
+
+ {
+  Мы допускаем несколько строк базового перевода, но только для случаев
+    Перевод перевод
+    см. также ССЫЛКА
+  На практике абсолютное большинство двойных базовых строк - такие и есть.
+ }
+  if sn.glosses_used>0 then //если это не первый перевод, он должен был занулиться и выйти
+    raise ESeveralProperTranslations.Create('Block has several proper translations');
+
   for gloss in SplitGlosses(tmp) do
     sn.AddGloss(gloss); //TODO: markers, lsources
 end;
@@ -285,11 +296,11 @@ var j, k: integer;
   templ: string;
   t_p: TTemplateList;
   sn: PEdictSenseEntry;
-  bl_cnt: integer;
+  sn_base: PEdictSenseEntry;
 begin
   if bl.line_cnt<0 then
     raise EParsingException.Create('Block has no lines');
-  bl_cnt := 0;
+  sn_base := nil;
 
   for j := 0 to bl.line_cnt - 1 do begin
     tmp := bl.lines[j];
@@ -309,12 +320,22 @@ begin
       if examples<>nil then
         examples^.Add(templ + ' === '+ tmp);
     end else begin
-      if bl_cnt > 0 then
+     {
+      Проверка отключена. Вместо этого проверяем позже, при добавлении.
+      if sn_base<>nil then
         raise ESeveralProperTranslations.Create('Block has several proper translations');
         //мы могли бы просто добавить их, но это странная ситуация, так что не будем
-      sn := mg.Get('').AddSense;
+     }
+
+     //Только для основного смысла -- допускаем несколько строк
+     //(частая ситуация - "см. также" на второй строке)
+      if sn_base<>nil then
+        sn := sn_base
+      else begin
+        sn := mg.Get('').AddSense;
+        sn_base := sn;
+      end;
       ParseLn(tmp, sn);
-      Inc(bl_cnt);
     end;
   end;
 
@@ -325,7 +346,7 @@ end;
 
 
 initialization
-  preEmptyParenth := Regex('pEmptyParenth');
+  preEmptyParenth := Regex(pEmptyParenth);
 
 finalization
   FreeAndNil(preEmptyParenth);
