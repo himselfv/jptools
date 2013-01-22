@@ -252,16 +252,30 @@ begin
 end;
 
 
+const
 {
 Пустые скобки после удаления всяких флагов.
   ()
   (и) (,) (;,)  --- иногда флаги идут по нескольку
 }
-const
   pEmptyParenth='\s*\((?:и|,|;|\s)*\)\s*';
+
+{
+Неподдерживаемые обозначения вариантов типа "а)", "б)",
+а также поддерживаемые "1)", "2)", оказавшиеся в центре строки.
+}
+  pNumericId = '(?:^|\s)[0-9]{1,2}\)';
+  pLetterId = '(?:^|\s)[а-я]\)';
+
+ //Нужно быть осторожным, чтобы не заматчить легальные строчки типа "(см. 3)"
+ //Заматчим ведь!
+ //Возможно, придётся проверять, чтобы слева от ")" не было "(" прежде очередной ")"
+
+  pAnyId = pNumericId + '|' + pLetterId;
 
 var
   preEmptyParenth: TPerlRegEx;
+  preAnyId: TPerlRegEx;
 
 
 procedure ParseLn(const ln: string; sn: PEdictSenseEntry);
@@ -274,6 +288,10 @@ begin
   if tmp='' then exit; //пустые строки пропускаем
   if EvalChars(tmp)<>EV_NORMAL then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after all extractions');
+
+  if preAnyId.HasMatches(ln) then
+    raise EAlternativeIds.Create('Alternative ids or non-parsed ids in string');
+
 
  {
   Мы допускаем несколько строк базового перевода, но только для случаев
@@ -347,8 +365,10 @@ end;
 
 initialization
   preEmptyParenth := Regex(pEmptyParenth);
+  preAnyId := Regex(pAnyId);
 
 finalization
+  FreeAndNil(preAnyId);
   FreeAndNil(preEmptyParenth);
 
 end.

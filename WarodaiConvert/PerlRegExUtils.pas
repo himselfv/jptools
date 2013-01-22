@@ -16,6 +16,7 @@ const
 type
   TPerlRegExHelper = class helper for TPerlRegEx
   public
+    function HasMatches(const subj: string): boolean;
     function ReplaceMatches(const subj, repl: string): string;
     function DeleteAll(const subj: string): string;
   end;
@@ -30,6 +31,12 @@ begin
   Result.RegEx := UTF8String(s);
   Result.Compile;
   Result.Study;
+end;
+
+function TPerlRegExHelper.HasMatches(const subj: string): boolean;
+begin
+  Self.Subject := UTF8String(subj);
+  Result := Match;
 end;
 
 function TPerlRegExHelper.ReplaceMatches(const subj, repl: string): string;
