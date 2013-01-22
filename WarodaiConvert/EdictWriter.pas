@@ -463,7 +463,8 @@ begin
         se_ln := se_ln + '/' + se.glosses[j];
     end;
 
-    Result := Result + '/' + se_ln;
+    if se_ln<>'' then //пустые значения (напр. только ссылки, и ничего не вошло) не добавляем
+      Result := Result + '/' + se_ln;
   end;
 
  {$IFDEF ICONV_EDICT1}
@@ -510,6 +511,7 @@ var i, j: integer;
 begin
  //Генерируем тело статьи
   body := EdictBuildArticleBody(Self, art);
+  if body='' then exit; //статья пустая -- видимо, ничто в ней не годилось для EDICT1
 
  //Печатаем все варианты
   for i := 0 to art.kana_used  - 1 do
