@@ -18,7 +18,7 @@
  и поэтому очень много статей оказываются выброшены. }
 
 interface
-uses StreamUtils, Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, WakanDic,
+uses StreamUtils, Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates,
   iconv;
 
 const
@@ -150,13 +150,6 @@ function GetPopStats(art: PEdictArticle): TPopStats;
 function EdictBuildArticleBody(wr: TArticleWriter; art: PEdictArticle): string;
 
 type
-  TLineHeader = record
-    kanji: string;
-    kana: string;
-    mark: TEntryWordMarkers;
-  end;
-  PLineHeader = ^TLineHeader;
-
   TEdict1Writer = class(TArticleWriter)
   protected
    {$IFDEF ICONV_EDICT1}

@@ -6,9 +6,6 @@
   TPerlRegEx
 }
 
-//Look into english EDICT for markers to known words. Slow.
-{$DEFINE ENMARKERS}
-
 //Считаем число ссылок <a href=>, и различные виды слов, им предшествующий
 //{$DEFINE COUNT_HREFS}
 
@@ -136,13 +133,6 @@ var
   stats: record
     artcnt: integer;
     badcnt: integer;
-    TlLines: integer;
-    VarLines: integer;
-    KanaLines: integer;
-    KanjiLines: integer;
-
-    SeveralTlLines: integer; //block has several basic translation lines. Not a normal case.
-    MixedTlLines: integer; //block has several lines + they are intermixed with other types of lines
     ex_cnt: integer;
   end;
 
@@ -151,52 +141,6 @@ procedure ReadHeader;
 var s: string;
 begin
   while inp.ReadLine(s) and (s<>'') do begin end;
-end;
-
-procedure SetLineTypes(block: PEntryBlock);
-var i,ev: integer;
-  tl_lines: integer;
-  last_tl: boolean;
-  mixed_tl: boolean;
-begin
-  last_tl := true;
-  mixed_tl := false;
-  tl_lines := 0;
-  for i := 0 to block.line_cnt - 1 do begin
-   {$IFDEF COUNT_HREFS}
-    MatchHrefs(block.lines[i]);
-   {$ENDIF}
-    block.lines[i] := RemoveFormatting(block.lines[i]);
-
-    ev := EvalChars(block.lines[i]);
-    if ev=EV_KANA then begin
-      Inc(stats.KanaLines);
-      last_tl := false;
-    end else
-    if ev=EV_KANJI then begin
-      Inc(stats.KanjiLines);
-      last_tl := false;
-    end else begin
-      Inc(stats.TlLines);
-      Inc(tl_lines);
-      if not last_tl then
-        mixed_tl := true;
-      last_tl := false;
-    end;
-
-    if pos('～', block.lines[i])>0 then begin
-      Inc(stats.VarLines);
-      last_tl := false;
-    end;
-
-    if block.lines[i][Length(block.lines[i])]=':' then
-      raise EColonAfterTl.Create('Colon after TL');
-  end;
-
-  if tl_lines>1 then
-    Inc(stats.SeveralTlLines);
-  if mixed_tl then
-    Inc(stats.MixedTlLines);
 end;
 
 
@@ -212,8 +156,8 @@ var
 function ReadArticle: boolean;
 var ln: string;
   i, j: integer;
- {$IFDEF ENMARKERS}
-  mark: TEntryMarkers;
+ {$IFDEF MATCH_HREFS}
+  k: integer;
  {$ENDIF}
   body_read: boolean;
 begin
@@ -237,18 +181,22 @@ begin
           DropVariantIndicator(hdr.words[i].s_kanji[j]);
       end;
 
+     {$IFDEF COUNT_HREFS}
       for i := 0 to body.group_cnt - 1 do
         for j := 0 to body.groups[i].block_cnt - 1 do
-          SetLineTypes(@body.groups[i].blocks[j]);
-
-     {$IFDEF ENMARKERS}
-     //Query markers from english edict
-      FillMarkers(hdr, mark);
+          for k := 0 to body.groups[i].blocks[j].line_cnt - 1 do
+            MatchHrefs(body.groups[i].blocks[j].lines[k]);
      {$ENDIF}
 
      //Add to edict
       ex_list.Reset;
       ProcessEntry(@hdr, @body, @mg, @ex_list);
+
+     //Query markers from english edict
+      for i := 0 to mg.version_cnt - 1 do
+        FillMarkers(@mg.versions[i].art);
+
+     //Print
       for i := 0 to mg.version_cnt - 1 do begin
         edict1.Print(@mg.versions[i].art);
         edict2.Print(@mg.versions[i].art);
@@ -359,14 +307,18 @@ begin
     writeln('');
     writeln('Comments: '+IntToStr(WarodaiStats.Comments));
     writeln('Data lines: '+IntToStr(WarodaiStats.DataLines));
-    writeln('TL lines: '+IntToStr(stats.TlLines));
-    writeln('Var lines: '+IntToStr(stats.VarLines));
-    writeln('Kana lines: '+IntToStr(stats.KanaLines));
-    writeln('Kanji lines: '+IntToStr(stats.KanjiLines));
+    writeln('TL lines: '+IntToStr(WarodaiStats.TlLines));
+    writeln('Template lines: '+IntToStr(WarodaiStats.TemplateLines));
+    writeln('Kana lines: '+IntToStr(WarodaiStats.KanaLines));
+    writeln('Kanji lines: '+IntToStr(WarodaiStats.KanjiLines));
     writeln('');
-    writeln('EDICT tags -- match: '+IntToStr(refStats.edictTagsFound));
-    writeln('EDICT tags -- cloned: '+IntToStr(refStats.edictTagsCloned));
-    writeln('EDICT tags -- unsure: '+IntToStr(refStats.edictTagsUnsure));
+    writeln('EDICT tags:');
+    writeln('  Found: '+IntToStr(refStats.TagsFound));
+    writeln('  Several senses -- BAD: '+IntToStr(refStats.SeveralSenses));
+    writeln('  Multiple conflicting matches -- BAD: '+IntToStr(refStats.MultipleMatches));
+    writeln('  Multiple match senses -- BAD: '+IntToStr(refStats.MultipleMatchSenses));
+    writeln('  Multiple kana/kanji entries: '+IntToStr(refStats.MultiKanaKanji));
+    writeln('  Applied:'+IntToStr(refStats.TagsApplied));
     writeln('');
 
     writeln('Group-common cases: '+IntToStr(WarodaiStats.GroupCommon));
@@ -385,8 +337,8 @@ begin
 
     writeln('WTF -- Lines too short: '+IntToStr(WarodaiStats.LinesTooShort));
 
-    writeln('BAD -- Several TL lines: '+IntToStr(stats.SeveralTlLines));
-    writeln('BAD -- Mixed TL lines: '+IntToStr(stats.MixedTlLines));
+    writeln('BAD -- Several TL lines: '+IntToStr(WarodaiStats.SeveralTlLines));
+    writeln('BAD -- Mixed TL lines: '+IntToStr(WarodaiStats.MixedTlLines));
     writeln('');
 
     ExceptionStats.PrintStats;

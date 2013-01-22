@@ -315,13 +315,40 @@ var j, k: integer;
   t_p: TTemplateList;
   sn: PEdictSenseEntry;
   sn_base: PEdictSenseEntry;
+
+  ev: integer;
+  tl_lines: integer;
+  last_tl: boolean;
+  mixed_tl: boolean;
 begin
   if bl.line_cnt<0 then
     raise EParsingException.Create('Block has no lines');
   sn_base := nil;
 
+  last_tl := true;
+  mixed_tl := false;
+  tl_lines := 0;
+
   for j := 0 to bl.line_cnt - 1 do begin
-    tmp := bl.lines[j];
+    tmp := RemoveFormatting(bl.lines[j]);
+    ev := EvalChars(tmp);
+
+    if ev=EV_KANA then begin
+      Inc(WarodaiStats.KanaLines);
+    end else
+    if ev=EV_KANJI then begin
+      Inc(WarodaiStats.KanjiLines);
+    end else begin
+      Inc(WarodaiStats.TlLines);
+      Inc(tl_lines);
+      if not last_tl then
+        mixed_tl := true;
+    end;
+
+    if tmp[Length(tmp)]=':' then
+      raise EColonAfterTl.Create('Colon after TL');
+
+   //Template
     if ExtractTemplate(tmp, templ) then begin
       SplitTemplate(templ, t_p);
       if Length(t_p)>1 then
@@ -333,11 +360,17 @@ begin
         sn := mg.Get(t_p[k])^.AddSense;
         ParseLn(tmp, sn);
       end;
+      Inc(WarodaiStats.TemplateLines);
     end else
+
+   //Example
     if ExtractExample(tmp, templ) then begin
       if examples<>nil then
         examples^.Add(templ + ' === '+ tmp);
-    end else begin
+    end else
+
+   //Text line
+    begin
      {
       Проверка отключена. Вместо этого проверяем позже, при добавлении.
       if sn_base<>nil then
@@ -355,8 +388,14 @@ begin
       end;
       ParseLn(tmp, sn);
     end;
+
+    last_tl := false;
   end;
 
+  if tl_lines>1 then
+    Inc(WarodaiStats.SeveralTlLines);
+  if mixed_tl then
+    Inc(WarodaiStats.MixedTlLines);
 end;
 
 

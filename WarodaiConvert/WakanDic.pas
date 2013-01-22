@@ -5,13 +5,17 @@ unit WakanDic;
 }
 
 interface
-uses TextTable, JWBDic, JWBEdictMarkers, JWBKanaConv, Warodai, WarodaiHeader, WarodaiBody;
+uses TextTable, JWBDic, JWBEdictMarkers, JWBKanaConv, Warodai, WarodaiHeader,
+  WarodaiBody, EdictWriter;
 
 var
   refStats: record
-    edictTagsFound: integer;  //number of articles we have clearly found a match for
-    edictTagsCloned: integer; //number of articles we have cloned from a clear match (same source article)
-    edictTagsUnsure: integer; //number of articles we have found a possible match for, but weren't sure and dropped it
+    TagsFound: integer;  //нашли какие-то вхождения
+    SeveralSenses: integer; //слово вроде и нашли, но у него в вародае несколько значений - пришлось пропустить
+    MultipleMatches: integer; //подошло несколько противоречивых вариантов
+    MultipleMatchSenses: integer; //в найденном варианте несколько противоречивых значений
+    MultiKanaKanji: integer; //вариант-то подошёл, но там было несколько вариантов каны-кандзи, мы запомнили
+    TagsApplied: integer; //всё подошло - записали флаги
   end;
 
 procedure LoadReferenceDic(filename: string);
@@ -24,7 +28,9 @@ procedure FreeReferenceDic;
 type
   TSearchResult = record
     idx: integer;
-    markers: TMarkers;
+    k_markers: TMarkers;
+    article: integer;
+    entries: TEntries;
   end;
 
 function RefFind(kana: string; kanji: string; out ret: TSearchResult): boolean;
@@ -49,8 +55,7 @@ type
   end;
   TEntryMarkers = array[0..MaxWords-1] of TEntryWordMarkers;
 
-function FillWordMarkers(const word: TEntryWord; out mark: TEntryWordMarkers): boolean;
-procedure FillMarkers(const hdr: TEntryHeader; out mark: TEntryMarkers);
+procedure FillMarkers(art: PEdictArticle); overload;
 
 
 implementation
@@ -115,7 +120,9 @@ begin
         exit;
       end;
       ret.idx := cdic.GetIndex;
-      ret.markers := cdic.GetArticleMarkers; //TODO: This is wrong. Separate markers for separate entries
+      ret.k_markers := cdic.GetKanjiKanaMarkers;
+      ret.article := cdic.GetArticle;
+      ret.entries := cdic.GetEntries;
       cdic.NextMatch;
       continue;
     end;
@@ -126,7 +133,9 @@ begin
     rkana := cdic.GetPhonetic;
     if (rkana=kana) or (rcnt<=1) then begin
       ret.idx := cdic.GetIndex;
-      ret.markers := cdic.GetArticleMarkers; //TODO: This is wrong. See above.
+      ret.k_markers := cdic.GetKanjiKanaMarkers;
+      ret.article := cdic.GetArticle;
+      ret.entries := cdic.GetEntries;
       if rkana=kana then break;
     end;
 
@@ -135,50 +144,73 @@ begin
   Result := rcnt>0;
 end;
 
-function FillWordMarkers(const word: TEntryWord; out mark: TEntryWordMarkers): boolean;
+procedure FillMarkers(art: PEdictArticle);
 var i: integer;
   res: TSearchResult;
-begin
-  if word.s_kanji_used<=0 then begin
-    Result := RefFind(word.s_reading, '', res);
-    if Result then begin
-      mark.found := true;
-      mark.markers := MarkersToStr(res.markers, mark.pop);
-      exit;
-    end;
-  end else
-  for i := 0 to word.s_kanji_used - 1 do
-    if RefFind(word.s_reading, word.s_kanji[i], res) then begin
-      mark.found := true;
-      mark.markers := MarkersToStr(res.markers, mark.pop);
-      Result := true;
-      exit;
-    end;
-  Result := false;
-end;
+  match_article: integer;
+  match_entries: TEntries;
+  multiple_matches: boolean;
+  mark_b: TMarkers;
+  mark: TMarkersByType;
 
-procedure FillMarkers(const hdr: TEntryHeader; out mark: TEntryMarkers);
-var i, m_idx: integer;
 begin
-  m_idx := -1;
-  for i := 0 to hdr.words_used - 1 do
-    if not FillWordMarkers(hdr.words[i], mark[i]) then begin
-      mark[i].found := false;
-      mark[i].markers := '';
-      mark[i].pop := false;
-    end else begin
-      Inc(refStats.edictTagsFound);
-      if m_idx<0 then
-        m_idx := i;
-    end;
+  match_article := -1;
+  multiple_matches := false;
 
- //Для тех слов, для которых маркеры не нашли, копируем те, где нашли
-  if m_idx>=0 then
-    for i := 0 to hdr.words_used - 1 do
-      if not mark[i].found then begin
-        Inc(refStats.edictTagsCloned);
-        mark[i] := mark[m_idx];
+ //Перебираем все поля кана-кандзи, и находим для каждого флаги - в любом случае
+
+  if art.kanji_used<=0 then begin
+    for i := 0 to art.kana_used - 1 do
+      if RefFind(art.kana[i].k, '', res) then begin
+        art.kana[i].inf := MarkersToStr(res.k_markers, art.kana[i].pop);
+        if (match_article>=0) and (match_article <> res.article) then
+          multiple_matches := true;
+        match_article := res.article;
+        match_entries := res.entries;
       end;
+
+  end else
+  for i := 0 to art.kanji_used - 1 do
+    if RefFind('', art.kanji[i].k, res) then begin
+      art.kanji[i].inf := MarkersToStr(res.k_markers, art.kanji[i].pop);
+      if (match_article>=0) and (match_article <> res.article) then
+        multiple_matches := true;
+      match_article := res.article;
+      match_entries := res.entries;
+    end;
+
+  if match_article<0 then
+    exit; //ничего не найдено.
+
+  Inc(refStats.TagsFound);
+
+  if multiple_matches then begin
+    Inc(refStats.MultipleMatches);
+    exit;
+  end;
+
+  mark_b := match_entries.items[0].markers;
+  for i := 1 to Length(match_entries.items) - 1 do
+    if match_entries.items[i].markers<>mark_b then begin
+      Inc(refStats.MultipleMatchSenses);
+      exit;
+    end;
+
+  if art.senses_used>1 then begin
+    Inc(refStats.SeveralSenses);
+    exit;
+  end;
+
+  if (art.kanji_used>1) or (art.kanji_used>1) then
+    Inc(refStats.MultiKanaKanji);
+
+  mark := MarkersToStrEx(mark_b);
+
+  art.senses[0].t_pos := mark.m_pos;
+  art.senses[0].t_field := mark.m_field;
+  art.senses[0].t_dial := mark.m_dial;
+  art.senses[0].t_misc := mark.m_misc;
+  Inc(refStats.TagsApplied);
 end;
 
 initialization

@@ -26,6 +26,14 @@ var
     BlockNumberGuessed: integer;
     BlockNumberMissing: integer;
 
+    TlLines: integer;
+    TemplateLines: integer;
+    KanaLines: integer;
+    KanjiLines: integer;
+
+    SeveralTlLines: integer; //block has several basic translation lines. Not a normal case.
+    MixedTlLines: integer; //block has several lines + they are intermixed with other types of lines
+
   end;
 
 type
