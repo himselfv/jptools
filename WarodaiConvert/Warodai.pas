@@ -62,9 +62,7 @@ type
      Без разбиения на глоссы перевод добавить нельзя. }
 
   EUnsupportedXref = class(ESilentParsingException);
-   { Что-то в этом xref не поддерживается }
-  EIllegalXrefChar = class(ESilentParsingException);
-   { Недопустимый или неподдерживаемый символ в ссылке на запись }
+   { Недопустимый или неподдерживаемый элемент в ссылке на запись }
 
   ETemplateParsingException = class(ESilentParsingException); { Шаблон или пример не удалось разобрать или какие-то части его не поддерживаются. }
   EOpenTemplate = class(ESilentParsingException); { В статье встречается открытый шаблон (см. шаблоны) - не поддерживаем }

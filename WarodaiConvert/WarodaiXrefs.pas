@@ -31,6 +31,11 @@ uses SysUtils, UniStrUtils, WarodaiHeader;
   あわ【泡】 (в едикте через точку)
   そとわ【外輪】(の足)
   あいおい【相老】(～する)
+  あいおい【相老】(～する) 1
+  あいおい【相老2】
+
+Страшные вещи ловим:
+  きだおれ(京の)着倒れ
 }
 const
   pRomanDigit='IVX'; //используются для ссылок на подзначения
@@ -45,22 +50,24 @@ const
   pRefWri1='【'+pCJKRefStr+'】'; //расшифровка в формате あわ【泡】
   pRefNo='\s*[0-9]{1,3}'; //опционально 1-2о цифры с пробелом или без -- ссылка на подзначение
 
-  //Берегись: это не хвост:
-  //см. しょうねん【少年】 (ср. しょうじん【小人】)
-
   //Хвост ссылки
-  pRefFreeTail = '['+pCJKRefChar+']+?'; //некоторое число японских символов без скобок
-  pRefRoundBrackets = '(\(.*?\))'; //любое число символов - русских или японских - в скобках -- продолжение или пояснение
-  pRefTail = '\s?'+pRefRoundBrackets+'|\s?'+pRefFreeTail+'|'; //любой вариант хвоста или ничего
+  pRefRoundBrackets = '\s?\(.*?\)'; //любое число символов - русских или японских - в скобках -- продолжение или пояснение
+  pRefFreeTail = '\s?['+pCJKRefChar+']+?'; //некоторое число японских символов без скобок
 
  //одна ссылка в любом формате
   pSingleRef='('+pRefBase+')'
     +'('+pRefWri1+'|)' //любое из пояснений, или ничего -- чтобы число скобок не менялось
     +'(?:' //в любом порядке (RefNo может идти после скобок):
       +'(?:'+pRefNo+')?'
-      +'('+pRefTail+')?'
+      +'('+pRefRoundBrackets+'|)'
+      +'('+pRefFreeTail+')?'
     +'|'
-      +'('+pRefTail+')?'
+      +'('+pRefRoundBrackets+'|)'
+      +'(?:'+pRefNo+')?'
+      +'('+pRefFreeTail+')?'
+    +'|'
+      +'('+pRefRoundBrackets+'|)'
+      +'('+pRefFreeTail+')?'
       +'(?:'+pRefNo+')?'
     +')'
     ;
@@ -101,6 +108,7 @@ var
 { Находит в строке все элементы ссылочного типа и регистрирует их в записи Sense }
 procedure EatXrefs(var ln: string; sn: PEdictSenseEntry);
 var xr0, xr1, xr2, xr3: UnicodeString;
+  tmp: UnicodeString;
 begin
   preXref.Subject := UTF8String(ln);
   if not preXref.Match then exit;
@@ -119,14 +127,24 @@ begin
       DropVariantIndicator(xr1);
       DropVariantIndicator(xr2);
 
+     //Удаляем скобки из записи
+      if xr2<>'' then begin
+        Assert(xr2[1]='【');
+        xr2 := copy(xr2,2,Length(xr2)-2);
+      end;
+
+     //Бесскобочные хвосты отлавливаются, но не поддерживаются. Почти не встречаются.
+      if (preSingleRef.GroupCount>3) and (preSingleRef.Groups[4]<>'') then
+        raise EUnsupportedXref.Create('Invalid Xref tail -- non-bracketed tail');
+
+     //Проверяем на скобочные продолжения -- そとわ【外輪】(の足)
       if (preSingleRef.GroupCount>2) and (preSingleRef.Groups[3]<>'') then begin
-       //Хвост
-       //そとわ【外輪】(の足)
         xr3 := Trim(UnicodeString(preSingleRef.Groups[3]));
 
-       //Бесскобочные хвосты отлавливаются, но не поддерживаются. Почти не встречаются.
+       //Почему-то поймали в скобочное выражение бесскобочный хвост.
+       //Раньше проверка была нужна, теперь оставил только на всякий случай
         if (Length(xr3)<2) or (xr3[1]<>'(') or (xr3[Length(xr3)]<>')') then
-          raise EUnsupportedXref.Create('Invalid Xref tail -- non-bracketed tail');
+          raise EUnsupportedXref.Create('Invalid Xref tail -- non-bracketed bracket WTF');
         xr3 := copy(xr3,2,Length(xr3)-2);
 
         if EvalChars(xr3) and (EV_CYR or EV_LATIN) <> 0 then
@@ -137,24 +155,64 @@ begin
          //こ【粉】(～にする) -- просто удаляем тильду (у нас для каждого такого шаблона своя статья)
           delete(xr3,1,1);
 
+       {
+        Раньше мы такому не верили и убивали, но теперь научились разбирать.
         raise EUnsupportedXref.Create('Xref contains (round bracket) free style addition -- unable to parse');
+       }
+
+       //Если у ссылки есть скобочная часть - это продолжение, напр. あな【穴】(を明ける)
+       //Продолжение может уже включать в себя написание:
+        if (xr2<>'') and (pos(xr2,xr3)>0) then begin
+         //くも【雲】(雲の上)
+        end else
+       //или чтение
+        if (pos(xr1,xr3)>0) then begin
+        end else begin
+         //в остальных случаях считаем, что это чистое продолжение
+         //встречались ошибки вроде ぎんこう(眼の銀行), но у нас нет никаких способов их поймать -- и их мало (пара штук)
+          if xr2<>'' then
+            xr3 := xr2+xr3
+          else
+            xr3 := xr1+xr3;
+        end;
+
+       //Теперь у нас
+       //xr1: база (кана/кандзи?)
+       //xr2: кандзи?
+       //xr3: полное выражение с базой
+
+       //Пробуем сделать и кану
+        if xr2<>'' then begin
+          tmp := repl(xr3, xr2, xr1);
+          if EvalChars(tmp) and EV_KANJI = 0 then begin
+           //Ура, получилось!
+            xr2 := xr3; //написание
+            xr1 := tmp; //чтение
+          end else begin
+            xr2 := ''; //не получилось чтения
+            xr1 := xr3; //написание
+          end;
+        end else begin
+        //Ничего не остаётся, как превратить ссылку в одиночную на выражение целиком, без расшифровки
+          xr2 := '';
+          xr1 := xr3;
+        end;
+
       end;
 
-      if xr2<>'' then begin
-        Assert(xr2[1]='【'); //скобки
-        xr1 := xr1+'・'+copy(xr2,2,Length(xr2)-2);
-      end;
+     //Объединяем
+      if xr2<>'' then xr1 := xr1+'・'+xr2;
 
      //Всё это ненормально
       if pos('[', xr1)>0 then
-        raise EIllegalXrefChar.Create('[ in xref value');
+        raise EUnsupportedXref.Create('[ in xref value');
       if pos('(', xr1)>0 then
-        raise EIllegalXrefChar.Create('( in xref value');
+        raise EUnsupportedXref.Create('( in xref value');
      //А вот это нормально, но что с ними делать непонятно
       if pos('…', xr1)>0 then
-        raise EIllegalXrefChar.Create('... in xref value');
+        raise EUnsupportedXref.Create('... in xref value');
       if pos('/', xr1)>0 then
-        raise EIllegalXrefChar.Create('/ in xref value');
+        raise EUnsupportedXref.Create('/ in xref value');
 
       if (xr0='см. тж.') or (xr0='ср. тж.') or (xr0='см.') or (xr0='ср.')
       or (xr0='тж.') then
@@ -193,7 +251,7 @@ end;
 
 {
 Другой вариант:
-Все ссылки в формате <a href="#1-107-1-37">ごぎょう【五行】</a>, без разбору.
+Все ссылки в формате <a href="#1-107-1-37">.*</a>, без разбору.
 
 Встречаются такие формы:
   <i>см.</i> <a href="#1-107-1-37">ごぎょう【五行】</a>
