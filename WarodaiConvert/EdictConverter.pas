@@ -286,7 +286,7 @@ begin
   EatXrefs(tmp, sn);
   tmp := Trim(preEmptyParenth.DeleteAll(tmp)); //удаляем оставшиеся пустыми скобки
   if tmp='' then exit; //пустые строки пропускаем
-  if EvalChars(tmp)<>EV_NORMAL then
+  if EvalChars(tmp) and (EV_KANA or EV_KANJI) <> 0 then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after all extractions');
 
   if preAnyId.HasMatches(ln) then
@@ -333,11 +333,11 @@ begin
     tmp := RemoveFormatting(bl.lines[j]);
     ev := EvalChars(tmp);
 
-    if ev=EV_KANA then begin
-      Inc(WarodaiStats.KanaLines);
-    end else
-    if ev=EV_KANJI then begin
+    if ev and EV_KANJI = EV_KANJI then begin
       Inc(WarodaiStats.KanjiLines);
+    end else
+    if ev and EV_KANA = EV_KANA then begin
+      Inc(WarodaiStats.KanaLines);
     end else begin
       Inc(WarodaiStats.TlLines);
       Inc(tl_lines);

@@ -236,7 +236,7 @@ begin
   Не делаем этого, т.к. кандзи и кана могут остаться в строке легальным образом -- например, в форме "см. также".
   Вместо этого мы проверим на кандзи и кану перед самым добавлением.
 
-  if EvalChars(ln)<>EV_NORMAL then
+  if EvalChars(ln) and (EV_KANA or EV_KANJI) <> 0 then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after doing ExtractTemplate');
  }
 
@@ -403,7 +403,7 @@ begin
  {
   Не делаем этого -- см. комментарий в ExtractTemplate.
 
-  if EvalChars(ln)<>EV_NORMAL then
+  if EvalChars(ln) and (EV_KANA or EV_KANJI) <> 0 then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after doing ExtractExample');
  }
 

@@ -29,7 +29,8 @@ uses SysUtils, UniStrUtils, WarodaiHeader;
 {
 Форма ссылки:
   あわ【泡】 (в едикте через точку)
-  ぎんこう(眼の銀行)
+  そとわ【外輪】(の足)
+  あいおい【相老】(～する)
 }
 const
   pRomanDigit='IVX'; //используются для ссылок на подзначения
@@ -42,11 +43,26 @@ const
 
   pRefBase=pCJKRefStr;
   pRefWri1='【'+pCJKRefStr+'】'; //расшифровка в формате あわ【泡】
+  pRefNo='\s*[0-9]{1,3}'; //опционально 1-2о цифры с пробелом или без -- ссылка на подзначение
+
+  //Берегись: это не хвост:
+  //см. しょうねん【少年】 (ср. しょうじん【小人】)
+
+  //Хвост ссылки
+  pRefFreeTail = '['+pCJKRefChar+']+?'; //некоторое число японских символов без скобок
+  pRefRoundBrackets = '(\(.*?\))'; //любое число символов - русских или японских - в скобках -- продолжение или пояснение
+  pRefTail = '\s?'+pRefRoundBrackets+'|\s?'+pRefFreeTail+'|'; //любой вариант хвоста или ничего
 
  //одна ссылка в любом формате
   pSingleRef='('+pRefBase+')'
     +'('+pRefWri1+'|)' //любое из пояснений, или ничего -- чтобы число скобок не менялось
-    +'(?:\s*[0-9]{1,3})?' //опционально 1-2о цифры с пробелом или без -- ссылка на подзначение, другой формат
+    +'(?:' //в любом порядке (RefNo может идти после скобок):
+      +'(?:'+pRefNo+')?'
+      +'('+pRefTail+')?'
+    +'|'
+      +'('+pRefTail+')?'
+      +'(?:'+pRefNo+')?'
+    +')'
     ;
 
   pRefNames=
@@ -84,7 +100,7 @@ var
 
 { Находит в строке все элементы ссылочного типа и регистрирует их в записи Sense }
 procedure EatXrefs(var ln: string; sn: PEdictSenseEntry);
-var xr0, xr1, xr2: UnicodeString;
+var xr0, xr1, xr2, xr3: UnicodeString;
 begin
   preXref.Subject := UTF8String(ln);
   if not preXref.Match then exit;
@@ -103,19 +119,41 @@ begin
       DropVariantIndicator(xr1);
       DropVariantIndicator(xr2);
 
+      if (preSingleRef.GroupCount>2) and (preSingleRef.Groups[3]<>'') then begin
+       //Хвост
+       //そとわ【外輪】(の足)
+        xr3 := Trim(UnicodeString(preSingleRef.Groups[3]));
+
+       //Бесскобочные хвосты отлавливаются, но не поддерживаются. Почти не встречаются.
+        if (Length(xr3)<2) or (xr3[1]<>'(') or (xr3[Length(xr3)]<>')') then
+          raise EUnsupportedXref.Create('Invalid Xref tail -- non-bracketed tail');
+        xr3 := copy(xr3,2,Length(xr3)-2);
+
+        if EvalChars(xr3) and (EV_CYR or EV_LATIN) <> 0 then
+         //たていれ【達入れ】(татэирэ)
+          raise EUnsupportedXref.Create('Cyrillic/latin reading in (round brackets) -- format error');
+
+        if xr3[1]='～' then
+         //こ【粉】(～にする) -- просто удаляем тильду (у нас для каждого такого шаблона своя статья)
+          delete(xr3,1,1);
+
+        raise EUnsupportedXref.Create('Xref contains (round bracket) free style addition -- unable to parse');
+      end;
+
       if xr2<>'' then begin
         Assert(xr2[1]='【'); //скобки
         xr1 := xr1+'・'+copy(xr2,2,Length(xr2)-2);
       end;
 
      //Всё это ненормально
-      if pos('…', xr1)>0 then
-        raise EIllegalXrefChar.Create('... in xref value');
       if pos('[', xr1)>0 then
         raise EIllegalXrefChar.Create('[ in xref value');
       if pos('(', xr1)>0 then
         raise EIllegalXrefChar.Create('( in xref value');
-      if pos('/', xr1)>0 then //а вот это нормально, но что с ним делать непонятно
+     //А вот это нормально, но что с ними делать непонятно
+      if pos('…', xr1)>0 then
+        raise EIllegalXrefChar.Create('... in xref value');
+      if pos('/', xr1)>0 then
         raise EIllegalXrefChar.Create('/ in xref value');
 
       if (xr0='см. тж.') or (xr0='ср. тж.') or (xr0='см.') or (xr0='ср.')

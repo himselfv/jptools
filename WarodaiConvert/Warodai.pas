@@ -61,6 +61,8 @@ type
      либо такие образуются в результате его разбиения на глоссы.
      Без разбиения на глоссы перевод добавить нельзя. }
 
+  EUnsupportedXref = class(ESilentParsingException);
+   { Что-то в этом xref не поддерживается }
   EIllegalXrefChar = class(ESilentParsingException);
    { Недопустимый или неподдерживаемый символ в ссылке на запись }
 
@@ -82,12 +84,14 @@ type
   end;
 
 const
-  EV_NORMAL = 0;
   EV_KANA = 1;
   EV_KANJI = 2;
+  EV_LATIN = 4;
+  EV_CYR = 8;
 
-{ Возвращает KANJI, если в строке есть и кандзи, KANA, если только кана, и NORMAL, если ничего нет }
+{ Возвращает набор флагов, означающий "буквы с какими свойствами есть в строке" }
 function EvalChars(const s: string): integer;
+
 
 {
 Регистрация ошибок.
@@ -155,17 +159,30 @@ begin
     Result := Result + #13#10 + FArticleLines[i];
 end;
 
+function IsCyrillic(const c: char): boolean;
+begin
+  Result := ((c>='а') and (c<='я'))
+    or ((c>='А') and (c<='Я'))
+    or (c='Ё') or (c='ё'); //эти в другом месте
+end;
+
 function EvalChars(const s: string): integer;
 var i: integer;
 begin
-  Result := EV_NORMAL;
+  Result := 0;
   for i := 1 to Length(s) do
     if IsKanji(s[i]) then begin
-      Result := EV_KANJI;
-      break;
+      Result := Result or EV_KANJI;
     end else
-    if IsKana(s[i]) then
-      Result := EV_KANA;
+    if IsKana(s[i]) then begin
+      Result := Result or EV_KANA;
+    end else
+    if IsCyrillic(s[i]) then begin
+      Result := Result or EV_CYR;
+    end else
+    if CharIsLatinSymbol(s[i]) then begin
+      Result := Result or EV_LATIN;
+    end;
 end;
 
 procedure DumpMsg(const msg: string);
