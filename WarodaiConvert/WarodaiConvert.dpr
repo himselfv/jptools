@@ -29,6 +29,8 @@ uses
   PerlRegExUtils in 'PerlRegExUtils.pas',
   WarodaiXrefs in 'WarodaiXrefs.pas';
 
+{$INCLUDE 'Warodai.inc'}
+
 {
 Заметки по реализации.
 1. Каны в полях "перевод" быть не должно. Из описания EDICT:
@@ -177,8 +179,17 @@ begin
      //Clean up a bit
       for i := 0 to hdr.words_used - 1 do begin
         DropVariantIndicator(hdr.words[i].s_reading);
-        for j := 0 to hdr.words[i].s_kanji_used-1 do
+       {$IFDEF BAN_ELLIPSIS}
+        if pos('…',hdr.words[i].s_reading)>0 then
+          raise EEllipsisInHeader.Create('... in article reading');
+       {$ENDIF}
+        for j := 0 to hdr.words[i].s_kanji_used-1 do begin
           DropVariantIndicator(hdr.words[i].s_kanji[j]);
+         {$IFDEF BAN_ELLIPSIS}
+          if pos('…',hdr.words[i].s_kanji[j])>0 then
+            raise EEllipsisInHeader.Create('... in article kanji');
+         {$ENDIF}
+        end;
       end;
 
      {$IFDEF COUNT_HREFS}

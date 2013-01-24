@@ -56,6 +56,10 @@ type
   ESeveralProperTranslations = class(ESilentParsingException); { Обычно все добавочные строки - это "ср." и "см. также" }
     //статей, где блок содержит несколько строк простого перевода
 
+  EEllipsisInHeader = class(ESilentParsingException);
+   { В заголовке статьи - в кандзи или в чтении - найдено троеточие (...)
+    См. комментарий к BAN_ELLIPSIS в Warodai.inc }
+
   EBracketsMismatch = class(ESilentParsingException);
    { Серьёзная ошибка: либо сам перевод содержит непарные/неверно парные скобки,
      либо такие образуются в результате его разбиения на глоссы.

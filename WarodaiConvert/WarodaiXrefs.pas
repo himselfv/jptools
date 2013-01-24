@@ -5,6 +5,7 @@ Matches various XReferences found in Warodai.
 
 interface
 uses Warodai, WcUtils, EdictWriter, PerlRegEx, PerlRegExUtils;
+{$INCLUDE 'Warodai.inc'}
 
 procedure EatXrefs(var ln: string; sn: PEdictSenseEntry);
 
@@ -209,9 +210,11 @@ begin
       if pos('(', xr1)>0 then
         raise EUnsupportedXref.Create('( in xref value');
      //А вот это нормально, но что с ними делать непонятно
+     {$IFDEF BAN_ELLIPSIS}
       if pos('…', xr1)>0 then
         raise EUnsupportedXref.Create('... in xref value');
-      if pos('/', xr1)>0 then
+     {$ENDIF}
+      if pos('/', xr1)>0 then //этих очень мало -- 3 штуки
         raise EUnsupportedXref.Create('/ in xref value');
 
       if (xr0='см. тж.') or (xr0='ср. тж.') or (xr0='см.') or (xr0='ср.')

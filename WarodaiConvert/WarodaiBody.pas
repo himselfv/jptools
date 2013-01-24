@@ -508,12 +508,10 @@ begin
       continue; //skip comments!
     end;
 
-   {$IFDEF ASSERT}
     //We assume comment symbols only appear as first chars of the (rest of the) line,
     //but that might not be true.
     if pos('•', ln)>0 then
       raise EParsingException.Create('Comment symbol inside the line!');
-   {$ENDIF}
 
     TrimStartColon(ln);
     TrimEndPunctuation(ln);
