@@ -201,6 +201,9 @@ begin
 
       end;
 
+      xr1 := FixEllipsis(xr1);
+      xr2 := FixEllipsis(xr2);
+
      //Объединяем
       if xr2<>'' then xr1 := xr1+'・'+xr2;
 
@@ -209,11 +212,6 @@ begin
         raise EUnsupportedXref.Create('[ in xref value');
       if pos('(', xr1)>0 then
         raise EUnsupportedXref.Create('( in xref value');
-     //А вот это нормально, но что с ними делать непонятно
-     {$IFDEF BAN_ELLIPSIS}
-      if pos('…', xr1)>0 then
-        raise EUnsupportedXref.Create('... in xref value');
-     {$ENDIF}
       if pos('/', xr1)>0 then //этих очень мало -- 3 штуки
         raise EUnsupportedXref.Create('/ in xref value');
 

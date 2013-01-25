@@ -7,7 +7,7 @@ unit StreamUtils;
 {TODO: Объединить StreamReader/Writer и StreamReader2/Writer2}
 
 interface
-uses SysUtils, Classes, Graphics, UniStrUtils, Windows;
+uses SysUtils, Classes, UniStrUtils, Windows;
 
 type
  (*

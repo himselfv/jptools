@@ -72,6 +72,8 @@ type
   EOpenTemplate = class(ESilentParsingException); { В статье встречается открытый шаблон (см. шаблоны) - не поддерживаем }
   EInsideTemplate = class(ESilentParsingException); { Шаблоны внутри строки (не в начале) }
 
+  EEmptyTemplatePart = class(EParsingException); { Лишние запятые в шаблоне? Исправляйте вручную, таких мало }
+
 
 type
   TWarodaiReader = class(TCharReader)
@@ -106,6 +108,13 @@ var
 procedure DumpMsg(const msg: string); overload;
 procedure DumpMsg(const msg, line: string); overload;
 
+{
+В заголовках и ссылках вародая встречается троеточие, вот так:
+  …あがり【…上がり】(…агари)
+В едикте такие слова принято записывать без троеточия.
+Эта функция исправляет троеточие (и бросает эксепшн, если троеточие не поддерживается)
+}
+function FixEllipsis(const ln: string): string;
 
 implementation
 
@@ -195,6 +204,18 @@ end;
 procedure DumpMsg(const msg, line: string);
 begin
   err.Add(msg+#13#10+line);
+end;
+
+function FixEllipsis(const ln: string): string;
+begin
+  Result := ln;
+  if (Length(Result)>0) and (Result[1]='…') then
+    delete(Result, 1, 1);
+  if (Length(Result)>0) and (Result[Length(Result)]='…') then
+    delete(Result, Length(Result), 1);
+ //Если остались троеточия внутри строки - ошибка
+  if pos('…', Result)>0 then
+    raise EEllipsisInHeader.Create('... in article header/xref');
 end;
 
 initialization

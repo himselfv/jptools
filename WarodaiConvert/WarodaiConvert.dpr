@@ -179,16 +179,10 @@ begin
      //Clean up a bit
       for i := 0 to hdr.words_used - 1 do begin
         DropVariantIndicator(hdr.words[i].s_reading);
-       {$IFDEF BAN_ELLIPSIS}
-        if pos('…',hdr.words[i].s_reading)>0 then
-          raise EEllipsisInHeader.Create('... in article reading');
-       {$ENDIF}
+        hdr.words[i].s_reading := FixEllipsis(hdr.words[i].s_reading);
         for j := 0 to hdr.words[i].s_kanji_used-1 do begin
           DropVariantIndicator(hdr.words[i].s_kanji[j]);
-         {$IFDEF BAN_ELLIPSIS}
-          if pos('…',hdr.words[i].s_kanji[j])>0 then
-            raise EEllipsisInHeader.Create('... in article kanji');
-         {$ENDIF}
+          hdr.words[i].s_kanji[j] := FixEllipsis(hdr.words[i].s_kanji[j]);
         end;
       end;
 

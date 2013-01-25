@@ -356,7 +356,7 @@ begin
      //Добавляем все в соотв. записи
       for k := 0 to Length(t_p) - 1 do begin
         if t_p[k]='' then
-          raise EParsingException.Create('Invalid empty template part.');
+          raise EEmptyTemplatePart.Create('Invalid empty template part.');
         sn := mg.Get(t_p[k])^.AddSense;
         ParseLn(tmp, sn);
       end;
