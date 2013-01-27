@@ -4,7 +4,6 @@ unit StreamUtils;
   Набор классов для облегчения чтения-записи в потоках,
   кеширующего чтения и т.п.
 *)
-{TODO: Объединить StreamReader/Writer и StreamReader2/Writer2}
 
 interface
 uses SysUtils, Classes, UniStrUtils, Windows;
@@ -480,7 +479,7 @@ begin
   end;
 
   ReallocMem(buf, Size);
-  ptr := pointer(integer(buf) + adv);
+  ptr := pointer(IntPtr(buf) + adv);
   Result := true;
 end;
 
@@ -712,7 +711,7 @@ begin
   ReallocMem(buf, FChunkSize);
 
  //Обновляем указатель на текущий байт
-  ptr := pointer(integer(buf) + used);
+  ptr := pointer(IntPtr(buf) + used);
 end;
 
 //Use this instead of underlying Stream's Position

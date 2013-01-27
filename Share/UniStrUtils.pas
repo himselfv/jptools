@@ -519,7 +519,7 @@ begin
   Result := 0;
   P := AnsiStrPos(PAnsiChar(S), PAnsiChar(SubStr));
   if P <> nil then
-    Result := (Integer(P) - Integer(PAnsiChar(S))) div SizeOf(AnsiChar) + 1;
+    Result := (IntPtr(P) - IntPtr(PAnsiChar(S))) div SizeOf(AnsiChar) + 1;
 end;
 
 function AnsiStringReplace(const S, OldPattern, NewPattern: AnsiString;
@@ -781,7 +781,7 @@ begin
   Result := 0;
   P := WStrPos(PWideChar(S), PWideChar(SubStr));
   if P <> nil then
-    Result := Integer(P) - Integer(PWideChar(S)) + 1;
+    Result := IntPtr(P) - IntPtr(PWideChar(S)) + 1;
 end;
 {$ENDIF}
 
@@ -1458,17 +1458,17 @@ end;
 // Возвращает номер символа, на который указывает ptr, в строке str
 function AnsiPcharInd(str, ptr: PAnsiChar): integer;
 begin
-  Result := integer(ptr)-integer(str)+1;
+  Result := IntPtr(ptr)-IntPtr(str)+1;
 end;
 
 function WidePcharInd(str, ptr: PUniChar): integer;
 begin
-  Result := (integer(ptr)-integer(str)) div SizeOf(UniChar) + 1;
+  Result := (IntPtr(ptr)-IntPtr(str)) div SizeOf(UniChar) + 1;
 end;
 
 function PcharInd(str, ptr: PChar): integer;
 begin
-  Result := (integer(ptr)-integer(str)) div SizeOf(char) + 1;
+  Result := (IntPtr(ptr)-IntPtr(str)) div SizeOf(char) + 1;
 end;
 
 
@@ -1513,22 +1513,22 @@ end;
 
 function NextChar(p: PAnsiChar; c: integer = 1): PAnsiChar;
 begin
-  Result := PAnsiChar(integer(p) + SizeOf(AnsiChar)*c);
+  Result := PAnsiChar(IntPtr(p) + SizeOf(AnsiChar)*c);
 end;
 
 function PrevChar(p: PAnsiChar; c: integer = 1): PAnsiChar;
 begin
-  Result := PAnsiChar(integer(p) - SizeOf(AnsiChar)*c);
+  Result := PAnsiChar(IntPtr(p) - SizeOf(AnsiChar)*c);
 end;
 
 function NextChar(p: PWideChar; c: integer = 1): PWideChar;
 begin
-  Result := PWideChar(integer(p) + SizeOf(WideChar)*c);
+  Result := PWideChar(IntPtr(p) + SizeOf(WideChar)*c);
 end;
 
 function PrevChar(p: PWideChar; c: integer = 1): PWideChar;
 begin
-  Result := PWideChar(integer(p) - SizeOf(WideChar)*c);
+  Result := PWideChar(IntPtr(p) - SizeOf(WideChar)*c);
 end;
 
 
@@ -1539,19 +1539,19 @@ end;
 //Отступ считает с единицы.
 function PwcOff(var a; n: integer): PWideChar;
 begin
-  Result := PWideChar(integer(a) + (n-1)*SizeOf(WideChar));
+  Result := PWideChar(IntPtr(a) + (n-1)*SizeOf(WideChar));
 end;
 
 //Сравнивает указатели. Больше нуля, если a>b.
 function PwcCmp(var a; var b): integer;
 begin
-  Result := integer(a)-integer(b);
+  Result := IntPtr(a)-IntPtr(b);
 end;
 
 //Отступ считает с единицы.
 function PwcCmp(var a; an: integer; var b; bn: integer): integer;
 begin
-  Result := integer(a)+(an-1)*SizeOf(WideChar)-integer(b)-(bn-1)*SizeOf(WideChar);
+  Result := IntPtr(a)+(an-1)*SizeOf(WideChar)-IntPtr(b)-(bn-1)*SizeOf(WideChar);
 end;
 
 
@@ -1593,12 +1593,12 @@ end;
 
 function StrSubA(beg: PAnsiChar; en: PAnsiChar): AnsiString;
 begin
-  Result := StrSubLA(beg, (integer(en)-integer(beg)) div SizeOf(AnsiChar));
+  Result := StrSubLA(beg, (IntPtr(en)-IntPtr(beg)) div SizeOf(AnsiChar));
 end;
 
 function StrSubW(beg: PUniChar; en: PUniChar): UnicodeString;
 begin
-  Result := StrSubLW(beg, (integer(en)-integer(beg)) div SizeOf(WideChar));
+  Result := StrSubLW(beg, (IntPtr(en)-IntPtr(beg)) div SizeOf(WideChar));
 end;
 
 function StrSub(beg: PChar; en: PChar): string;
@@ -2130,11 +2130,11 @@ begin
 
  //Откатываемся назад
   Dec(se);
-  while (se^=sep) and (integer(se) > integer(s)) do
+  while (se^=sep) and (IntPtr(se) > IntPtr(s)) do
     Dec(se);
 
  //Пустая строка
-  if integer(se) <= integer(s) then begin
+  if IntPtr(se) <= IntPtr(s) then begin
     Result := '';
     exit;
   end;
@@ -2152,11 +2152,11 @@ begin
 
  //Откатываемся назад
   Dec(se);
-  while (se^=sep) and (integer(se) > integer(s)) do
+  while (se^=sep) and (IntPtr(se) > IntPtr(s)) do
     Dec(se);
 
  //Пустая строка
-  if integer(se) < integer(s) then begin
+  if IntPtr(se) < IntPtr(s) then begin
     Result := '';
     exit;
   end;
@@ -2212,11 +2212,11 @@ function BETrimA(beg, en: PAnsiChar; sep: AnsiChar): AnsiString;
 begin
  //Trim spaces
   Dec(en);
-  while (integer(en) > integer(beg)) and (en^=sep) do
+  while (IntPtr(en) > IntPtr(beg)) and (en^=sep) do
     Dec(en);
   Inc(en);
 
-  while (integer(en) > integer(beg)) and (beg^=sep) do
+  while (IntPtr(en) > IntPtr(beg)) and (beg^=sep) do
     Inc(beg);
 
   Result := StrSubA(beg, en);
@@ -2226,11 +2226,11 @@ function BETrimW(beg, en: PUniChar; sep: UniChar): UnicodeString;
 begin
  //Trim spaces
   Dec(en);
-  while (integer(en) > integer(beg)) and (en^=sep) do
+  while (IntPtr(en) > IntPtr(beg)) and (en^=sep) do
     Dec(en);
   Inc(en);
 
-  while (integer(en) > integer(beg)) and (beg^=sep) do
+  while (IntPtr(en) > IntPtr(beg)) and (beg^=sep) do
     Inc(beg);
 
   Result := StrSubW(beg, en);
