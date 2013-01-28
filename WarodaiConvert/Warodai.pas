@@ -142,6 +142,10 @@ begin
  //Выкидываем их все, как если бы их и не было!
   ln := repl(ln,'<i>','');
   ln := repl(ln,'</i>','');
+  ln := repl(ln,'<b>','');
+  ln := repl(ln,'</b>','');
+ //См. __html.txt о тегах, которые встречаются в вародае.
+
   Inc(WarodaiStats.LinesRead);
   if FArticleLineCount<Length(FArticleLines) then begin
     Inc(FArticleLineCount);
