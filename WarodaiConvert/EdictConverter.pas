@@ -330,7 +330,7 @@ begin
   tl_lines := 0;
 
   for j := 0 to bl.line_cnt - 1 do begin
-    tmp := RemoveFormatting(bl.lines[j]);
+    tmp := bl.lines[j];
     ev := EvalChars(tmp);
 
     if ev and EV_KANJI = EV_KANJI then begin

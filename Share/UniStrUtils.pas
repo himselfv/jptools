@@ -84,6 +84,17 @@ const
   BOM_UTF16LE: AnsiString = #255#254; //FF FE
  //должны быть ansi, иначе получится два юникод-символа
 
+{$IF NOT Defined(IntPtr)}
+type
+ {$IF Defined(WIN64)}
+  IntPtr = int64;
+ {$ELSEIF Defined(WIN32)}
+  IntPtr = integer;
+ {$ELSE}
+  {$MESSAGE Error 'Cannot declare IntPtr for this target platform'}
+ {$IFEND}
+{$IFEND}
+
 type
  //UnicodeString - это наилучший доступный на платформе Unicode-тип.
  //На новых компиляторах он поддерживается нативно, на старых это WideString.

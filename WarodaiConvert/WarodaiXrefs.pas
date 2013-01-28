@@ -55,23 +55,58 @@ const
   pRefRoundBrackets = '\s?\(.*?\)'; //любое число символов - русских или японских - в скобках -- продолжение или пояснение
   pRefFreeTail = '\s?['+pCJKRefChar+']+?'; //некоторое число японских символов без скобок
 
- //одна ссылка в любом формате
-  pSingleRef='('+pRefBase+')'
+ //полный хвост ссылки - поставляется во множестве разновидностей
+  pRefTail =
+    '(?:' //в любом порядке (RefNo может идти после скобок):
+      +'(?:'+pRefNo+')?'
+      +'('+pRefRoundBrackets+'|)' //#+1
+      +'('+pRefFreeTail+')?'      //#+2
+    +'|'
+      +'('+pRefRoundBrackets+'|)' //#+3
+      +'(?:'+pRefNo+')?'
+      +'('+pRefFreeTail+')?'      //#+4
+    +'|'
+      +'('+pRefRoundBrackets+'|)' //#+5
+      +'('+pRefFreeTail+')?'      //#+6
+      +'(?:'+pRefNo+')?'
+    +')';
+
+ //одна голая ссылка в нужном формате -> base, writing
+  pSingleTextRef=
+     '('+pRefBase+')'
     +'('+pRefWri1+'|)' //любое из пояснений, или ничего -- чтобы число скобок не менялось
-    +'(?:' //в любом порядке (RefNo может идти после скобок):
-      +'(?:'+pRefNo+')?'
-      +'('+pRefRoundBrackets+'|)'
-      +'('+pRefFreeTail+')?'
+    + pRefTail;
+
+  //теги
+  pHrefOpen='<a href=[^>]*>';
+  pHrefClose='</a>';
+
+ //одна href-ссылка в нужном формате  -> base, writing
+  pSingleHref=
+      pHrefOpen
+    + pSingleTextRef
+    + pHrefClose
+    + pRefTail;  //хвост может быть как внутри SingleTextRef, так и снаружи. Хвост может быть пустым, так что беды это принести не должно
+
+ //одна ссылка либо в <a href>, либо голая
+  pSingleRef=
+     '(?J)'
+    +'(?:'
+     +pSingleHref
     +'|'
-      +'('+pRefRoundBrackets+'|)'
-      +'(?:'+pRefNo+')?'
-      +'('+pRefFreeTail+')?'
-    +'|'
-      +'('+pRefRoundBrackets+'|)'
-      +'('+pRefFreeTail+')?'
-      +'(?:'+pRefNo+')?'
-    +')'
-    ;
+     +pSingleTextRef
+    +')';
+
+ //одна ссылка в a href с любым содержимым
+ //в содержимом не должно быть теговых знаков <> - это запрещено HTML (если нарушено - останутся ошмётки <a>, и позже матчнутся в проверке)
+  pHyperRef=
+      pHrefOpen
+    + '([^<>]*)'
+    + pHrefClose
+    + pRefTail;
+
+ //либо голая ссылка в нужном формате, либо <a href> с ЛЮБЫМ содержимым (мы так хотим: дальше будут проверки)
+  pTextOrHyperRef = '(?:'+pSingleTextRef+'|'+pHyperRef+')';
 
   pRefNames=
      'уст\.|'
@@ -91,11 +126,12 @@ const
     связ., связ.:, чаще, напр., как
  }
 
- //ссылка с названием и пробелами вокруг
+ //название ссылки + некоторое число рефов ("см <a href>СТАТЬЯ1</a> и СТАТЬЯ2")
   pXref=
-      '\s*'
+     '(?J)'
+    +'\s*'
     +'('+pRefNames+')\s'
-    +'('+pSingleRef+'(?:\s*[\,\;и]\s+'+pSingleRef+')*)' //любое число ссылок больше одной, через запятую
+    +'('+pTextOrHyperRef+'(?:\s*[\,\;и]\s+'+pTextOrHyperRef+')*)' //любое число ссылок больше одной, через запятую
     +'\s*'; //заканчивается чем-нибудь
 
  //К сожалению, регэкспы не могут матчить повторяющиеся группы (будет заматчена последняя),
@@ -104,16 +140,24 @@ const
 var
   preXref: TPerlRegEx;
   preSingleRef: TPerlRegEx;
+ //после сложного матча всех ссылок матчим по-простому, чтобы проверить, что мы нигде не ошиблись
+  preHrefOpen: TPerlRegEx;
+  preHrefClose: TPerlRegEx;
 
 
 { Находит в строке все элементы ссылочного типа и регистрирует их в записи Sense }
 procedure EatXrefs(var ln: string; sn: PEdictSenseEntry);
 var xr0, xr1, xr2, xr3: UnicodeString;
   tmp: UnicodeString;
+  iBase: integer;
+  iWri: integer;
+  iTRou: integer;
+  iTFre: integer;
 begin
   preXref.Subject := UTF8String(ln);
   if not preXref.Match then exit;
   preXref.Replacement := '';
+  preSingleRef.Replacement := '';
 
   repeat
     xr0 := UnicodeString(preXref.Groups[1]); //тип ссылки
@@ -123,8 +167,11 @@ begin
     preSingleRef.Subject := preXref.Groups[2];
     Assert(preSingleRef.Match); //не может быть чтоб не матчилось
     repeat
-      xr1 := UnicodeString(preSingleRef.Groups[1]);
-      xr2 := UnicodeString(preSingleRef.Groups[2]);
+      iBase := preSingleRef.NamedGroup('base');
+      iWri := preSingleRef.NamedGroup('writ');
+
+      xr1 := UnicodeString(preSingleRef.Groups[iBase]);
+      xr2 := UnicodeString(preSingleRef.Groups[iWri]);
       DropVariantIndicator(xr1);
       DropVariantIndicator(xr2);
 
@@ -134,13 +181,16 @@ begin
         xr2 := copy(xr2,2,Length(xr2)-2);
       end;
 
+      iTRou := preSingleRef.NamedGroup('trou');
+      iTFre := preSingleRef.NamedGroup('tfre');
+
      //Бесскобочные хвосты отлавливаются, но не поддерживаются. Почти не встречаются.
-      if (preSingleRef.GroupCount>3) and (preSingleRef.Groups[4]<>'') then
+      if (preSingleRef.GroupCount>=iTFre) and (preSingleRef.Groups[iTFre]<>'') then
         raise EUnsupportedXref.Create('Invalid Xref tail -- non-bracketed tail');
 
      //Проверяем на скобочные продолжения -- そとわ【外輪】(の足)
-      if (preSingleRef.GroupCount>2) and (preSingleRef.Groups[3]<>'') then begin
-        xr3 := Trim(UnicodeString(preSingleRef.Groups[3]));
+      if (preSingleRef.GroupCount>=iTRou) and (preSingleRef.Groups[iTRou]<>'') then begin
+        xr3 := Trim(UnicodeString(preSingleRef.Groups[iTRou]));
 
        //Почему-то поймали в скобочное выражение бесскобочный хвост.
        //Раньше проверка была нужна, теперь оставил только на всякий случай
@@ -217,6 +267,7 @@ begin
 
       if (xr0='см. тж.') or (xr0='ср. тж.') or (xr0='см.') or (xr0='ср.')
       or (xr0='тж.') then
+
        //эти xref-ы не требуют пояснений
         xr0 := ''
       else
@@ -240,10 +291,23 @@ begin
       else
         sn.AddXref(xr0, xr1);
 
+      preSingleRef.Replace;
     until not preSingleRef.MatchAgain;
+
+   //Проверяем, что ошмёток ссылок не осталось
+    preHrefOpen.Subject := preSingleRef.Subject;
+    preHrefClose.Subject := preSingleRef.Subject;
+    if preHrefOpen.Match or preHrefClose.Match then
+      raise EUnsupportedXref.Create('Remains of <a href> are left in string -- prob. unsupported href structure');
 
     preXref.Replace;
   until not preXref.MatchAgain;
+
+ //Проверяем, что ошмёток ссылок не осталось
+  preHrefOpen.Subject := preXref.Subject;
+  preHrefClose.Subject := preXref.Subject;
+  if preHrefOpen.Match or preHrefClose.Match then
+    raise EUnsupportedXref.Create('Remains of <a href> are left in string -- prob. unsupported href structure');
 
   ln := UnicodeString(preXref.Subject); //after replacements
 end;
@@ -265,7 +329,7 @@ const
   pAttributeValue='"[^"]*"|[^\s>]*'; //-> 1 group
   pLink = '<a href=('+pAttributeValue+')[^>]*>([^<]*?)</a>';
   pHrefExpr = '(?<=^|\s)([^\s]+?)(?:\s+)'+pLink;
-  pSimpleHref = '<a hr=';
+  pSimpleHref = '<a href=';
 
 var
   preHrefExpr: TPerlRegEx;
@@ -291,6 +355,8 @@ end;
 initialization
   preXref := Regex(pXref);
   preSingleRef := Regex(pSingleRef);
+  preHrefOpen := Regex(pHrefOpen);
+  preHrefClose := Regex(pHrefClose);
 
   preHrefExpr := Regex(pHrefExpr);
   preSimpleHref := Regex(pSimpleHref);
@@ -302,6 +368,8 @@ finalization
   FreeAndNil(preSimpleHref);
   FreeAndNil(preHrefExpr);
 
+  FreeAndNil(preHrefClose);
+  FreeAndNil(preHrefOpen);
   FreeAndNil(preSingleRef);
   FreeAndNil(preXref);
 
