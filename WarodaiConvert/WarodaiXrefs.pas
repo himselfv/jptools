@@ -15,6 +15,9 @@ uses Warodai, WcUtils, EdictWriter, PerlRegEx, PerlRegExUtils;
 
 procedure EatXrefs(var ln: string; sn: PEdictSenseEntry);
 
+function HasHrefParts(const ln: UTF8String): boolean;
+procedure AssertNoHrefsLeft(const ln: UTF8String);
+
 
 {
 Можно посчитать, какие виды предисловий ко ссылкам встречаются в файле.
@@ -54,8 +57,8 @@ const
   pCJKRefStr='['+pCJKRefChar+']+(?:['+pRomanDigit+']+)?'; //слово и, опционально, латинский номер его вариации (см. DropVariantIndicator)
 
   pRefBase=pCJKRefStr;
-  pRefWri1='【'+pCJKRefStr+'】'; //расшифровка в формате あわ【泡】
-  pRefNo='\s*[0-9]{1,3}'; //опционально 1-2о цифры с пробелом или без -- ссылка на подзначение
+  pRefWri1='【[^】]*】'; //расшифровка в формате あわ【泡】 -- матчим побольше, что внутри только CJK - проверим потом
+  pRefNo='\s*\d{1,3}'; //опционально 1-2о цифры с пробелом или без -- ссылка на подзначение
 
   //Хвост ссылки
   pRefRoundBrackets = '\s?\(.*?\)'; //любое число символов - русских или японских - в скобках -- продолжение или пояснение
@@ -102,7 +105,10 @@ const
      +pSingleHref
     +'|'
      +pSingleTextRef
-    +')';
+    +')'
+   //когда матчим отдельные ссылки, строго проверяем, чтобы после них шёл разрыв слова -
+   //иначе матчится даже палочка в </a>
+    +'(?=$|[\p{Z}\p{P}])';
  {
   Группы:
     1, 2 - href\base
@@ -123,7 +129,7 @@ const
  //либо голая ссылка в нужном формате, либо <a href> с ЛЮБЫМ содержимым (мы так хотим: дальше будут проверки)
   pTextOrHyperRef = '(?:'+pSingleTextRef+'|'+pHyperRef+')';
 
-  pRefNames=
+  pRefNames= //case-insensitive, см. pXref
      'уст\.|'
     +'см\. тж\.|см\.|'
     +'ср\. тж\.|ср\.|'
@@ -143,11 +149,10 @@ const
 
  //название ссылки + некоторое число рефов ("см <a href>СТАТЬЯ1</a> и СТАТЬЯ2")
   pXref=
-     '(?J)'
-    +'\s*'
-    +'('+pRefNames+')\s'
+     '\s*'
+    +'(?i)('+pRefNames+')(?-i)\s' //case insensitive
     +'('+pTextOrHyperRef+'(?:\s*[\,\;и]\s+'+pTextOrHyperRef+')*)' //любое число ссылок больше одной, через запятую
-    +'\s*'; //заканчивается чем-нибудь
+    +'\s*';
 
  //К сожалению, регэкспы не могут матчить повторяющиеся группы (будет заматчена последняя),
  //так что элементы внутри наборы ссылок надо матчить отдельно
@@ -201,6 +206,10 @@ begin
         Assert(xr2[1]='【');
         xr2 := copy(xr2,2,Length(xr2)-2);
       end;
+
+     //Проверяем, что внутри 【】 только CJK
+      if (xr2<>'') and (EvalChars(xr2) and (EV_CYR or EV_LATIN) <> 0) then
+        raise EUnsupportedXref.Create('Illegal symbols in Xref kanji block');
 
      //Бесскобочные хвосты отлавливаются, но не поддерживаются. Почти не встречаются.
      //Хвостов у нас из-за комбинаций три набора групп
@@ -282,6 +291,7 @@ begin
       xr2 := FixEllipsis(xr2);
 
      //Пока что баним записи с точечками (несколько вариантов написания) - вообще их надо разделять
+     //Обратите внимание, что есть ДВЕ разные похожие точки - другая разделяет слова, и является просто буквой
       if (pos('･', xr1)>0) or (pos('･', xr2)>0) then
         raise EUnsupportedXref.Create('dot in xref value');
 
@@ -298,7 +308,6 @@ begin
 
       if (xr0='см. тж.') or (xr0='ср. тж.') or (xr0='см.') or (xr0='ср.')
       or (xr0='тж.') then
-
        //эти xref-ы не требуют пояснений
         xr0 := ''
       else
@@ -326,23 +335,37 @@ begin
     until not preSingleRef.MatchAgain;
 
    //Проверяем, что ошмёток ссылок не осталось
-    preHrefOpen.Subject := preSingleRef.Subject;
-    preHrefClose.Subject := preSingleRef.Subject;
-    if preHrefOpen.Match or preHrefClose.Match then
-      raise EUnsupportedXref.Create('Remains of <a href> are left in string -- prob. unsupported href structure');
+    AssertNoHrefsLeft(preSingleRef.Subject);
 
     preXref.Replace;
   until not preXref.MatchAgain;
 
+{
  //Проверяем, что ошмёток ссылок не осталось
-  preHrefOpen.Subject := preXref.Subject;
-  preHrefClose.Subject := preXref.Subject;
-  if preHrefOpen.Match or preHrefClose.Match then
-    raise EUnsupportedXref.Create('Remains of <a href> are left in string -- prob. unsupported href structure');
+ //Здесь это не очень правильно! В строке могли остаться легальные <a href=>
+  AssertNoHrefsLeft(preXref.Subject);
+}
 
   ln := UnicodeString(preXref.Subject); //after replacements
 end;
 
+{ True, если в строке есть ошмётки <a href> }
+function HasHrefParts(const ln: UTF8String): boolean;
+begin
+  preHrefOpen.Subject := ln;
+  preHrefClose.Subject := ln;
+  Result := preHrefOpen.Match or preHrefClose.Match;
+end;
+
+{ Бросает исключение, если в строке остались ошмётки <a href>
+ Полезно вызывать для контроля после разбора какого-то Xref-блока на его остатки.
+ Учтите, что в строках могут легально встречаться невынутые href-ссылки:
+ не все ссылки должны превращаться в <see also>. }
+procedure AssertNoHrefsLeft(const ln: UTF8String);
+begin
+  if HasHrefParts(ln) then
+    raise EUnsupportedXref.Create('Remains of <a href> are left in string -- prob. unsupported href structure');
+end;
 
 
 {

@@ -286,12 +286,21 @@ begin
   EatXrefs(tmp, sn);
   tmp := Trim(preEmptyParenth.DeleteAll(tmp)); //удаляем оставшиеся пустыми скобки
   if tmp='' then exit; //пустые строки пропускаем
+
+ //Вот это вообще не является ошибкой в принципе, хотя часто является на практике
+ //Однако слова в кандзи, и даже неудалённый ссылки, в статье допускаются
   if EvalChars(tmp) and (EV_KANA or EV_KANJI) <> 0 then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after all extractions');
 
+ //Неформатные ссылки в теле статье в принципе допустимы,
+ //но чаще это просто результат ошибки разбора.
+  if HasHrefParts(UTF8String(tmp)) then begin
+    Inc(WarodaiStats.HrefsRemain);
+    DumpMsg('WARN -- hrefs remain');
+  end;
+
   if preAnyId.HasMatches(ln) then
     raise EAlternativeIds.Create('Alternative ids or non-parsed ids in string');
-
 
  {
   Мы допускаем несколько строк базового перевода, но только для случаев

@@ -34,6 +34,8 @@ var
     SeveralTlLines: integer; //block has several basic translation lines. Not a normal case.
     MixedTlLines: integer; //block has several lines + they are intermixed with other types of lines
 
+    HrefsRemain: integer; //в статье остались <a href> или их части
+
   end;
 
 type

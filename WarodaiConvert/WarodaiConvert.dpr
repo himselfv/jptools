@@ -341,6 +341,7 @@ begin
 
     writeln('BAD -- Several TL lines: '+IntToStr(WarodaiStats.SeveralTlLines));
     writeln('BAD -- Mixed TL lines: '+IntToStr(WarodaiStats.MixedTlLines));
+    writeln('Probably BAD -- <a href>s remain in article: '+IntToStr(WarodaiStats.HrefsRemain));
     writeln('');
 
     ExceptionStats.PrintStats;
