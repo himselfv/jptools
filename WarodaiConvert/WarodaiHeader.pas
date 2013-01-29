@@ -59,7 +59,7 @@ procedure DecodeEntryHeader(s: string; hdr: PEntryHeader);
   見るII
 Нижеследующая функция удаляет эту часть из строки.
 }
-procedure DropVariantIndicator(var s: string);
+function DropVariantIndicator(const s: string): string; overload;
 
 implementation
 uses SysUtils, StrUtils, UniStrUtils;
@@ -297,7 +297,7 @@ begin
   end;
 end;
 
-procedure DropVariantIndicator(var s: string);
+procedure _DropVariantIndicator(var s: string);
 var ch: Char;
   i: integer;
 begin
@@ -310,6 +310,12 @@ begin
     ch := s[i];
   end;
   delete(s, i+1, Length(s)-i);
+end;
+
+function DropVariantIndicator(const s: string): string; overload;
+begin
+  Result := s;
+  _DropVariantIndicator(Result);
 end;
 
 end.

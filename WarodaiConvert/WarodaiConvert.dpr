@@ -178,12 +178,9 @@ begin
 
      //Clean up a bit
       for i := 0 to hdr.words_used - 1 do begin
-        DropVariantIndicator(hdr.words[i].s_reading);
-        hdr.words[i].s_reading := FixEllipsis(hdr.words[i].s_reading);
-        for j := 0 to hdr.words[i].s_kanji_used-1 do begin
-          DropVariantIndicator(hdr.words[i].s_kanji[j]);
-          hdr.words[i].s_kanji[j] := FixEllipsis(hdr.words[i].s_kanji[j]);
-        end;
+        hdr.words[i].s_reading := FixEllipsis(DropVariantIndicator(hdr.words[i].s_reading));
+        for j := 0 to hdr.words[i].s_kanji_used-1 do
+          hdr.words[i].s_kanji[j] := FixEllipsis(DropVariantIndicator(hdr.words[i].s_kanji[j]));
       end;
 
      {$IFDEF COUNT_HREFS}

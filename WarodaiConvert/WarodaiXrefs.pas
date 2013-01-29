@@ -1,6 +1,12 @@
 ﻿unit WarodaiXrefs;
 {
-Matches various XReferences found in Warodai.
+Матчит различные XRef-ссылки в Вародае.
+
+Общая идея:
+Матчим последовательности вида
+  "см. <a href>ССЫЛКА 1</a> и ССЫЛКА 2"
+Затем разбираем на отдельные ссылки. Каждая ссылка либо отмечена <a href>,
+либо определённого формата (см. ниже).
 }
 
 interface
@@ -60,42 +66,51 @@ const
     '(?:' //в любом порядке (RefNo может идти после скобок):
       +'(?:'+pRefNo+')?'
       +'('+pRefRoundBrackets+'|)' //#+1
-      +'('+pRefFreeTail+')?'      //#+2
+      +'('+pRefFreeTail+'|)'      //#+2
     +'|'
       +'('+pRefRoundBrackets+'|)' //#+3
       +'(?:'+pRefNo+')?'
-      +'('+pRefFreeTail+')?'      //#+4
+      +'('+pRefFreeTail+'|)'      //#+4
     +'|'
       +'('+pRefRoundBrackets+'|)' //#+5
-      +'('+pRefFreeTail+')?'      //#+6
+      +'('+pRefFreeTail+'|)'      //#+6
       +'(?:'+pRefNo+')?'
     +')';
+  gcRefTail=6; //group count
 
- //одна голая ссылка в нужном формате -> base, writing
+ //одна голая ссылка в нужном формате -> base, writing, [tail groups]
   pSingleTextRef=
      '('+pRefBase+')'
     +'('+pRefWri1+'|)' //любое из пояснений, или ничего -- чтобы число скобок не менялось
     + pRefTail;
+  gcSingleTextRef=8;
 
   //теги
   pHrefOpen='<a href=[^>]*>';
   pHrefClose='</a>';
 
- //одна href-ссылка в нужном формате  -> base, writing
+ //одна href-ссылка в нужном формате  -> base, writing, [tail groups]
   pSingleHref=
       pHrefOpen
     + pSingleTextRef
     + pHrefClose
     + pRefTail;  //хвост может быть как внутри SingleTextRef, так и снаружи. Хвост может быть пустым, так что беды это принести не должно
 
- //одна ссылка либо в <a href>, либо голая
+ //одна ссылка либо в <a href>, либо голая  -> a_href_base, a_href_writing, [a_href_tail], text_base, text_writing, [text_tail]
   pSingleRef=
-     '(?J)'
-    +'(?:'
+     '(?:'
      +pSingleHref
     +'|'
      +pSingleTextRef
     +')';
+ {
+  Группы:
+    1, 2 - href\base
+    (3, 4), (5, 6), (7, 8) - href\tail\versions
+    (9, 10), (11, 12), (13, 14) - href\tail\version
+    15, 16 - text\base
+    (17, 18), (19, 20), (21, 22) - text\tail\version
+ }
 
  //одна ссылка в a href с любым содержимым
  //в содержимом не должно быть теговых знаков <> - это запрещено HTML (если нарушено - останутся ошмётки <a>, и позже матчнутся в проверке)
@@ -149,10 +164,7 @@ var
 procedure EatXrefs(var ln: string; sn: PEdictSenseEntry);
 var xr0, xr1, xr2, xr3: UnicodeString;
   tmp: UnicodeString;
-  iBase: integer;
-  iWri: integer;
-  iTRou: integer;
-  iTFre: integer;
+  xr_off: integer;
 begin
   preXref.Subject := UTF8String(ln);
   if not preXref.Match then exit;
@@ -167,13 +179,22 @@ begin
     preSingleRef.Subject := preXref.Groups[2];
     Assert(preSingleRef.Match); //не может быть чтоб не матчилось
     repeat
-      iBase := preSingleRef.NamedGroup('base');
-      iWri := preSingleRef.NamedGroup('writ');
+     //Вычисляем отступ номера группы матчей
+      if preSingleRef.Groups[0][1]='<' then
+       //Первая группа -- с <a href>
+        xr_off := 0
+      else
+       //Вторая группа -- просто ссылка
+        xr_off :=  gcSingleTextRef + gcRefTail;
 
-      xr1 := UnicodeString(preSingleRef.Groups[iBase]);
-      xr2 := UnicodeString(preSingleRef.Groups[iWri]);
-      DropVariantIndicator(xr1);
-      DropVariantIndicator(xr2);
+     //Читаем базу и расшифровку
+      xr1 := DropVariantIndicator(UnicodeString(preSingleRef.Groups[xr_off+1]));
+      xr2 := DropVariantIndicator(UnicodeString(preSingleRef.Groups[xr_off+2]));
+
+     //Оба поля сразу не должны быть пустыми - если пустые, скорее всего,
+     //мы промазали с номерами групп (кто-то менял регэкс)
+      if (xr1='') and (xr2='') then
+        raise EUnsupportedXref.Create('Both reading and writing fields of xref are empty -- WTF');
 
      //Удаляем скобки из записи
       if xr2<>'' then begin
@@ -181,16 +202,27 @@ begin
         xr2 := copy(xr2,2,Length(xr2)-2);
       end;
 
-      iTRou := preSingleRef.NamedGroup('trou');
-      iTFre := preSingleRef.NamedGroup('tfre');
-
      //Бесскобочные хвосты отлавливаются, но не поддерживаются. Почти не встречаются.
-      if (preSingleRef.GroupCount>=iTFre) and (preSingleRef.Groups[iTFre]<>'') then
+     //Хвостов у нас из-за комбинаций три набора групп
+      if (preSingleRef.Groups[xr_off+4]<>'') or (preSingleRef.Groups[xr_off+6]<>'')
+      or (preSingleRef.Groups[xr_off+8]<>'') then
         raise EUnsupportedXref.Create('Invalid Xref tail -- non-bracketed tail');
+      if xr_off=0 then //доп. хвост для href-версии
+        if (preSingleRef.Groups[xr_off+10]<>'') or (preSingleRef.Groups[xr_off+12]<>'')
+        or (preSingleRef.Groups[xr_off+14]<>'') then
+          raise EUnsupportedXref.Create('Invalid Xref tail -- non-bracketed tail');
 
      //Проверяем на скобочные продолжения -- そとわ【外輪】(の足)
-      if (preSingleRef.GroupCount>=iTRou) and (preSingleRef.Groups[iTRou]<>'') then begin
-        xr3 := Trim(UnicodeString(preSingleRef.Groups[iTRou]));
+      xr3 := UnicodeString(preSingleRef.Groups[xr_off+3]);
+      if xr3='' then xr3 := UnicodeString(preSingleRef.Groups[xr_off+5]);
+      if xr3='' then xr3 := UnicodeString(preSingleRef.Groups[xr_off+7]);
+      if xr_off=0 then begin  //доп. хвост для href-версии
+        if xr3='' then xr3 := UnicodeString(preSingleRef.Groups[xr_off+9]);
+        if xr3='' then xr3 := UnicodeString(preSingleRef.Groups[xr_off+11]);
+        if xr3='' then xr3 := UnicodeString(preSingleRef.Groups[xr_off+13]);
+      end;
+      if xr3<>'' then begin
+        xr3 := Trim(xr3);
 
        //Почему-то поймали в скобочное выражение бесскобочный хвост.
        //Раньше проверка была нужна, теперь оставил только на всякий случай
@@ -205,11 +237,6 @@ begin
         if xr3[1]='～' then
          //こ【粉】(～にする) -- просто удаляем тильду (у нас для каждого такого шаблона своя статья)
           delete(xr3,1,1);
-
-       {
-        Раньше мы такому не верили и убивали, но теперь научились разбирать.
-        raise EUnsupportedXref.Create('Xref contains (round bracket) free style addition -- unable to parse');
-       }
 
        //Если у ссылки есть скобочная часть - это продолжение, напр. あな【穴】(を明ける)
        //Продолжение может уже включать в себя написание:
@@ -253,6 +280,10 @@ begin
 
       xr1 := FixEllipsis(xr1);
       xr2 := FixEllipsis(xr2);
+
+     //Пока что баним записи с точечками (несколько вариантов написания) - вообще их надо разделять
+      if (pos('･', xr1)>0) or (pos('･', xr2)>0) then
+        raise EUnsupportedXref.Create('dot in xref value');
 
      //Объединяем
       if xr2<>'' then xr1 := xr1+'・'+xr2;
