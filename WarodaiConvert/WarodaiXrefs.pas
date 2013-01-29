@@ -194,7 +194,7 @@ begin
 
      //Читаем базу и расшифровку
       xr1 := DropVariantIndicator(UnicodeString(preSingleRef.Groups[xr_off+1]));
-      xr2 := DropVariantIndicator(UnicodeString(preSingleRef.Groups[xr_off+2]));
+      xr2 := UnicodeString(preSingleRef.Groups[xr_off+2]); //индикатор удалим после снятия скобок
 
      //Оба поля сразу не должны быть пустыми - если пустые, скорее всего,
      //мы промазали с номерами групп (кто-то менял регэкс)
@@ -206,8 +206,9 @@ begin
         Assert(xr2[1]='【');
         xr2 := copy(xr2,2,Length(xr2)-2);
       end;
+      xr2 := DropVariantIndicator(xr2); //после удаления скобкок
 
-     //Проверяем, что внутри 【】 только CJK
+     //Проверяем, что внутри 【】 осталось только CJK
       if (xr2<>'') and (EvalChars(xr2) and (EV_CYR or EV_LATIN) <> 0) then
         raise EUnsupportedXref.Create('Illegal symbols in Xref kanji block');
 
