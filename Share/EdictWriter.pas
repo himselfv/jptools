@@ -18,8 +18,7 @@
  и поэтому очень много статей оказываются выброшены. }
 
 interface
-uses StreamUtils, Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates,
-  iconv;
+uses SysUtils, StreamUtils, iconv;
 
 const
   MaxKanji = 8;
@@ -30,6 +29,9 @@ const
   MaxLsources = 1;
   MaxSenses = 32;
  //Если будет нехватать - повышайте
+
+type
+  EEdictWriterException = class(Exception);
 
 type
   TEdictKanjiEntry = record
@@ -181,7 +183,7 @@ type
   end;
 
 implementation
-uses SysUtils, Classes, UniStrUtils, WcUtils;
+uses Classes, UniStrUtils, WcUtils;
 
 {
 Article
@@ -204,7 +206,7 @@ end;
 procedure TEdictKanaEntry.AddKanjiRef(ref: integer);
 begin
   if Kanji_used >= Length(Kanji) then
-    raise EParsingException.Create('EdictKanaEntry: Cannot add one more kana');
+    raise EEdictWriterException.Create('EdictKanaEntry: Cannot add one more kana');
   Kanji[Kanji_used] := ref;
   Inc(Kanji_used);
 end;
@@ -236,7 +238,7 @@ end;
 procedure TEdictSenseEntry.AddGloss(const val: string);
 begin
   if glosses_used >= Length(glosses) then
-    raise EParsingException.Create('EdictSenseEntry: Cannot add one more gloss');
+    raise EEdictWriterException.Create('EdictSenseEntry: Cannot add one more gloss');
   if val='' then exit; //пустые не добавляем
   glosses[glosses_used] := val;
   Inc(glosses_used);
@@ -245,7 +247,7 @@ end;
 function TEdictSenseEntry.AddXref(const tp, val: string): PEdictXref;
 begin
   if xrefs_used >= Length(xrefs) then
-    raise EParsingException.Create('EdictSenseEntry: Cannot add one more xref');
+    raise EEdictWriterException.Create('EdictSenseEntry: Cannot add one more xref');
   Result := @xrefs[xrefs_used];
   Result^.Reset;
   Result^.tp := tp;
@@ -256,7 +258,7 @@ end;
 procedure TEdictSenseEntry.AddAnt(const val: string);
 begin
   if ants_used >= Length(ants) then
-    raise EParsingException.Create('EdictSenseEntry: Cannot add one more ant');
+    raise EEdictWriterException.Create('EdictSenseEntry: Cannot add one more ant');
   ants[ants_used] := val;
   Inc(ants_used);
 end;
@@ -264,7 +266,7 @@ end;
 function TEdictSenseEntry.AddLsource(const lang, expr: string): PEdictLSource;
 begin
   if lsources_used >= Length(lsources) then
-    raise EParsingException.Create('EdictSenseEntry: Cannot add one more lsources');
+    raise EEdictWriterException.Create('EdictSenseEntry: Cannot add one more lsources');
   Result := @lsources[lsources_used];
   Result^.Reset;
   Result^.lang := lang;
@@ -315,7 +317,7 @@ end;
 function TEdictArticle.AddKanji: PEdictKanjiEntry;
 begin
   if kanji_used >= Length(kanji) then
-    raise EParsingException.Create('EdictArticle: Cannot add one more kanji');
+    raise EEdictWriterException.Create('EdictArticle: Cannot add one more kanji');
   Result := @kanji[kanji_used];
   Result^.Reset;
   Inc(kanji_used);
@@ -324,7 +326,7 @@ end;
 function TEdictArticle.AddKana: PEdictKanaEntry;
 begin
   if kana_used >= Length(kana) then
-    raise EParsingException.Create('EdictArticle: Cannot add one more kana');
+    raise EEdictWriterException.Create('EdictArticle: Cannot add one more kana');
   Result := @kana[kana_used];
   Result^.Reset;
   Inc(kana_used);
@@ -333,7 +335,7 @@ end;
 function TEdictArticle.AddSense: PEdictSenseEntry;
 begin
   if senses_used >= Length(senses) then
-    raise EParsingException.Create('EdictArticle: Cannot add one more sense');
+    raise EEdictWriterException.Create('EdictArticle: Cannot add one more sense');
   Result := @senses[senses_used];
   Result^.Reset;
   Inc(senses_used);

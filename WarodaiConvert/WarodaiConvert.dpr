@@ -16,14 +16,14 @@ uses
   UniStrUtils,
   StreamUtils,
   iconv,
+  EdictWriter,
+  WcUtils,
   Warodai in 'Warodai.pas',
   WakanDic in 'WakanDic.pas',
   WarodaiMarkers in 'WarodaiMarkers.pas',
   WarodaiHeader in 'WarodaiHeader.pas',
   WarodaiBody in 'WarodaiBody.pas',
   WarodaiTemplates in 'WarodaiTemplates.pas',
-  EdictWriter in 'EdictWriter.pas',
-  WcUtils in 'WcUtils.pas',
   WcExceptions in 'WcExceptions.pas',
   EdictConverter in 'EdictConverter.pas',
   PerlRegExUtils in 'PerlRegExUtils.pas',
@@ -221,6 +221,16 @@ begin
           writeln('Line '+IntToStr(WarodaiStats.LinesRead)
             + ' article '+IntToStr(stats.artcnt)+': '
             +E.Message);
+      end;
+      on E: EEdictWriterException do begin
+        ExceptionStats.RegisterException(E);
+        DumpMsg(E.Message);
+        Inc(stats.badcnt);
+        if not body_read then
+          inp.SkipArticle;
+        writeln('Line '+IntToStr(WarodaiStats.LinesRead)
+          + ' article '+IntToStr(stats.artcnt)+': '
+          +E.Message);
       end;
     end;
 
