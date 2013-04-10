@@ -12,3 +12,7 @@ __history
 *.rar
 Release/
 Share/update.cmd
+JRDic/Win32/*
+JRDic/Win32/*/*
+JRDic/Win64/*
+JRDic/Win64/*/*

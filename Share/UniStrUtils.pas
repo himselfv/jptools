@@ -84,8 +84,8 @@ const
   BOM_UTF16LE: AnsiString = #255#254; //FF FE
  //должны быть ansi, иначе получится два юникод-символа
 
-{$IF NOT Defined(IntPtr)}
 type
+ //IntPtr is missing in older versions of Delphi and it's easier to simply redeclare it
  {$IF Defined(WIN64)}
   IntPtr = int64;
  {$ELSEIF Defined(WIN32)}
@@ -93,7 +93,6 @@ type
  {$ELSE}
   {$MESSAGE Error 'Cannot declare IntPtr for this target platform'}
  {$IFEND}
-{$IFEND}
 
 type
  //UnicodeString - это наилучший доступный на платформе Unicode-тип.

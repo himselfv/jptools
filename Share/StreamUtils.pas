@@ -1,37 +1,48 @@
 unit StreamUtils;
 {$WEAKPACKAGEUNIT ON}
-(*
-  Набор классов для облегчения чтения-записи в потоках,
-  кеширующего чтения и т.п.
-*)
+{
+Stream helpers. Cached readers/writers.
+Some comments are in Russian, deal with it *puts on glasses*.
+(c) himselfv, me@boku.ru.
+}
 
 interface
 uses SysUtils, Classes, UniStrUtils, Windows;
 
 type
- (*
-   Расширяет класс TStream полезными методами.
-   Сами по себе методы чтения строк не очень эффективны, так что рекомендуется
-   использовать только на быстрых потоках (MemoryStream, отражённый в память файл).
- *)
+  EStreamException = class(Exception);
+
+const
+  sCannotReadData = 'Cannot read data from the stream';
+  sCannotWriteData = 'Cannot write data to the stream';
+
+type
+ {
+   Extends TStream with helper methods to read various data format.
+   They're not very efficient by themselves so better use this on fast streams
+   (TMemoryStream, memory-mapped file, cached stream)
+ }
   TStreamHelper = class helper for TStream
   public
+    function ReadInt: integer;
+    function ReadInt64: int64;
     function ReadAnsiChar(out c: AnsiChar): boolean;
     function ReadWideChar(out c: WideChar): boolean;
     function ReadAnsiLine: AnsiString;
-    function ReadUniLine: UniString; //assumes Windows UTF-16
+    function ReadUniLine: UnicodeString; //assumes Windows UTF-16
+    procedure WriteInt(const Value: integer);
+    procedure WriteIn64(const Value: int64);
     function WriteAnsiChar(const c: AnsiChar): boolean;
     function WriteWideChar(const c: WideChar): boolean;
     procedure WriteAnsiString(const s: AnsiString);
-    procedure WriteUniString(const s: UniString);
+    procedure WriteUniString(const s: UnicodeString);
   end;
 
-(*
+{
  A class to speed up reading from low latency streams (usually file streams).
 
- Basically, each time you request something from file stream, it reads
- the requested data from file. Even with all the drive caches on, it's
- a kernel-mode operation nevertheless.
+ Every time you request something from TFileStream, it reads the data from a
+ file. Even with drive cache enabled, it's a kernel-mode operation which is slow.
 
  This class tries to overcome the problem by reading data in large chunks.
  Whenever you request your byte or two, it reads the whole chunk and stores
@@ -42,7 +53,7 @@ type
  The moment you read your first byte through StreamReader the underlying
  stream is NOT YOURS ANYMORE. You shouldn't make any reads to the Stream
  except than through StreamReader.
-*)
+}
 
 const
   DEFAULT_CHUNK_SIZE = 4096;
@@ -61,11 +72,13 @@ type
   protected
     flag_reallocbuf: boolean;
     FNextChunkSize: integer;
-    FChunkSize: integer;
-    buf: pbyte;
-    ptr: pbyte;
-    adv: integer;
-    rem: integer; //число оставшихся байт. Нужно, поскольку можно не прочесть весь Chunk.
+    FChunkSize: integer; //size of a chunk we'll try to read next time
+    buf: pbyte;   //cached data
+    ptr: pbyte;   //current location in buf
+    adv: integer; //number of bytes read from buf
+    rem: integer; //number of bytes remaining in buf.
+     //adv+rem not always equals to FChunkSize since we could have read only
+     //partial chunk or FChunkSize could have been changed after that.
     procedure NewChunk;
     procedure UpdateChunk;
     procedure SetChunkSize(AValue: integer);
@@ -84,6 +97,7 @@ type
   protected
     function GetSize: Int64; override;
     function GetInternalPosition: integer;
+    function LocalSeek(Offset: Int64; Origin: TSeekOrigin): boolean;
   public
     function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
     function Read(var Buffer; Count: Longint): Longint; override;
@@ -135,9 +149,9 @@ type
 
   end;
 
-(*
-  Кешируемые чтение-запись по одному символу.
-*)
+{
+  Cached read/write char-by-char.
+}
 
 const
   BOM_UTF16LE = WideChar($FEFF);
@@ -166,7 +180,7 @@ type
       AOwnStream: boolean = false); overload;
     function ReadChar(out c: WideChar): boolean;
     function PeekChar(out c: WideChar): boolean;
-    function ReadLine(out s: UniString): boolean;
+    function ReadLine(out s: UnicodeString): boolean;
   end;
 
   TCharWriter = class(TStreamWriter)
@@ -182,7 +196,7 @@ type
     procedure WriteBom;
     procedure WriteChar(const c: WideChar);
     procedure WriteChars(c: PWideChar; len: integer);
-    procedure WriteString(const c: UniString);
+    procedure WriteString(const c: UnicodeString);
     procedure WriteLine(const s: UnicodeString);
   end;
 
@@ -301,6 +315,30 @@ end;
 
 { TStreamHelper }
 
+function TStreamHelper.ReadInt: integer;
+begin
+  if Read(Result, SizeOf(Result))<>SizeOf(Result) then
+    raise EStreamException.Create(sCannotReadData);
+end;
+
+function TStreamHelper.ReadInt64: int64;
+begin
+  if Read(Result, SizeOf(Result))<>SizeOf(Result) then
+    raise EStreamException.Create(sCannotReadData);
+end;
+
+procedure TStreamHelper.WriteInt(const Value: integer);
+begin
+  if Write(Value, SizeOf(Value))<>SizeOf(Value) then
+    raise EStreamException.Create(sCannotWriteData);
+end;
+
+procedure TStreamHelper.WriteIn64(const Value: int64);
+begin
+  if Write(Value, SizeOf(Value))<>SizeOf(Value) then
+    raise EStreamException.Create(sCannotWriteData);
+end;
+
 function TStreamHelper.ReadAnsiChar(out c: AnsiChar): boolean;
 begin
   Result := Self.Read(c, SizeOf(c)) = SizeOf(c);
@@ -319,8 +357,8 @@ begin
     Result := Result + c;
 end;
 
-function TStreamHelper.ReadUniLine: UniString;
-var c: UniChar;
+function TStreamHelper.ReadUniLine: UnicodeString;
+var c: WideChar;
 begin
   Result := '';
   while ReadWideChar(c) and (c <> #13) and (c <> #10) do
@@ -337,21 +375,22 @@ begin
   Result := Self.Write(c, SizeOf(c))=SizeOf(c);
 end;
 
-(*
- Бросает исключение, если записать строку целиком не удалось.
- Функции, которая возвращала бы false или число записанных символов, нету,
- поскольку мы не можем сказать, сколько символов записано - пишутся байты.
- А возвращать число записанных байт - слишком неудобно для клиента и может
- вызвать недопонимание, а значит ошибки.
- Если готовы писать по байтам - просто пишите стандартным Write(var Buffer).
-*)
+{
+ Throws exception if it could not write the whole string.
+ There's no function which returns false or the number of characters written,
+ since we can't tell how many characters there were - we write bytes.
+ And returning the number of bytes isn't much helpful to the client (what if
+ we wrote half of a 4-byte char?) and can lead to misunderstandings and usage
+ errors.
+ If you want to write byte-by-byte, just use standard Write(var Buffer) instead.
+}
 procedure TStreamHelper.WriteAnsiString(const s: AnsiString);
 begin
   if Write(s[1], Length(s)*SizeOf(AnsiChar)) <> Length(s)*SizeOf(AnsiChar) then
     raise Exception.Create('Cannot write a line to '+self.ClassName);
 end;
 
-procedure TStreamHelper.WriteUniString(const s: UniString);
+procedure TStreamHelper.WriteUniString(const s: UnicodeString);
 begin
   if Write(s[1], Length(s)*SizeOf(WideChar)) <> Length(s)*SizeOf(WideChar) then
     raise Exception.Create('Cannot write a line to '+self.ClassName);
@@ -386,30 +425,24 @@ end;
 
 procedure TStreamReader.JoinStream(AStream: TStream; AOwnsStream: boolean = false);
 begin
- //Освобождаем старый поток
   ReleaseStream;
 
- //Цепляемся к потоку
   FStream := AStream;
   FOwnStream := AOwnsStream;
-
- //Сбрасываем буфер на всякий случай
   ResetBuf;
 end;
 
-//Освобождает поток, синхронизируя его положение с ожидаемым
+//Releases the stream and synchronizes it's position with the expected one
 procedure TStreamReader.ReleaseStream;
 begin
   if FStream=nil then exit;
 
- //Скроллим назад (треубется поддержка Seek!)
-  FStream.Seek(int64(-adv), soCurrent);
+ //Scroll back (Seek support required!)
+  FStream.Seek(int64(-adv-rem), soCurrent);
 
- //Отпускаем поток
+ //Release the stream
   FStream := nil;
   FOwnStream := false;
-
- //Очищаем буфер
   ResetBuf;
 end;
 
@@ -438,17 +471,17 @@ begin
   ptr := buf;
 end;
 
-//Сдвигает оставшиеся данные в начало кэша и докачивает ещё кусочек.
+//Moves remaining data to the beginning of the cache and downloads more
 procedure TStreamReader.UpdateChunk;
 var DataPtr: Pbyte;
 begin
- //Полная перезагрузка кэша
+ //Full cache download
   if rem <= 0 then begin
     NewChunk;
     exit;
   end;
 
- //Частичная перезагрузка
+ //Partial download
   Move(ptr^, buf^, rem);
   ptr := buf;
   adv := 0;
@@ -462,7 +495,7 @@ begin
   rem := rem + Stream.Read(DataPtr^, FChunkSize-adv-rem);
 end;
 
-//Сбрасывает содержимое буфера
+//Clears the contents of the cache
 procedure TStreamReader.ResetBuf;
 begin
   adv := 0;
@@ -472,7 +505,7 @@ end;
 
 function TStreamReader.ReallocBuf(size: integer): boolean;
 begin
- //We cant decrease buffer size cause there's still data inside.
+ //We can't decrease buffer size cause there's still data inside.
   if adv + rem > size then begin
     Result := false;
     exit;
@@ -499,10 +532,50 @@ begin
   Result := FStream.Position - rem;
 end;
 
+//If possible, try to Seek inside the buffer
+function TStreamReader.LocalSeek(Offset: Int64; Origin: TSeekOrigin): boolean;
+var pos,sz: Int64;
+begin
+  if Origin=soEnd then begin
+    sz := FStream.Size;
+    //Convert to from beginning
+    Offset := sz - Offset;
+    Origin := soBeginning;
+  end;
+
+  if Origin=soBeginning then begin
+    pos := FStream.Position;
+    if (Offset>=pos) or (Offset<pos-adv-rem) then begin
+      Result := false; //not in this chunk
+      exit;
+    end;
+   //Convert to relative
+    Offset := rem-(pos-Offset);
+    Origin := soCurrent;
+  end;
+
+  if Origin=soCurrent then begin
+    if (Offset<-adv) or (Offset>=rem) then begin
+      Result := false;
+      exit;
+    end;
+
+    adv := adv+Offset;
+    rem := rem-Offset;
+    Inc(ptr, Offset);
+    Result := true;
+  end else
+    Result := false;
+end;
+
 function TStreamReader.Seek(const Offset: Int64; Origin: TSeekOrigin): Int64;
 begin
+ //TStream calls Seek(0,soCurrent) to determine Position, so be fast in this case
   if (Origin=soCurrent) and (Offset=0) then
-    Result := GetInternalPosition() //TStream uses this to determine Position
+    Result := GetInternalPosition()
+  else
+  if LocalSeek(Offset, Origin) then
+    Result := GetInternalPosition()
   else begin
     Result := FStream.Seek(Offset, Origin);
     ResetBuf;
@@ -551,7 +624,7 @@ begin
   if Count < FChunkSize then begin
     NewChunk;
 
-    if rem < Count then //rem уже обновился в NewChunk
+    if rem < Count then //rem was already updated in NewChunk
       Count := rem;
 
     Move(ptr^, pbuf^, Count);
@@ -577,27 +650,28 @@ begin
   raise Exception.Create('StreamReader cannot write.');
 end;
 
+//Won't Peek for more than CacheSize
 function TStreamReader.Peek(var Buffer; Size: integer): integer;
 begin
- //Если данные уже есть в кэше, всё просто.
+ //If the data is in cache, it's simple
   if size <= rem then begin
     Move(ptr^, Buffer, Size);
     Result := size;
     exit;
   end;
 
- //Иначе возвращаем максимум возможного. Получаем новый блок кеша
+ //Else return the best possible amount. Make the cache completely fresh
   if rem <= FChunkSize then
     UpdateChunk;
 
- //После обновления данные целиком => читаем
+ //If the complete data fit, return it
   if size <= rem then begin
     Move(ptr^, Buffer, Size);
     Result := Size;
     exit;
   end;
 
- //Не целиком => читаем всё, что есть.
+ //Didn't fit => return all that's available
   Move(ptr^, Buffer, rem);
   Result := rem;
 end;
@@ -938,8 +1012,8 @@ end;
 (*
   Читает строку из потока, возвращает true, если удалось.
 *)
-function TCharReader.ReadLine(out s: UniString): boolean;
-var c: UniChar;
+function TCharReader.ReadLine(out s: UnicodeString): boolean;
+var c: WideChar;
 begin
   s := '';
   Result := ReadChar(c);
