@@ -1,4 +1,13 @@
 unit WcExceptions;
+{
+Счётчик происходящих исключений для схем, где их много.
+Передавайте каждое в RegisterException, затем вызовите Print и получите:
+EThisException:
+  Message 1              213
+  Message 2              7
+EThatException
+  Message 4              711
+}
 
 interface
 uses SysUtils, Generics.Defaults, Generics.Collections;
