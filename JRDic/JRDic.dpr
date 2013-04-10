@@ -9,11 +9,14 @@ uses
   SysUtils,
   Classes,
   Windows,
+  Variants,
   ActiveX,
   Db,
   AdoDb,
   AdoInt,
-  EdictWriter;
+  EdictWriter,
+  JWBDic,
+  JWBStrings;
 
 type
   EBadUsage = class(Exception)
@@ -30,51 +33,81 @@ begin
   writeln('  '+ExtractFileName(paramstr(0))+'<command>');
   writeln('Supported commands:');
   writeln('  export <filename> = export dictionary to EDICT format');
+  writeln('  autoread <EDICT> = automatically add readings from this EDICT dictionary');
 end;
 
 var
   Command: UnicodeString;
-  OutputFile: UnicodeString;
+
+  ExportParams: record
+    Filename: string;
+  end;
+
+  AutoreadParams: record
+    DictFilename: string;
+  end;
 
 procedure ParseCommandLine;
 var i: integer;
-  s: UnicodeString;
+  s: string;
 begin
   Command := '';
-  OutputFile := '';
 
+ //Parse
   i := 1;
-  while i <= ParamCount do begin
+  while i<=ParamCount() do begin
     s := ParamStr(i);
-    if Length(s)=0 then begin
-      Inc(i);
-      continue;
-    end;
-    if s[1]<>'-' then begin
-      if Command='' then
-        Command := s
-      else
-      if OutputFile='' then
-        OutputFile := s
-      else
-        BadUsage('Too many params.');
-      Inc(i);
-      continue;
+    if Length(s)<=0 then continue;
+
+   //Command
+    if Command='' then begin
+      Command := s;
+
+      if Command='export' then begin
+        FillChar(ExportParams, sizeof(ExportParams), 0);
+      end else
+      if Command='autoread' then begin
+        FillChar(AutoreadParams, sizeof(AutoreadParams), 0);
+      end else
+        BadUsage('Invalid command: "'+s+'"');
+
+    end else
+
+   //Non-command non-option params (filename list etc)
+    begin
+      if Command='export' then begin
+        if ExportParams.Filename='' then
+          ExportParams.Filename := ParamStr(i)
+        else
+          BadUsage('Invalid export param: "'+s+'"');
+      end else
+      if Command='autoread' then begin
+        if AutoreadParams.DictFilename='' then
+          AutoreadParams.DictFilename := ParamStr(i)
+        else
+          BadUsage('Invalid autoread param: "'+s+'"');
+
+      end else
+        BadUsage('Invalid param: "'+s+'"');
+
     end;
 
-    BadUsage('Unrecognized switch: '+s);
-  end;
+    Inc(i);
+  end; //of ParamStr enumeration
 
+ //Check that post-parsing conditions are met (non-conflicting options etc)
   if Command='' then
     BadUsage('You have to specify a command');
-
-  if SameStr(Command, 'export') then begin
-    if OutputFile='' then
-      BadUsage('You have to specify an output file');
-  end else
-    BadUsage('Unrecognized command: '+Command);
-
+  if Command='export' then begin
+    if ExportParams.Filename='' then
+      BadUsage('export requires output filename');
+  end;
+  if Command='autoread' then begin
+    if AutoreadParams.DictFilename='' then
+      BadUsage('autoread requires input dictionary');
+  end;
 end;
+
 
 var
   Config: TStringList;
@@ -116,7 +149,7 @@ end;
 В запросах можно использовать некоторые спец. слова (см. ниже) - они будут заменены
 на имена таблиц.
 }
-function Query(const cmd: UnicodeString): _Recordset;
+function Query(const cmd: UnicodeString; readonly: boolean = true): _Recordset;
 var tmp: UnicodeString;
 begin
   tmp := cmd;
@@ -124,10 +157,13 @@ begin
   repl(tmp, '{$tls}', tbl_Tls);
 
   Result := CoRecordset.Create;
-  Result.Open(tmp, Db.ConnectionObject, adOpenForwardOnly, adLockReadOnly, adCmdText);
+  if readonly then
+    Result.Open(tmp, Db.ConnectionObject, adOpenForwardOnly, adLockReadOnly, adCmdText)
+  else
+    Result.Open(tmp, Db.ConnectionObject, adOpenForwardOnly, adLockOptimistic, adCmdText)
 end;
 
-procedure Run_Export(OutputFile: string);
+procedure Run_Export(const OutputFile: string);
 var r: _Recordset;
   art: TEdictArticle;
   wri_jm: TJmDictWriter;
@@ -141,7 +177,8 @@ begin
 
   LastId := -1;
 
-  r := Query('SELECT {$words}.id as id, {$words}.word, tl, is_redirect FROM {$words}, {$tls} '
+  r := Query('SELECT {$words}.id as id, {$words}.word, {$words}.reading, tl, '
+    +'is_redirect FROM {$words}, {$tls} '
     +'WHERE {$tls}.word={$words}.id ORDER BY {$words}.id ASC');
   while not r.EOF do begin
     Id := r.Fields[0].Value;
@@ -154,13 +191,16 @@ begin
       art.Reset;
       LastId := Id;
       art.AddKanji().k := r.Fields[1].Value;
+      if not VarIsNull(r.Fields[2].Value)
+      and not (r.Fields[2].Value='') then
+        art.AddKana().k := r.Fields[2].Value;
     end;
 
-    if not boolean(r.Fields[3].Value) then begin
+    if not boolean(r.Fields[4].Value) then begin
      //Разделения нет, так что все слова регистрируем как glosses одного sense
       if art.senses_used<1 then
         art.AddSense();
-      art.senses[0].AddGloss(r.Fields[2].Value);
+      art.senses[0].AddGloss(r.Fields[3].Value);
     end;
 
     r.MoveNext;
@@ -181,6 +221,46 @@ begin
   FreeAndNil(wri_jm);
 end;
 
+procedure Run_Autoread(const DictFile: string);
+var edict: TJaletDic;
+  cdic: TDicLookupCursor;
+  r: _Recordset;
+  kj: string;
+begin
+  edict:=TJaletDic.Create;
+  edict.Offline := false;
+  edict.LoadOnDemand := false;
+  edict.FillInfo(DictFile);
+  edict.Load;
+  cdic := edict.NewLookup(mtExactMatch);
+  try
+    r := Query('SELECT id, word, reading FROM {$words} WHERE reading=""', {readonly=}false);
+    while not r.EOF do begin
+      kj := r.Fields[1].Value;
+      if EvalChars(kj) and not (
+        (1 shl EC_HIRAGANA)
+        or (1 shl EC_KATAKANA)
+        or (1 shl EC_IDG_PUNCTUATION)
+        or (1 shl EC_LATIN_HW)
+        or (1 shl EC_LATIN_FW)
+      ) <> 0 then
+      begin
+        cdic.LookupKanji(kj);
+        if cdic.HaveMatch then begin
+          r.Fields[2].Value := cdic.GetPhonetic;
+          r.Update(EmptyParam, EmptyParam);
+        end;
+      end;
+
+      r.MoveNext;
+    end;
+  finally
+    FreeAndNil(cdic);
+    FreeAndNil(edict);
+  end;
+end;
+
+
 //Settings have been loaded already
 procedure Run;
 begin
@@ -191,7 +271,10 @@ begin
   try
 
     if SameStr(Command, 'export') then
-      Run_Export(OutputFile)
+      Run_Export(ExportParams.Filename)
+    else
+    if SameStr(Command, 'autoread') then
+      Run_Autoread(AutoreadParams.DictFilename)
     else
       BadUsage('Unrecognized command: '+Command);
 
