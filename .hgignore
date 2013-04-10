@@ -1,6 +1,8 @@
 syntax: glob
 __history
 *.~*
+*.identcache
+*.res
 *.groupproj
 *.dproj
 *.dproj.local
