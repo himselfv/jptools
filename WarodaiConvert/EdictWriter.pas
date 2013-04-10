@@ -640,7 +640,9 @@ begin
   if PopStats.HasPop then
     ln := ln + '/(P)';
 
-  outp.WriteLine(s_kanji+' '+ln+'/EntL'+art.ref+'/');
+  if art.ref<>'' then
+    ln := ln + '/EntL'+art.ref;
+  outp.WriteLine(s_kanji+' '+ln+'/');
   Inc(FAddedRecords);
 end;
 
