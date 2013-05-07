@@ -18,7 +18,7 @@
  и поэтому очень много статей оказываются выброшены. }
 
 interface
-uses SysUtils, StreamUtils, iconv;
+uses SysUtils, StreamUtils{$IFDEF ICONV_EDICT1}, iconv{$ENDIF};
 
 const
   MaxKanji = 8;
@@ -183,7 +183,7 @@ type
   end;
 
 implementation
-uses Classes, UniStrUtils, WcUtils;
+uses Classes;
 
 {
 Article
@@ -670,12 +670,18 @@ end;
 //  <tag_name>val1</tag_name>
 //  <tag_name>val2</tag_name>
 procedure TJMDictWriter.PrintTags(const tag_name, tag_vals: string);
-var i: integer;
-  parts: TStringArray;
+var tmp: string;
+  t_pos: integer;
 begin
-  parts := StrSplit(PChar(tag_vals),',');
-  for i := 0 to Length(parts) - 1 do
-    outp.WriteLine('<'+tag_name+'>&'+parts[i]+';</'+tag_name+'>'); //каждый тег отдельно
+  tmp := tag_vals;
+  t_pos := pos(tmp, ',');
+  while t_pos>0 do begin
+    outp.WriteLine('<'+tag_name+'>&'+copy(tmp,1,t_pos-1)+';</'+tag_name+'>'); //каждый тег отдельно
+    tmp := copy(tmp,t_pos+1,Length(tmp)-t_pos);
+    t_pos := pos(tmp, ',');
+  end;
+  if tmp<>'' then
+    outp.WriteLine('<'+tag_name+'>&'+tmp+';</'+tag_name+'>');
 end;
 
 procedure TJMDictWriter.Print(art: PEdictArticle);
@@ -683,7 +689,8 @@ var i,j: integer;
   se: PEdictSenseEntry;
 begin
   outp.WriteLine('<entry>');
-  outp.WriteLine('<ent_seq>'+art.ref+'</ent_seq>');
+  if art.ref<>'' then
+    outp.WriteLine('<ent_seq>'+art.ref+'</ent_seq>');
 
   for i := 0 to art.kanji_used - 1 do begin
     outp.WriteLine('<k_ele>');

@@ -7,7 +7,7 @@ Some comments are in Russian, deal with it *puts on glasses*.
 }
 
 interface
-uses SysUtils, Classes, UniStrUtils, Windows;
+uses SysUtils, Classes{$IFDEF DCC}, UniStrUtils, Windows{$ENDIF};
 
 type
   EStreamException = class(Exception);
@@ -83,7 +83,7 @@ type
     procedure UpdateChunk;
     procedure SetChunkSize(AValue: integer);
     procedure ResetBuf;
-    function ReallocBuf(size: integer): boolean;
+    function ReallocBuf(ASize: integer): boolean;
     procedure FreeBuf;
   public
     property ChunkSize: integer read FChunkSize write SetChunkSize;
@@ -101,9 +101,9 @@ type
   public
     function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
     function Read(var Buffer; Count: Longint): Longint; override;
-    function ReadBuf(buf: pbyte; len: integer): integer; inline;
+    function ReadBuf(ABuf: pbyte; ALen: integer): integer; inline;
     function Write(const Buffer; Count: Longint): Longint; override;
-    function Peek(var Buffer; Size: integer): integer;
+    function Peek(var Buffer; ASize: integer): integer;
     function PeekByte(out b: byte): boolean;
   end;
 
@@ -144,7 +144,7 @@ type
     function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
     function Read(var Buffer; Count: Longint): Longint; override;
     function Write(const Buffer; Count: Longint): Longint; override;
-    function WriteBuf(buf: PByte; len: integer): integer; inline;
+    function WriteBuf(ABuf: PByte; ALen: integer): integer; inline;
     procedure Flush;
 
   end;
@@ -503,15 +503,15 @@ begin
   ptr := buf;
 end;
 
-function TStreamReader.ReallocBuf(size: integer): boolean;
+function TStreamReader.ReallocBuf(ASize: integer): boolean;
 begin
  //We can't decrease buffer size cause there's still data inside.
-  if adv + rem > size then begin
+  if adv + rem > ASize then begin
     Result := false;
     exit;
   end;
 
-  ReallocMem(buf, Size);
+  ReallocMem(buf, ASize);
   ptr := pointer(IntPtr(buf) + adv);
   Result := true;
 end;
@@ -640,9 +640,9 @@ begin
   Inc(FBytesRead, Result);
 end;
 
-function TStreamReader.ReadBuf(buf: pbyte; len: integer): integer;
+function TStreamReader.ReadBuf(ABuf: pbyte; ALen: integer): integer;
 begin
-  Result := Read(buf^, len);
+  Result := Read(ABuf^, ALen);
 end;
 
 function TStreamReader.Write(const Buffer; Count: Longint): Longint;
@@ -651,12 +651,12 @@ begin
 end;
 
 //Won't Peek for more than CacheSize
-function TStreamReader.Peek(var Buffer; Size: integer): integer;
+function TStreamReader.Peek(var Buffer; ASize: integer): integer;
 begin
  //If the data is in cache, it's simple
   if size <= rem then begin
-    Move(ptr^, Buffer, Size);
-    Result := size;
+    Move(ptr^, Buffer, ASize);
+    Result := ASize;
     exit;
   end;
 
@@ -666,8 +666,8 @@ begin
 
  //If the complete data fit, return it
   if size <= rem then begin
-    Move(ptr^, Buffer, Size);
-    Result := Size;
+    Move(ptr^, Buffer, ASize);
+    Result := ASize;
     exit;
   end;
 
@@ -878,9 +878,9 @@ begin
   Inc(FBytesWritten, Result);
 end;
 
-function TStreamWriter.WriteBuf(buf: PByte; len: integer): integer;
+function TStreamWriter.WriteBuf(ABuf: PByte; ALen: integer): integer;
 begin
-  Result := Write(buf^, len);
+  Result := Write(ABuf^, ALen);
 end;
 
 
@@ -965,7 +965,11 @@ begin
   case Charset of
     csAnsi: begin
       Result := (Read(_c, 1) = 1);
+     {$IFDEF FPC}
+      c := _c;
+     {$ELSE}
       c := ToWideChar(_c, CP_ACP);
+     {$ENDIF}
     end;
 
     csUtf16Be: begin
@@ -991,7 +995,11 @@ begin
   case Charset of
     csAnsi: begin
       Result := (Peek(_c, 1) = 1);
+     {$IFDEF FPC}
+      c := _c;
+     {$ELSE}
       c := ToWideChar(_c, CP_ACP);
+     {$ENDIF}
     end;
 
     csUtf16Be: begin
@@ -1066,7 +1074,11 @@ var _c: AnsiChar;
 begin
   case Charset of
     csAnsi: begin
+     {$IFDEF FPC}
+      _c := c;
+     {$ELSE}
       _c := ToChar(c, CP_ACP);
+     {$ENDIF}
       Write(_c, 1);
     end;
 
@@ -1092,7 +1104,10 @@ var _c: AnsiString;
 begin
   case Charset of
     csAnsi: begin
+     {$IFDEF FPC}
+     {$ELSE}
       _c := BufToString(c, len, CP_ACP);
+     {$ENDIF}
       Write(_c[1], Length(_c)*SizeOf(AnsiChar));
     end;
 

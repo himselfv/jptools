@@ -4,19 +4,29 @@ program JRDic;
 Утилиты для работы с JRDic/web.
 }
 
+{$DEFINE NOWAKAN}
+{ Отключить функции программы, требующие при компиляции модулей из Вакана }
+
+{$IF Defined(DCC) and Defined(MSWINDOWS)}
+  {$DEFINE DB_ADO}
+{$ELSE}
+  //FreePascal's SQLdb
+  {$DEFINE DB_SQLDB}
+{$IFEND}
 
 uses
   SysUtils,
   Classes,
   Windows,
   Variants,
-  ActiveX,
   Db,
-  AdoDb,
-  AdoInt,
-  EdictWriter,
+  {$IFDEF DB_ADO}ActiveX, AdoDb,{$ENDIF}
+  {$IFDEF DB_SQLDB}sqldb, mysql55conn,{$ENDIF}
+  {$IFNDEF NOWAKAN}
   JWBDic,
-  JWBStrings;
+  {$ENDIF}
+  EdictWriter,
+  StreamUtils;
 
 type
   EBadUsage = class(Exception)
@@ -33,7 +43,9 @@ begin
   writeln('  '+ExtractFileName(paramstr(0))+'<command>');
   writeln('Supported commands:');
   writeln('  export <filename> = export dictionary to EDICT format');
+ {$IFNDEF NOWAKAN}
   writeln('  autoread <EDICT> = automatically add readings from this EDICT dictionary');
+ {$ENDIF}
 end;
 
 var
@@ -43,9 +55,11 @@ var
     Filename: string;
   end;
 
+ {$IFNDEF NOWAKAN}
   AutoreadParams: record
     DictFilename: string;
   end;
+ {$ENDIF}
 
 procedure ParseCommandLine;
 var i: integer;
@@ -61,14 +75,16 @@ begin
 
    //Command
     if Command='' then begin
-      Command := s;
+      Command := AnsiLowerCase(s);
 
       if Command='export' then begin
         FillChar(ExportParams, sizeof(ExportParams), 0);
       end else
+     {$IFNDEF NOWAKAN}
       if Command='autoread' then begin
         FillChar(AutoreadParams, sizeof(AutoreadParams), 0);
       end else
+     {$ENDIF}
         BadUsage('Invalid command: "'+s+'"');
 
     end else
@@ -81,13 +97,14 @@ begin
         else
           BadUsage('Invalid export param: "'+s+'"');
       end else
+     {$IFNDEF NOWAKAN}
       if Command='autoread' then begin
         if AutoreadParams.DictFilename='' then
           AutoreadParams.DictFilename := ParamStr(i)
         else
           BadUsage('Invalid autoread param: "'+s+'"');
-
       end else
+     {$ENDIF}
         BadUsage('Invalid param: "'+s+'"');
 
     end;
@@ -102,17 +119,19 @@ begin
     if ExportParams.Filename='' then
       BadUsage('export requires output filename');
   end;
+ {$IFNDEF NOWAKAN}
   if Command='autoread' then begin
     if AutoreadParams.DictFilename='' then
       BadUsage('autoread requires input dictionary');
   end;
+ {$ENDIF}
 end;
 
 
 var
   Config: TStringList;
 
-  Db: TAdoConnection;
+  Db: TCustomConnection;
   tblPrefix: string;
 
  //Database table names, escaped if needed
@@ -120,9 +139,27 @@ var
   tbl_Tls: string;
 
 procedure SetupDb;
+var
+ {$IFDEF DB_ADO}
+  AdoDb: TAdoConnection;
+ {$ENDIF}
+ {$IFDEF DB_SQLDB}
+  MysqlDb: TMySQL55Connection;
+ {$ENDIF}
 begin
-  Db := TAdoConnection.Create(nil);
-  Db.ConnectionString := Config.Values['ConnectionString'];
+ {$IFDEF DB_ADO}
+  AdoDb := TAdoConnection.Create(nil);
+  AdoDb.ConnectionString := Config.Values['ConnectionString'];
+  Db := AdoDb;
+ {$ENDIF}
+ {$IFDEF DB_SQLDB}
+  MysqlDb := TMysql55Connection.Create(nil);
+  MysqlDb.HostName := Config.Values['HostName'];
+  MysqlDb.DatabaseName := Config.Values['DatabaseName'];
+  MysqlDb.UserName := Config.Values['UserName'];
+  MysqlDb.Password := Config.Values['Password'];
+  Db := MysqlDb;
+ {$ENDIF}
   Db.Open();
 
   tblPrefix := Config.Values['TablePrefix'];
@@ -135,7 +172,7 @@ begin
   FreeAndNil(Db);
 end;
 
-procedure repl(var s:string;const sub,rep:string);
+procedure repl(var s:UnicodeString;const sub,rep:UnicodeString);
 var i_pos: integer;
 begin
   i_pos := pos(sub,s);
@@ -149,33 +186,59 @@ end;
 В запросах можно использовать некоторые спец. слова (см. ниже) - они будут заменены
 на имена таблиц.
 }
-function Query(const cmd: UnicodeString; readonly: boolean = true): _Recordset;
+function Query(const cmd: UnicodeString; readonly: boolean = true): TDataSet;
 var tmp: UnicodeString;
+ {$IFDEF DB_ADO}
+  Query: TADOQuery;
+ {$ENDIF}
+ {$IFDEF DB_SQLDB}
+  Query: TSQLQuery;
+ {$ENDIF}
 begin
   tmp := cmd;
   repl(tmp, '{$words}', tbl_Words);
   repl(tmp, '{$tls}', tbl_Tls);
 
-  Result := CoRecordset.Create;
+ {$IFDEF DB_ADO}
+  Query := TAdoQuery.Create(nil);
+  Query.Connection := TAdoConnection(Db);
+  Query.CursorLocation := clUseServer;
+  Query.CursorType := ctOpenForwardOnly;
+  if readonly then
+    Query.LockType := ltReadOnly
+  else
+    Query.LockType := ltUnspecified;
+ {$ENDIF}
+ {$IFDEF DB_SQLDB}
+  Query := TSQLQuery.Create(nil);
+  Query.Database := TDatabase(Db);
+ {$ENDIF}
+  Query.SQL.Add(tmp);
+  Query.Open;
+  Result := Query;
+
+{  Result := CoRecordset.Create;
   if readonly then
     Result.Open(tmp, Db.ConnectionObject, adOpenForwardOnly, adLockReadOnly, adCmdText)
   else
-    Result.Open(tmp, Db.ConnectionObject, adOpenForwardOnly, adLockOptimistic, adCmdText)
+    Result.Open(tmp, Db.ConnectionObject, adOpenForwardOnly, adLockOptimistic, adCmdText)}
 end;
 
 procedure Run_Export(const OutputFile: string);
-var r: _Recordset;
+var r: TDataset;
   art: TEdictArticle;
   wri_jm: TJmDictWriter;
   wri_2: TEdict2Writer;
   wri_1: TEdict1Writer;
   LastId, Id: integer;
+  TotalLines: integer;
 begin
   wri_jm := TJmDictWriter.Create(OutputFile+'.jmdict');
   wri_2 := TEdict2Writer.Create(OutputFile+'.edict2');
   wri_1 := TEdict1Writer.Create(OutputFile+'.edict1');
 
   LastId := -1;
+  TotalLines := 0;
 
   r := Query('SELECT {$words}.id as id, {$words}.word, {$words}.reading, tl, '
     +'is_redirect FROM {$words}, {$tls} '
@@ -203,7 +266,8 @@ begin
       art.senses[0].AddGloss(r.Fields[3].Value);
     end;
 
-    r.MoveNext;
+    Inc(TotalLines);
+    r.Next;
   end;
 
   if (LastId>0) and (art.senses_used>0) then begin
@@ -215,16 +279,18 @@ begin
 
  //Output stats
   writeln('Exported records: '+IntToStr(wri_jm.AddedRecords));
+  writeln('Total lines: '+IntToStr(TotalLines));
 
   FreeAndNil(wri_1);
   FreeAndNil(wri_2);
   FreeAndNil(wri_jm);
 end;
 
+{$IFNDEF NOWAKAN}
 procedure Run_Autoread(const DictFile: string);
 var edict: TJaletDic;
   cdic: TDicLookupCursor;
-  r: _Recordset;
+  r: TDataset;
   kj: string;
 begin
   edict:=TJaletDic.Create;
@@ -248,34 +314,38 @@ begin
         cdic.LookupKanji(kj);
         if cdic.HaveMatch then begin
           r.Fields[2].Value := cdic.GetPhonetic;
-          r.Update(EmptyParam, EmptyParam);
+          r.UpdateRecord;
         end;
       end;
 
-      r.MoveNext;
+      r.Next;
     end;
   finally
     FreeAndNil(cdic);
     FreeAndNil(edict);
   end;
 end;
-
+{$ENDIF}
 
 //Settings have been loaded already
 procedure Run;
 begin
+ {$IFDEF DB_ADO}
   CoInitialize(nil);
+ {$ENDIF}
   Config := TStringList.Create;
   Config.LoadFromFile(ChangeFileExt(ExtractFilename(paramstr(0)), '.cfg'));
   SetupDb;
   try
 
-    if SameStr(Command, 'export') then
+    if Command = 'export' then
       Run_Export(ExportParams.Filename)
     else
-    if SameStr(Command, 'autoread') then
+   {$IFNDEF NOWAKAN}
+    if Command = 'autoread' then
       Run_Autoread(AutoreadParams.DictFilename)
     else
+   {$ENDIF}
       BadUsage('Unrecognized command: '+Command);
 
   finally
