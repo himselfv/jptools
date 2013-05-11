@@ -249,7 +249,7 @@ begin
   Query.Transaction := DbTransaction;
  {$ENDIF}
   Query.SQL.Text := tmp;
-  Query.ExecSQL;
+  Query.Open;
   Result := Query;
 end;
 
