@@ -132,8 +132,11 @@ var
   Config: TStringList;
 
   Db: TCustomConnection;
-  tblPrefix: string;
+ {$IFDEF DB_SQLDB}
+  DbTransaction: TSQLTransaction; //SQLdb requires this
+ {$ENDIF}
 
+  tblPrefix: string;
  //Database table names, escaped if needed
   tbl_Words: string;
   tbl_Tls: string;
@@ -163,6 +166,12 @@ begin
  {$ENDIF}
   Db.Open();
   writeln('Connection succeeded.');
+ {$IFDEF DB_SQLDB}
+  DbTransaction := TSQLTransaction.Create;
+  DbTransaction.Database := AConnection;
+  DbTransaction.StartTransaction;
+  writeln('Transaction started.');
+ {$ENDIF}
 
   tblPrefix := Config.Values['TablePrefix'];
   tbl_Words := '`'+tblPrefix+'words`';
@@ -172,6 +181,18 @@ end;
 procedure FreeDb;
 begin
   FreeAndNil(Db);
+end;
+
+{ Some DB backends require us to wrap everything in transaction,
+ so call this after you make changes to the DB. }
+procedure CommitDb;
+begin
+ {$IFDEF DB_SQLDB}
+  writeln('Commiting...');
+  DbTransaction.Commit;
+  DbTransaction.StartTransaction; //new one
+ {$ENDIF}
+ //ADO does not need this as we don't use transactions at this time
 end;
 
 procedure repl(var s:UnicodeString;const sub,rep:UnicodeString);
@@ -217,16 +238,11 @@ begin
  {$IFDEF DB_SQLDB}
   Query := TSQLQuery.Create(nil);
   Query.Database := TDatabase(Db);
+  Query.Transaction := DbTransaction;
  {$ENDIF}
-  Query.SQL.Add(tmp);
-  Query.Open;
+  Query.SQL.Text := tmp;
+  Query.ExecSQL;
   Result := Query;
-
-{  Result := CoRecordset.Create;
-  if readonly then
-    Result.Open(tmp, Db.ConnectionObject, adOpenForwardOnly, adLockReadOnly, adCmdText)
-  else
-    Result.Open(tmp, Db.ConnectionObject, adOpenForwardOnly, adLockOptimistic, adCmdText)}
 end;
 
 procedure Run_Export(const OutputFile: string);
