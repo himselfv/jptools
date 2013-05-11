@@ -147,6 +147,7 @@ var
   MysqlDb: TMySQL55Connection;
  {$ENDIF}
 begin
+  writeln('Connecting to DB...');
  {$IFDEF DB_ADO}
   AdoDb := TAdoConnection.Create(nil);
   AdoDb.ConnectionString := Config.Values['ConnectionString'];
@@ -161,6 +162,7 @@ begin
   Db := MysqlDb;
  {$ENDIF}
   Db.Open();
+  writeln('Connection succeeded.');
 
   tblPrefix := Config.Values['TablePrefix'];
   tbl_Words := '`'+tblPrefix+'words`';
@@ -198,6 +200,9 @@ begin
   tmp := cmd;
   repl(tmp, '{$words}', tbl_Words);
   repl(tmp, '{$tls}', tbl_Tls);
+ {$IFDEF DEBUG}
+  writeln('Query: '+cmd);
+ {$ENDIF}
 
  {$IFDEF DB_ADO}
   Query := TAdoQuery.Create(nil);
