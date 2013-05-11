@@ -167,8 +167,8 @@ begin
   Db.Open();
   writeln('Connection succeeded.');
  {$IFDEF DB_SQLDB}
-  DbTransaction := TSQLTransaction.Create;
-  DbTransaction.Database := AConnection;
+  DbTransaction := TSQLTransaction.Create(nil);
+  DbTransaction.Database := TDatabase(Db);
   DbTransaction.StartTransaction;
   writeln('Transaction started.');
  {$ENDIF}
