@@ -154,13 +154,21 @@ begin
  {$IFDEF DB_ADO}
   AdoDb := TAdoConnection.Create(nil);
   AdoDb.ConnectionString := Config.Values['ConnectionString'];
+  if AdoDb.ConnectionString='' then
+  AdoDb.ConnectionString := Format('Provider=MSDASQL;Driver=%s;Server=%s;'
+    +'Database=%s;User=%s;Password=%s;Option=3;',
+    [Config.Values['OdbcDriver'],
+     Config.Values['Hostname'],
+     Config.Values['DatabaseName'],
+     Config.Values['Username'],
+     Config.Values['Password']]);
   Db := AdoDb;
  {$ENDIF}
  {$IFDEF DB_SQLDB}
   MysqlDb := TMysql55Connection.Create(nil);
-  MysqlDb.HostName := Config.Values['HostName'];
+  MysqlDb.HostName := Config.Values['Hostname'];
   MysqlDb.DatabaseName := Config.Values['DatabaseName'];
-  MysqlDb.UserName := Config.Values['UserName'];
+  MysqlDb.UserName := Config.Values['Username'];
   MysqlDb.Password := Config.Values['Password'];
   Db := MysqlDb;
  {$ENDIF}
