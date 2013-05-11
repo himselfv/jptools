@@ -18,3 +18,12 @@ JRDic/Win32/*
 JRDic/Win32/*/*
 JRDic/Win64/*
 JRDic/Win64/*/*
+
+# FreePascal output
+*.o
+*.ppu
+
+# Generated EDICT files
+*.edict1
+*.edict2
+*.jmdict

@@ -17,7 +17,7 @@ program JRDic;
 uses
   SysUtils,
   Classes,
-  Windows,
+//  Windows,
   Variants,
   Db,
   {$IFDEF DB_ADO}ActiveX, AdoDb,{$ENDIF}
