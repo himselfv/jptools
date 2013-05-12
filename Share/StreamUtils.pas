@@ -965,10 +965,10 @@ begin
   case Charset of
     csAnsi: begin
       Result := (Read(_c, 1) = 1);
-     {$IFDEF FPC}
-      c := _c;
-     {$ELSE}
+     {$IFDEF DCC}
       c := ToWideChar(_c, CP_ACP);
+     {$ELSE}
+      c := _c; //TODO: Use proper conversion.
      {$ENDIF}
     end;
 
@@ -995,10 +995,10 @@ begin
   case Charset of
     csAnsi: begin
       Result := (Peek(_c, 1) = 1);
-     {$IFDEF FPC}
-      c := _c;
-     {$ELSE}
+     {$IFDEF DCC}
       c := ToWideChar(_c, CP_ACP);
+     {$ELSE}
+      c := _c; //TODO: Use proper conversion
      {$ENDIF}
     end;
 
@@ -1074,10 +1074,10 @@ var _c: AnsiChar;
 begin
   case Charset of
     csAnsi: begin
-     {$IFDEF FPC}
-      _c := c;
-     {$ELSE}
+     {$IFDEF DCC}
       _c := ToChar(c, CP_ACP);
+     {$ELSE}
+      _c := c; //TODO: Use proper conversion.
      {$ENDIF}
       Write(_c, 1);
     end;
@@ -1104,9 +1104,10 @@ var _c: AnsiString;
 begin
   case Charset of
     csAnsi: begin
-     {$IFDEF FPC}
-     {$ELSE}
+     {$IFDEF DCC}
       _c := BufToString(c, len, CP_ACP);
+     {$ELSE}
+      _c := c; //TODO: Use proper conversion.
      {$ENDIF}
       Write(_c[1], Length(_c)*SizeOf(AnsiChar));
     end;
