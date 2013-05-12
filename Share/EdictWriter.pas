@@ -20,6 +20,11 @@
 interface
 uses SysUtils, StreamUtils{$IFDEF ICONV_EDICT1}, iconv{$ENDIF};
 
+{$IFDEF FPC}
+type
+  UnicodeString = WideString;
+{$ENDIF}
+
 const
   MaxKanji = 8;
   MaxKana = 8;

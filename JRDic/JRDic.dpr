@@ -15,6 +15,7 @@ program JRDic;
 {$IFEND}
 
 uses
+ {$IFDEF FPC}cwstring,{$ENDIF}
   SysUtils,
   Classes,
 //  Windows,
@@ -179,6 +180,8 @@ begin
   DbTransaction.Database := TDatabase(Db);
   DbTransaction.StartTransaction;
   writeln('Transaction started.');
+  MysqlDb.ExecuteDirect('SET CHARACTER SET `utf8`');
+  MysqlDb.ExecuteDirect('SET NAMES `utf8`');
  {$ENDIF}
 
   tblPrefix := Config.Values['TablePrefix'];
@@ -295,6 +298,7 @@ begin
       art.senses[0].AddGloss(r.Fields[3].Value);
     end;
 
+    writeln(r.Fields[3].Value);
     Inc(TotalLines);
     r.Next;
   end;
