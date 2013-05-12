@@ -1,10 +1,10 @@
-program JRDic;
+﻿program JRDic;
 {$APPTYPE CONSOLE}
 {
 Утилиты для работы с JRDic/web.
 }
 
-{$DEFINE NOWAKAN}
+//{$DEFINE NOWAKAN}
 { Отключить функции программы, требующие при компиляции модулей из Вакана }
 
 {$IF Defined(DCC) and Defined(MSWINDOWS)}
@@ -14,16 +14,20 @@ program JRDic;
   {$DEFINE DB_SQLDB}
 {$IFEND}
 
+{$IFDEF FPC}
+  {$DEFINE NOWAKAN}
+{$ENDIF}
+
 uses
- {$IFDEF FPC}cwstring,{$ENDIF}
+ {$IFDEF FPC}cwstring,{$ENDIF} //Enables FreePascal string assignment-conversion
   SysUtils,
   Classes,
-//  Windows,
   Variants,
   Db,
   {$IFDEF DB_ADO}ActiveX, AdoDb,{$ENDIF}
   {$IFDEF DB_SQLDB}sqldb, mysql55conn,{$ENDIF}
   {$IFNDEF NOWAKAN}
+  JWBStrings,
   JWBDic,
   {$ENDIF}
   EdictWriter,
@@ -43,14 +47,19 @@ begin
   writeln('Usage: ');
   writeln('  '+ExtractFileName(paramstr(0))+'<command>');
   writeln('Supported commands:');
-  writeln('  export <filename> = export dictionary to EDICT format');
+  writeln('  export <filename> = export dictionary to EDICT formats');
  {$IFNDEF NOWAKAN}
   writeln('  autoread <EDICT> = automatically add readings from this EDICT dictionary');
+ {$ENDIF}
+ {$IFDEF DEBUG}
+  writeln('Debug commands:');
+  writeln('  export-test <filename> = export some test records in EDICT formats');
  {$ENDIF}
 end;
 
 var
   Command: UnicodeString;
+  NeedDb: boolean;
 
   ExportParams: record
     Filename: string;
@@ -67,6 +76,7 @@ var i: integer;
   s: string;
 begin
   Command := '';
+  NeedDb := false;
 
  //Parse
   i := 1;
@@ -78,8 +88,11 @@ begin
     if Command='' then begin
       Command := AnsiLowerCase(s);
 
-      if Command='export' then begin
+      if (Command='export')
+      {$IFDEF DEBUG}or (Command='export-test'){$ENDIF}
+      then begin
         FillChar(ExportParams, sizeof(ExportParams), 0);
+        NeedDb := Command<>'export-test';
       end else
      {$IFNDEF NOWAKAN}
       if Command='autoread' then begin
@@ -92,7 +105,9 @@ begin
 
    //Non-command non-option params (filename list etc)
     begin
-      if Command='export' then begin
+      if (Command='export')
+     {$IFDEF DEBUG}or (Command='export-test'){$ENDIF}
+      then begin
         if ExportParams.Filename='' then
           ExportParams.Filename := ParamStr(i)
         else
@@ -116,7 +131,9 @@ begin
  //Check that post-parsing conditions are met (non-conflicting options etc)
   if Command='' then
     BadUsage('You have to specify a command');
-  if Command='export' then begin
+  if (Command='export')
+  {$IFDEF DEBUG}or (Command='export-test'){$ENDIF}
+  then begin
     if ExportParams.Filename='' then
       BadUsage('export requires output filename');
   end;
@@ -151,6 +168,8 @@ var
   MysqlDb: TMySQL55Connection;
  {$ENDIF}
 begin
+  if not NeedDb then exit;
+
   writeln('Connecting to DB...');
  {$IFDEF DB_ADO}
   AdoDb := TAdoConnection.Create(nil);
@@ -256,6 +275,51 @@ begin
   Result := Query;
 end;
 
+{$IFDEF DEBUG}
+procedure Run_ExportTest(const OutputFile: string);
+var art: TEdictArticle;
+  wri_jm: TJmDictWriter;
+  wri_2: TEdict2Writer;
+  wri_1: TEdict1Writer;
+
+  procedure AddRec(kanji: array of string; kana: array of string; senses: array of string);
+  var i: integer;
+  begin
+    art.Reset;
+    for i := Low(kanji) to High(kanji) do
+      art.AddKanji^.k := kanji[i];
+    for i := Low(kana) to High(kana) do
+      with art.AddKana^ do begin
+        k := kana[i];
+        AllKanji := true;
+      end;
+    for i := Low(senses) to High(senses) do
+      art.AddSense^.AddGloss(senses[i]);
+    wri_1.Print(@art);
+    wri_2.Print(@art);
+    wri_jm.Print(@art);
+  end;
+
+begin
+  wri_jm := TJmDictWriter.Create(OutputFile+'.jmdict');
+  wri_2 := TEdict2Writer.Create(OutputFile+'.edict2');
+  wri_1 := TEdict1Writer.Create(OutputFile+'.edict1');
+
+  writeln('Writing some test records to '+OutputFile+'...');
+  AddRec(['latin'], ['LATIN'], ['latin word']);
+  AddRec(['kyrillic'], ['KYRILLIC'], ['русский текст']);
+  AddRec(['どう見ても'], [], ['как ни посмотри', 'с какой стороны ни глянь']);
+  AddRec(['気のせい'], ['きのせい'], ['померещилось', 'показалось']);
+  AddRec(['電波'], ['でんぱ'], ['электромагнитная волна', 'чокнутый']);
+  AddRec(['先が思いやられる'], ['さきがおもいやられる'], ['о дальнейшем и думать не хочется',
+    'что будет дальше - подумать страшно', 'страшно себе представить, что будет дальше']);
+
+  FreeAndNil(wri_1);
+  FreeAndNil(wri_2);
+  FreeAndNil(wri_jm);
+end;
+{$ENDIF}
+
 procedure Run_Export(const OutputFile: string);
 var r: TDataset;
   art: TEdictArticle;
@@ -288,7 +352,10 @@ begin
       art.AddKanji().k := r.Fields[1].Value;
       if not VarIsNull(r.Fields[2].Value)
       and not (r.Fields[2].Value='') then
-        art.AddKana().k := r.Fields[2].Value;
+        with art.AddKana()^ do begin
+          k := r.Fields[2].Value;
+          AllKanji := true;
+        end;
     end;
 
     if not boolean(r.Fields[4].Value) then begin
@@ -377,6 +444,11 @@ begin
    {$IFNDEF NOWAKAN}
     if Command = 'autoread' then
       Run_Autoread(AutoreadParams.DictFilename)
+    else
+   {$ENDIF}
+   {$IFDEF DEBUG}
+    if Command = 'export-test' then
+      Run_ExportTest(ExportParams.Filename)
     else
    {$ENDIF}
       BadUsage('Unrecognized command: '+Command);

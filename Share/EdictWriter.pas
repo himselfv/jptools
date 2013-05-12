@@ -198,6 +198,7 @@ procedure TEdictKanjiEntry.Reset;
 begin
   k := '';
   inf := '';
+  pop := false;
 end;
 
 procedure TEdictKanaEntry.Reset;
@@ -206,6 +207,7 @@ begin
   inf := '';
   AllKanji := false;
   kanji_used := 0;
+  pop := false;
 end;
 
 procedure TEdictKanaEntry.AddKanjiRef(ref: integer);
