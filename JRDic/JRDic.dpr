@@ -365,7 +365,6 @@ begin
       art.senses[0].AddGloss(r.Fields[3].Value);
     end;
 
-    writeln(r.Fields[3].Value);
     Inc(TotalLines);
     r.Next;
   end;
