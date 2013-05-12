@@ -60,6 +60,7 @@ end;
 var
   Command: UnicodeString;
   NeedDb: boolean;
+  Verbose: boolean;
 
   ExportParams: record
     Filename: string;
@@ -77,12 +78,23 @@ var i: integer;
 begin
   Command := '';
   NeedDb := false;
+  Verbose := false;
 
  //Parse
   i := 1;
   while i<=ParamCount() do begin
     s := ParamStr(i);
     if Length(s)<=0 then continue;
+
+   //Param
+    if s[1]='-' then begin
+      s := AnsiLowerCase(s);
+      if s='-verbose' then
+        Verbose := true
+      else
+        BadUsage('Invalid param: "'+s+'"');
+
+    end else
 
    //Command
     if Command='' then begin
@@ -252,7 +264,8 @@ begin
   repl(tmp, '{$words}', tbl_Words);
   repl(tmp, '{$tls}', tbl_Tls);
  {$IFDEF DEBUG}
-  writeln('Query: '+cmd);
+  if Verbose then
+    writeln('Query: '+cmd);
  {$ENDIF}
 
  {$IFDEF DB_ADO}
