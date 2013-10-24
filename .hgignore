@@ -22,6 +22,12 @@ JRDic/Win64/*/*
 # FreePascal output
 *.o
 *.ppu
+*.compiled
+# Backup
+*.bak
+# Project files
+*.lpi
+*.lps
 
 # Generated EDICT files
 *.edict1
