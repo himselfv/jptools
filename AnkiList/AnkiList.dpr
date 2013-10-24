@@ -12,13 +12,13 @@ program AnkiList;
 }
 
 uses
-  SysUtils, Classes, UniStrUtils, StreamUtils;
+  SysUtils, Classes, UniStrUtils, JWBIO, JWBKanjiDicReader;
 
 type
   TKanjidicRecord = record
     Kanji: UniChar;
-    OnRead: UniString;
-    KunRead: UniString;
+    OnT0, OnT1: UniString;
+    KunT0, KunT1: UniString;
     Meaning: UniString;
     JlptLevel: integer;
     JouyouGrade: integer;
@@ -28,7 +28,7 @@ type
 var
   KDic: array of TKanjidicRecord;
   KDicLen: integer;
-  Output: TCharWriter;
+  Output: TStreamEncoder;
 
 function NewKDicCell: PKanjidicRecord;
 begin
@@ -38,71 +38,40 @@ begin
   Inc(KDicLen);
 end;
 
-procedure ParseStr(s: UniString);
-var Cell: PKanjidicRecord;
-  Mean: PUniChar;
-  i: integer;
-  parts: TUniStringArray;
+procedure AddEntry(entry: PKanjidicEntry);
+var cell: PKanjidicRecord;
 begin
-  if (Length(s)<=0) or (s[1]='#') then
-    exit; //nothing to parse
+  cell := NewKDicCell;
+  cell.Kanji := entry.kanji[1];
 
-  Cell := NewKDicCell;
+  cell.OnT0 := entry.readings[0].JoinOns(' ');
+  cell.OnT1 := entry.readings[1].JoinOns(' ');
+  cell.KunT0 := entry.readings[0].JoinKuns(' ');
+  cell.KunT1 := entry.readings[1].JoinKuns(' ');
+  cell.Meaning := entry.JoinMeanings(', ');
 
-  Mean := StrScan(PUniChar(s), '{');
-  if Mean <> nil then begin
-    Cell.Meaning := Mean;
-    for i := 1 to Length(Cell.Meaning) do begin
-      if Cell.Meaning[i]='}' then
-        Cell.Meaning[i] := ','
-      else
-      if Cell.Meaning[i]='{' then
-        Cell.Meaning[i] := ' ';
-    end;
-
-    SetLength(s, CharLenW(PWideChar(s), mean));
-  end;
-
-  parts := StrSplitW(PWideChar(s), ' ');
-  if (Length(parts) < 1) or (Length(parts[1]) < 1) then
-    raise Exception.Create('Invalid line in the input file');
-
-  Cell.Kanji := parts[0][1];
-  Cell.OnRead := '';
-  Cell.KunRead := '';
-  Cell.JlptLevel := -1; //not defined
-  Cell.JouyouGrade := -1; //not defined
-
-  for i := 1 to Length(parts) - 1 do
-    if Length(parts[i]) <= 0 then begin
-    end else
-    if parts[i][1]='G' then begin //JouyouGrade
-      if not TryStrToInt(UniString(@parts[i][2]), Cell.JouyouGrade) then
-        raise Exception.Create('Wrong Jouyou grade tag format');
-    end else
-    if parts[i][1]='J' then begin //Jlpt Level
-      if not TryStrToInt(UniString(@parts[i][2]), Cell.JlptLevel) then
-        raise Exception.Create('Wrong Jlpt level tag format');
-    end else
-    if IsKatakana(parts[i][1]) then
-      Cell.OnRead := Cell.OnRead + ' ' + parts[i]
-    else
-    if IsHiragana(parts[i][1]) then
-      Cell.KunRead := Cell.KunRead + ' ' + parts[i];
+  if not entry.TryGetIntValue('G', cell.JouyouGrade) then
+    cell.JouyouGrade := -1; //not defined
+  if not entry.TryGetIntValue('J', cell.JlptLevel) then
+    cell.JouyouGrade := -1; //not defined
 end;
 
 procedure LoadKanjidic(filename: string);
-var f: TCharReader;
+var f: TStreamDecoder;
+  entry: TKanjidicEntry;
   s: UniString;
 begin
   writeln('Loading '+filename+'...');
   SetLength(KDic, 0);
   KDicLen := 0;
-  f := TCharReader.Create(
-    TFileStream.Create(filename, fmOpenRead), true);
+  f := OpenTextFile(filename, TUTF8Encoding);
   try
-    while f.ReadLine(s) do
-      ParseStr(s);
+    while f.ReadLn(s) do begin
+      if (Length(s)<=0) or (s[1]='#') then
+        continue;
+      ParseKanjidicLine(s, @entry);
+      AddEntry(@entry);
+    end;
   finally
     FreeAndNil(f);
   end;
@@ -111,6 +80,7 @@ end;
 procedure PrintKanji(var k: UniChar);
 var i: integer;
   flags: UniString;
+  s_on, s_kun: UnicodeString;
 
   procedure AddFlag(flag: UniString);
   begin
@@ -129,9 +99,20 @@ begin
       if KDic[i].JouyouGrade > 0 then
         AddFlag('jouyou'+IntToStr(KDic[i].JouyouGrade));
 
-      Output.WriteString(k + #09 + KDic[i].OnRead + #09
-        + KDic[i].KunRead + #09 + KDic[i].Meaning + #09
-        + flags + #13#10);
+      s_on := KDic[i].OnT0;
+      if KDic[i].OnT1<>'' then begin
+        if s_on<>'' then s_on := s_on + ' ';
+        s_on := s_on + '<s>'+KDic[i].OnT1+'</s>';
+      end;
+
+      s_kun := KDic[i].KunT0;
+      if KDic[i].KunT1<>'' then begin
+        if s_kun<>'' then s_kun := s_kun + ' ';
+        s_kun := s_kun + '<s>'+KDic[i].KunT1+'</s>';
+      end;
+
+      Output.Write(k + #09 + s_on + #09 + s_kun + #09
+        + KDic[i].Meaning + #09 + flags + #13#10);
       break;
     end;
 end;
@@ -179,8 +160,7 @@ begin
     if OutputFile='' then
       raise Exception.Create('Output file not specified');
 
-    Output := TCharWriter.Create(
-      TFileStream.Create(OutputFile, fmCreate, fmShareExclusive), csUtf16Le, true);
+    Output := UnicodeFileWriter(OutputFile);
     Output.WriteBom;
 
     i := 1;
