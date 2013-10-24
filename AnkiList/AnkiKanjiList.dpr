@@ -1,4 +1,4 @@
-program AnkiList;
+program AnkiKanjiList;
 {$APPTYPE CONSOLE}
 {
  Parses kanji list and builds a card list in a format suitable for importing to Anki:
