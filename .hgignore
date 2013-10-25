@@ -5,9 +5,8 @@ __history
 *.res
 *.groupproj
 *.dproj
-*.dproj.local
 *.bdsproj
-*.bdsproj.local
+*.local
 *.exe
 *.dcu
 *.zip

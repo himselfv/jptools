@@ -12,25 +12,86 @@ program AnkiKanjiList;
 }
 
 uses
-  SysUtils, Classes, UniStrUtils, JWBIO, JWBKanjiDicReader;
+  SysUtils, Classes, UniStrUtils, ConsoleToolbox, JWBIO, JWBKanjiDicReader;
 
 type
   TKanjidicRecord = record
     Kanji: UniChar;
-    OnT0, OnT1: UniString;
-    KunT0, KunT1: UniString;
+    Ons: array[0..2] of UnicodeString;
+    Kuns: array[0..2] of UnicodeString;
     Meaning: UniString;
     JlptLevel: integer;
     JouyouGrade: integer;
   end;
   PKanjidicRecord = ^TKanjiDicRecord;
 
-var
-  KDic: array of TKanjidicRecord;
-  KDicLen: integer;
-  Output: TStreamEncoder;
+  TAnkiKanjiList = class(TCommandLineApp)
+  protected
+    Files: array of string;
+    OutputFile: UnicodeString;
+    KanjidicFile: UnicodeString;
+    ReadingLevel: integer;
+    WrapRareReadings: boolean;
+    KDic: array of TKanjidicRecord;
+    KDicLen: integer;
+    Output: TStreamEncoder;
+    function NewKDicCell: PKanjidicRecord;
+    procedure AddEntry(entry: PKanjidicEntry);
+    procedure LoadKanjidic(filename: string);
+    procedure PrintKanji(var k: UniChar);
+    procedure PrintKanjisFromFile(filename: string);
+    function HandleSwitch(const s: string; var i: integer): boolean; override;
+    function HandleParam(const s: string; var i: integer): boolean; override;
+  public
+    procedure ShowUsage; override;
+    procedure Run; override;
+  end;
 
-function NewKDicCell: PKanjidicRecord;
+procedure TAnkiKanjiList.ShowUsage;
+begin
+  writeln('Usage: '+ExtractFilename(paramstr(0))+' <file1> [file2] ... [-flags]');
+  writeln('Flags:');
+  writeln('  -o output.file    specify output file (otherwise console)');
+  writeln('  -k kanjidic.file  specify kanjidic file (otherwise KANJIDIC)');
+  writeln('  -t 0/1/2          paste readings up to this rarity (default is 0)');
+  writeln('  -ts               use html <s> tag for rare readings');
+end;
+
+function TAnkiKanjiList.HandleSwitch(const s: string; var i: integer): boolean;
+begin
+  if s='-o' then begin
+    if i>=ParamCount then BadUsage('-o requires file name');
+    Inc(i);
+    OutputFile := ParamStr(i);
+    Result := true;
+  end else
+  if s='-k' then begin
+    if i>=ParamCount then BadUsage('-k requires file name');
+    Inc(i);
+    KanjidicFile := ParamStr(i);
+    Result := true;
+  end else
+  if s='-t' then begin
+    if i>=ParamCount then BadUsage('-t requires rarity level');
+    Inc(i);
+    ReadingLevel := StrToInt(ParamStr(i));
+    Result := true;
+  end else
+  if s='-ts' then begin
+    WrapRareReadings := true;
+    Result := true;
+  end else
+    Result := inherited;
+end;
+
+function TAnkiKanjiList.HandleParam(const s: string; var i: integer): boolean;
+begin
+  SetLength(Files, Length(Files)+1);
+  Files[Length(Files)-1] := ParamStr(i);
+  Result := true;
+end;
+
+function TAnkiKanjiList.NewKDicCell: PKanjidicRecord;
 begin
   if KDicLen >= Length(KDic) then
     SetLength(KDic, KDicLen*2 + 20);
@@ -38,16 +99,17 @@ begin
   Inc(KDicLen);
 end;
 
-procedure AddEntry(entry: PKanjidicEntry);
+procedure TAnkiKanjiList.AddEntry(entry: PKanjidicEntry);
 var cell: PKanjidicRecord;
+  i: integer;
 begin
   cell := NewKDicCell;
   cell.Kanji := entry.kanji[1];
 
-  cell.OnT0 := entry.readings[0].JoinOns(' ');
-  cell.OnT1 := entry.readings[1].JoinOns(' ');
-  cell.KunT0 := entry.readings[0].JoinKuns(' ');
-  cell.KunT1 := entry.readings[1].JoinKuns(' ');
+  for i := 0 to ReadingLevel do begin
+    cell.Ons[i] := entry.readings[i].JoinOns(' ');
+    cell.Kuns[i] := entry.readings[i].JoinKuns(' ');
+  end;
   cell.Meaning := entry.JoinMeanings(', ');
 
   if not entry.TryGetIntValue('G', cell.JouyouGrade) then
@@ -56,15 +118,15 @@ begin
     cell.JouyouGrade := -1; //not defined
 end;
 
-procedure LoadKanjidic(filename: string);
+procedure TAnkiKanjiList.LoadKanjidic(filename: string);
 var f: TStreamDecoder;
   entry: TKanjidicEntry;
   s: UniString;
 begin
-  writeln('Loading '+filename+'...');
+  writeln(ErrOutput, 'Loading '+filename+'...');
   SetLength(KDic, 0);
   KDicLen := 0;
-  f := OpenTextFile(filename, TUTF8Encoding);
+  f := OpenTextFile(filename); //kanjidic is normally EUC but lets guess it
   try
     while f.ReadLn(s) do begin
       if (Length(s)<=0) or (s[1]='#') then
@@ -77,8 +139,8 @@ begin
   end;
 end;
 
-procedure PrintKanji(var k: UniChar);
-var i: integer;
+procedure TAnkiKanjiList.PrintKanji(var k: UniChar);
+var i, j: integer;
   flags: UniString;
   s_on, s_kun: UnicodeString;
 
@@ -90,6 +152,18 @@ var i: integer;
       flags := flags + ' ' + flag;
   end;
 
+ //Wraps in <s></s>, or doesnt
+  function Wrap(const s: string; lvl: integer): string;
+  begin
+    if (lvl=0) or not WrapRareReadings then
+      Result := s
+    else
+    if lvl=1 then
+      Result := '<s>'+s+'</s>' //without a class, to keep data smaller. No class==t1
+    else
+      Result := '<s class="t2">'+s+'</s>';
+  end;
+
 begin
   for i := 0 to KDicLen - 1 do
     if KDic[i].Kanji=k then begin
@@ -99,17 +173,16 @@ begin
       if KDic[i].JouyouGrade > 0 then
         AddFlag('jouyou'+IntToStr(KDic[i].JouyouGrade));
 
-      s_on := KDic[i].OnT0;
-      if KDic[i].OnT1<>'' then begin
-        if s_on<>'' then s_on := s_on + ' ';
-        s_on := s_on + '<s>'+KDic[i].OnT1+'</s>';
+      s_on := '';
+      s_kun := '';
+      for j := 0 to ReadingLevel do begin
+        if KDic[i].Ons[j]<>'' then
+          s_on := s_on + Wrap(KDic[i].Ons[j], j)+' ';
+        if KDic[i].Kuns[j]<>'' then
+          s_kun := s_kun + Wrap(KDic[i].Kuns[j], j)+' ';
       end;
-
-      s_kun := KDic[i].KunT0;
-      if KDic[i].KunT1<>'' then begin
-        if s_kun<>'' then s_kun := s_kun + ' ';
-        s_kun := s_kun + '<s>'+KDic[i].KunT1+'</s>';
-      end;
+      SetLength(s_on, Length(s_on)-1);
+      SetLength(s_on, Length(s_on)-1);
 
       Output.Write(k + #09 + s_on + #09 + s_kun + #09
         + KDic[i].Meaning + #09 + flags + #13#10);
@@ -120,11 +193,11 @@ end;
 const
   sUtf16Bom: UniChar = #65520;
 
-procedure PrintKanjisFromFile(filename: string);
+procedure TAnkiKanjiList.PrintKanjisFromFile(filename: string);
 var f: TFileStream;
   c: char;
 begin
-  writeln('Parsing '+filename+'...');
+  writeln(ErrOutput, 'Parsing '+filename+'...');
   f := TFileStream.Create(filename, fmOpenRead);
   try
     if f.Read(c, SizeOf(c)) <> SizeOf(c) then exit;
@@ -140,41 +213,25 @@ begin
   end;
 end;
 
+procedure TAnkiKanjiList.Run;
 var i: integer;
-  OutputFile: WideString;
 begin
-  try
-    if paramcount < 1 then begin
-      writeln('Usage: '+ExtractFilename(paramstr(0))+' <file1> [file2] ... -o output.file');
-      exit;
-    end;
+  if ParamCount<1 then BadUsage();
+  if Length(Files)<1 then BadUsage('Input files not specified');
+  if OutputFile='' then BadUsage('Output file not specified');
 
-    LoadKanjidic('kanjidic-u');
+  if KanjidicFile<>'' then
+    LoadKanjidic(KanjidicFile)
+  else
+    LoadKanjidic('kanjidic');
 
-    for i := 1 to ParamCount-1 {sic!} do
-      if paramstr(i)='-o' then begin
-        if OutputFile<>'' then
-          raise Exception.Create('Output file specified more than once');
-        OutputFile := ParamStr(i+1);
-      end;
-    if OutputFile='' then
-      raise Exception.Create('Output file not specified');
+  Output := UnicodeFileWriter(OutputFile);
+  Output.WriteBom;
+  for i := 0 to Length(Files)-1 do
+    PrintKanjisFromFile(Files[i]);
+  FreeAndNil(Output);
+end;
 
-    Output := UnicodeFileWriter(OutputFile);
-    Output.WriteBom;
-
-    i := 1;
-    while i <= ParamCount do
-      if paramstr(i)='-o' then
-        Inc(i, 2)
-      else begin
-        PrintKanjisFromFile(paramstr(i));
-        Inc(i);
-      end;
-
-    FreeAndNil(Output);
-  except
-    on E: Exception do
-      Writeln(E.ClassName, ': ', E.Message);
-  end;
+begin
+  RunApp(TAnkiKanjiList);
 end.

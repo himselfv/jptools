@@ -21,78 +21,67 @@ program AnkiWordList;
  Requires any EDICT-compatible dictionary.
 }
 uses
-  SysUtils, JWBIO, JWBEdictReader;
+  SysUtils, ConsoleToolbox, JWBIO, JWBEdictReader;
 
-var
-  Files: array of string;
-  EdictFilename: string = '';
-
-procedure ParseCommandLine;
-var i: integer;
-  s: string;
-begin
-  SetLength(Files, 0);
-
-  i := 1;
-  while i<=ParamCount do begin
-    s := Trim(AnsiLowerCase(ParamStr(i)));
-    if s='' then continue;
-
-    if s[1]='-' then begin
-      if s='-e' then begin
-        Inc(i);
-        if i>ParamCount then
-          raise Exception.Create('-e needs dictionary name');
-      end else
-        raise Exception.Create('Invalid parameter: '+s);
-    end else begin
-      SetLength(Files, Length(Files)+1);
-      Files[Length(Files)-1] := s;
-    end;
-
-    Inc(i);
+type
+  TAnkiWordList = class(TCommandLineApp)
+  protected
+    Files: array of string;
+    EdictFilename: string;
+    function HandleSwitch(const s: string; var i: integer): boolean; override;
+    function HandleParam(const s: string; var i: integer): boolean; override;
+  public
+    procedure ShowUsage; override;
+    procedure Run; override;
+    procedure ParseFile(inp: TStreamDecoder; outp: TStreamEncoder);
   end;
 
-  if Length(Files)<=0 then
-    raise Exception.Create('Specify input files.');
+procedure TAnkiWordList.ShowUsage;
+begin
+  writeln('Usage: '+ProgramName+' <filename> [-e EDICT]');
+end;
+
+function TAnkiWordList.HandleSwitch(const s: string; var i: integer): boolean;
+begin
+  if s='-e' then begin
+    Inc(i);
+    if i>ParamCount then BadUsage('-e needs dictionary name');
+    Result := true
+  end else
+    Result := inherited;
+end;
+
+function TAnkiWordList.HandleParam(const s: string; var i: integer): boolean;
+begin
+  SetLength(Files, Length(Files)+1);
+  Files[Length(Files)-1] := s;
+  Result := true;
+end;
+
+procedure TAnkiWordList.Run;
+var outp: TStreamEncoder;
+  i: integer;
+begin
+  if Length(Files)<=0 then BadUsage('Specify input files.');
+  outp := ConsoleWriter;
+  for i := 0 to Length(Files)-1 do
+    ParseFile(OpenTextFile(files[i]), outp);
+  FreeAndNil(outp);
 end;
 
 //inp is destroyed on exit
-procedure ParseFile(inp: TStreamDecoder; outp: TStreamEncoder);
+procedure TAnkiWordList.ParseFile(inp: TStreamDecoder; outp: TStreamEncoder);
 var ed: TEdictArticle;
   ln: string;
 begin
   while inp.ReadLn(ln) do begin
-    ParseEdict2Line(ln, ed);
+    ParseEdict2Line(ln, @ed);
 
 
   end;
   FreeAndNil(inp);
 end;
 
-procedure Run;
-var outp: TStreamEncoder;
-  i: integer;
 begin
-  outp := ConsoleWriter;
-
-  for i := 0 to Length(Files)-1 do
-    ParseFile(OpenTextFile(files[i]), outp);
-
-  FreeAndNil(outp);
-end;
-
-
-begin
-  try
-    if ParamCount<=0 then begin
-      writeln('Usage: '+ExtractFilename(Paramstr(0))+' <filename> [-e EDICT]');
-      exit;
-    end;
-    ParseCommandLine;
-    Run;
-  except
-    on E: Exception do
-      Writeln(E.ClassName, ': ', E.Message);
-  end;
+  RunApp(TAnkiWordList);
 end.
