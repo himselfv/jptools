@@ -49,7 +49,7 @@ type
 
 procedure TAnkiKanjiList.ShowUsage;
 begin
-  writeln('Usage: '+ExtractFilename(paramstr(0))+' <file1> [file2] ... [-flags]');
+  writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
   writeln('Flags:');
   writeln('  -o output.file    specify output file (otherwise console)');
   writeln('  -k kanjidic.file  specify kanjidic file (otherwise KANJIDIC)');
@@ -225,7 +225,10 @@ begin
   else
     LoadKanjidic('kanjidic');
 
-  Output := UnicodeFileWriter(OutputFile);
+  if OutputFile<>'' then
+    Output := UnicodeFileWriter(OutputFile)
+  else
+    Output := ConsoleWriter;
   Output.WriteBom;
   for i := 0 to Length(Files)-1 do
     PrintKanjisFromFile(Files[i]);
