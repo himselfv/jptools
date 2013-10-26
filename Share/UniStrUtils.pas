@@ -112,6 +112,7 @@ type
 
   TAnsiStringArray = array of AnsiString;
   TUniStringArray = array of UniString;
+  TFilenameArray = array of TFilename;
   TStringArrayA = TAnsiStringArray;
   TStringArrayU = TUniStringArray;
  {$IFDEF UNICODE}
@@ -1193,20 +1194,20 @@ end;
 
 function AnsiSepJoin(const s: TAnsiStringArray; sep: AnsiChar): AnsiString;
 begin
-  Result := AnsiSepJoin(@s[1], Length(s), sep);
+  Result := AnsiSepJoin(@s[0], Length(s), sep);
 end;
 
 function WideSepJoin(const s: TUniStringArray; sep: UniChar): UnicodeString;
 begin
-  Result := WideSepJoin(@s[1], Length(s), sep);
+  Result := WideSepJoin(@s[0], Length(s), sep);
 end;
 
 function SepJoin(const s: TStringArray; sep: Char): string;
 begin
 {$IFDEF UNICODE}
-  Result := WideSepJoin(@s[1], Length(s), sep);
+  Result := WideSepJoin(@s[0], Length(s), sep);
 {$ELSE}
-  Result := AnsiSepJoin(@s[1], Length(s), sep);
+  Result := AnsiSepJoin(@s[0], Length(s), sep);
 {$ENDIF}
 end;
 
