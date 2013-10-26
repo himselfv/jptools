@@ -654,7 +654,7 @@ end;
 function TStreamReader.Peek(var Buffer; ASize: integer): integer;
 begin
  //If the data is in cache, it's simple
-  if size <= rem then begin
+  if ASize <= rem then begin
     Move(ptr^, Buffer, ASize);
     Result := ASize;
     exit;
@@ -665,7 +665,7 @@ begin
     UpdateChunk;
 
  //If the complete data fit, return it
-  if size <= rem then begin
+  if ASize <= rem then begin
     Move(ptr^, Buffer, ASize);
     Result := ASize;
     exit;

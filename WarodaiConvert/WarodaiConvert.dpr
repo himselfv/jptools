@@ -24,7 +24,7 @@ uses
   WarodaiHeader in 'WarodaiHeader.pas',
   WarodaiBody in 'WarodaiBody.pas',
   WarodaiTemplates in 'WarodaiTemplates.pas',
-  WcExceptions in 'WcExceptions.pas',
+  WcExceptions,
   EdictConverter in 'EdictConverter.pas',
   PerlRegExUtils in 'PerlRegExUtils.pas',
   WarodaiXrefs in 'WarodaiXrefs.pas';

@@ -20,8 +20,8 @@ type
     function HandleParam(const s: string; var i: integer): boolean; override;
   public
     procedure ShowUsage; override;
-    procedure Run; override;
-    procedure ParseFile(const AFilename: string; outp: TStreamEncoder);
+//    procedure Run; override;
+//    procedure ParseFile(const AFilename: string; outp: TStreamEncoder);
   end;
 
 procedure TAnkiExampleList.ShowUsage;
