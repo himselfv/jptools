@@ -1,7 +1,8 @@
 program YarxiConvert;
 {$APPTYPE CONSOLE}
 { Reads Yarxi database format and generates various things out of it.
- Requires sqlite3.dll in the same folder. }
+ Requires sqlite3.dll in the same folder.
+ Requires sqlite/sqlite3ds to compile }
 
 uses
   SysUtils, UniStrUtils, ConsoleToolbox, sqlite3, sqlite3ds, uDataSetHelper,
