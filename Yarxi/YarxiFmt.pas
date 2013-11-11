@@ -22,10 +22,12 @@ function DecodeRussian(const inp: string): string;
 Поле Kanji.RusNick:
 1. *#*: альтернативные записи
   <e<f<z<g<c<3<k*#*<e<f<z<f<c<3<k* (дешёвый*#*дешевый*)
+2. ''text'': курсив (для названий радикалов)
 }
 
 function StripAlternativeRusNicks(const inp: string): string;
 function DecodeKanjiRusNick(const inp: string): TStringArray;
+function StripRusNickFormatting(const inp: string): string;
 
 {
 Поле Kanji.OnYomi:
@@ -96,7 +98,7 @@ var i: integer;
 begin
   Result := inp;
   i := pos('*#*', inp);
-  if i>0 then SetLength(Result, i);
+  if i>0 then SetLength(Result, i-1);
 end;
 
 { Разбирает строку и составляет список всех написаний названия кандзи.
@@ -135,6 +137,18 @@ begin
     old_i := i;
     i := pos('*', inp, i);
   end;
+end;
+
+//Удаляет всё графическое форматирование из одного пункта RusNick.
+//Используйте для упрощённого вывода, для полного нужна функция, заменяющая его
+//на что-то (скажем, на html)
+function StripRusNickFormatting(const inp: string): string;
+begin
+  if (Length(inp)>=4) and (inp[1]='''') and (inp[2]='''')
+  and (inp[Length(inp)]='''') and (inp[Length(inp)-1]='''') then
+    Result := copy(inp,3,Length(inp)-4)
+  else
+    Result := inp;
 end;
 
 

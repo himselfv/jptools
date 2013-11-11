@@ -1,29 +1,36 @@
 program RadGen;
 { Parses a list of kanji and lists all parts of characters used in each.
- Uses:
-   wakan.rad    as Raine radical table
+ Requires:
+   wakan.rad      as Raine radical table
+   sqlite3.dll    for Yarxi, but statically linked, sorry
  And either:
-   wakan.chr          for radical names
-   wakan-types.cfg    for property type details in wakan.chr
+   wakan.chr        for radical names
+   wakan-types.cfg  for property type details in wakan.chr
  Or:
-   yarxi.db     for radical names }
+   yarxi.db       for radical names
+   yarxi.kcs      for kana conversion
+}
 
 {$APPTYPE CONSOLE}
 
 {$R *.res}
 
 uses
-  SysUtils, Classes, ConsoleToolbox, JwbStrings, JwbIo, JwbCharData, JwbRadical, TextTable;
+  SysUtils, Classes, ConsoleToolbox, JwbStrings, JwbIo, JwbCharData, JwbRadical,
+  TextTable, Yarxi, YarxiFmt;
 
 type
   TRadGen = class(TCommandLineApp)
   protected
     Files: array of string;
     OutputFile: UnicodeString;
-    DescriptionCount: integer;
+    WakanDescCount: integer;
+    YarxiDescCount: integer;
+    MaxDescCount: integer;
     Output: TStreamEncoder;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
+
   protected //Wakan.chr
     Chars: TTextTableCursor;
     CharProps: TCharPropertyCursor;
@@ -31,6 +38,13 @@ type
     procedure WakanFree;
     procedure WakanLoadTypes(const AFilename: string);
     function WakanGetDesc(const AChar: char): TStringArray;
+
+  protected //Yarxi
+    Yarxi: TYarxiDb;
+    procedure YarxiInit;
+    procedure YarxiFree;
+    function YarxiGetDesc(const AChar: char): TStringArray;
+
   public
     procedure Init; override;
     procedure ShowUsage; override;
@@ -43,12 +57,21 @@ begin
   writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
   writeln('Flags:');
   writeln('  -o output.file    specify output file (otherwise console)');
-  writeln('  -t 0/1/2          paste up to this number of descriptions (default is 1)');
+  writeln('  -y 0/1/2          paste up to this number of descriptions from Yarxi');
+  writeln('  -w 0/1/2          paste up to this number of descriptions from Wakan');
 end;
 
 procedure TRadGen.Init;
 begin
-  DescriptionCount := 1;
+ //Enable the sources which are available, by default
+  if FileExists('yarxi.db') and FileExists('yarxi.kcs') then
+    YarxiDescCount := 1
+  else
+    YarxiDescCount := 0;
+  if FileExists('wakan.chr') and FileExists('wakan-types.cfg') then
+    WakanDescCount := 1
+  else
+    WakanDescCount := 0;
 end;
 
 function TRadGen.HandleSwitch(const s: string; var i: integer): boolean;
@@ -59,10 +82,16 @@ begin
     OutputFile := ParamStr(i);
     Result := true;
   end else
-  if s='-t' then begin
-    if i>=ParamCount then BadUsage('-t requires description count');
+  if s='-w' then begin
+    if i>=ParamCount then BadUsage('-w requires description count');
     Inc(i);
-    DescriptionCount := StrToInt(ParamStr(i));
+    WakanDescCount := StrToInt(ParamStr(i));
+    Result := true;
+  end else
+  if s='-y' then begin
+    if i>=ParamCount then BadUsage('-y requires description count');
+    Inc(i);
+    YarxiDescCount := StrToInt(ParamStr(i));
     Result := true;
   end else
     Result := inherited;
@@ -79,10 +108,13 @@ procedure TRadGen.Run;
 var AFile: string;
 begin
   LoadRaineRadicals('WAKAN.RAD');
-  WakanInit;
+  if WakanDescCount>0 then
+    WakanInit;
+  if YarxiDescCount>0 then
+    YarxiInit;
 
   if OutputFile<>'' then
-    Output := UnicodeFileWriter(OutputFile)
+    Output := CreateTextFile(OutputFile, TUTF8Encoding)
   else
     Output := ConsoleWriter;
   Output.WriteBom;
@@ -91,43 +123,39 @@ begin
     ParseFile(AFile);
 
   FreeAndNil(Output);
+  YarxiFree;
   WakanFree;
-end;
-
-function JoinStr(const AParts: TStringArray; const ASep: string = ', '): string;
-var i: integer;
-begin
-  if Length(AParts)<=0 then
-    Result := ''
-  else
-  if Length(AParts)=1 then
-    Result := AParts[0]
-  else begin
-    Result := AParts[0];
-    for i := 1 to Length(AParts) do
-      Result := Result + ASep + AParts[i];
-  end;
 end;
 
 procedure TRadGen.ParseFile(const AFilename: string);
 var inp: TStreamDecoder;
   i: integer;
-  ln: string;
+  ch: char;
   rads: string; //radical list
   expl: string; //radicals with explanations
-  desc: TStringArray;
+  desc, tmp: TStringArray;
 begin
   inp := FileReader(AFilename);
-  while inp.ReadLn(ln) do begin
-    ln := Trim(ln);
-    if ln='' then continue;
-    rads := RaineRadicals.GetCharRadicals(ln[1]);
+  while inp.ReadChar(ch) do begin
+    rads := RaineRadicals.GetCharRadicals(ch);
 
     expl := '';
     for i := 1 to Length(rads) do begin
-      desc := WakanGetDesc(rads[i]);
-      if Length(desc)>DescriptionCount then
-        SetLength(desc, DescriptionCount);
+
+      SetLength(desc, 0);
+      if YarxiDescCount>0 then begin
+        tmp := YarxiGetDesc(rads[i]);
+        if Length(tmp)>YarxiDescCount then
+          SetLength(tmp, YarxiDescCount);
+        Append(desc, tmp);
+      end;
+
+      if WakanDescCount>0 then begin
+        tmp := WakanGetDesc(rads[i]);
+        if Length(tmp)>WakanDescCount then
+          SetLength(tmp, WakanDescCount);
+        Append(desc, tmp);
+      end;
 
       if Length(desc)<=0 then
         expl := expl + rads[i] + ', '
@@ -136,7 +164,7 @@ begin
     end;
     SetLength(expl, Length(expl)-2);
 
-    Output.WriteLn(ln+#09+expl);
+    Output.WriteLn(ch+#09+expl);
   end;
   FreeAndNil(inp);
 end;
@@ -182,6 +210,31 @@ begin
     SetLength(Result,0)
   else
     Result := SplitStr(tmp,#09);
+end;
+
+procedure TRadGen.YarxiInit;
+begin
+  Yarxi := TYarxiDB.Create('yarxi.db');
+  Yarxi.KanaTran.LoadFromFile('yarxi.kcs');
+  Yarxi.ParseKanji;
+end;
+
+procedure TRadGen.YarxiFree;
+begin
+  FreeAndNil(Yarxi);
+end;
+
+function TRadGen.YarxiGetDesc(const AChar: char): TStringArray;
+var kr: PKanjiRecord;
+begin
+  kr := Yarxi.FindKanji(AChar);
+  if kr=nil then
+    SetLength(Result, 0)
+  else begin
+    SetLength(Result, 1);
+    Result[0] := StripRusNickFormatting(kr.RusNicks[0]);
+  end;
+
 end;
 
 begin

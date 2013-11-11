@@ -192,6 +192,9 @@
 уу,у:
 ээ,э:
 оо,о:
+ёу,ё:
+оу,о:
+юу,ю:
 ; Long vowels - english
 a-,a:
 i-,i:
@@ -258,27 +261,19 @@ mb=nb
 mp=np
 mm=nm
 ; Long vowels - russian
-а:,а-
-и:,и-
-у:,у-
-э:,э-
-о:,о-
-аа,а-
-ии,и-
-уу,у-
-ээ,э-
-оо,о-
+а:,аа
+и:,ии
+у:,уу
+э:,ээ
+о:,оу
+ё:,ёу
+ю:,юу
 ; Long vowels - english
-a:,a-
-i:,i-
-u:,u-
-e:,e-
-o:,o-
-aa,a-
-ii,i-
-uu,u-
-ee,e-
-oo,o-
+a:,aa
+i:,ii
+u:,uu
+e:,ee
+o:,ou
 ; Doubled letters - russian
 кк,Dк
 гг,Dг

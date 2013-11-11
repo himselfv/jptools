@@ -5,38 +5,18 @@ program YarxiConvert;
  Requires sqlite/sqlite3ds to compile }
 
 uses
-  SysUtils, UniStrUtils, ConsoleToolbox, sqlite3, sqlite3ds, uDataSetHelper,
-  JWBIO, JWBKanaConv, YarxiFmt;
+  SysUtils,
+  UniStrUtils,
+  ConsoleToolbox,
+  JWBIO,
+  Yarxi in 'Yarxi.pas';
 
 type
-  TKanjiRecord = record
-    Kanji: string;
-    RusNick: string;
-    RusNicks: TStringArray;
-    OnYomi: TOnYomiEntries;
-    KunYomi: string;
-    Russian: string;
-    Compounds: string;
-    function JoinOns(const sep: string=' '): string;
-  end;
-  PKanjiRecord = ^TKanjiRecord;
-
-  TTangoRecord = record
-    K1, K2, K3, K4: word;
-    Kana: string;
-    Reading: string;
-    Russian: string;
-  end;
-  PTangoRecord = ^TTangoRecord;
-
   TYarxiConvert = class(TCommandLineApp)
   protected
     Command: string;
-    Yarxi: TSqliteDb;
-    KanaTran: TRomajiTranslator;
+    Yarxi: TYarxiDB;
     Output: TStreamEncoder;
-    Kanji: array of TKanjiRecord;
-    Tango: array of TTangoRecord;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
   public
@@ -45,18 +25,6 @@ type
     procedure RunKanji;
     procedure RunTango;
   end;
-
-function TKanjiRecord.JoinOns(const sep: string=' '): string;
-var i: integer;
-begin
-  if Length(OnYomi)<=0 then begin
-    Result := '';
-    exit;
-  end;
-  Result := OnYomi[0].kana;
-  for i := 1 to Length(OnYomi)-1 do
-    Result := Result + sep + OnYomi[i].kana;
-end;
 
 procedure TYarxiConvert.ShowUsage;
 begin
@@ -76,9 +44,9 @@ end;
 
 procedure TYarxiConvert.Run;
 begin
-  Yarxi := TSqLiteDb.Create('yarxi.db');
-  KanaTran := TRomajiTranslator.Create;
-  KanaTran.LoadFromFile('yarxi.kcs');
+  Yarxi := TYarxiDB.Create('yarxi.db');
+  Yarxi.KanaTran.LoadFromFile('yarxi.kcs');
+
   Output := ConsoleWriter();
 
   if Command='kanji' then
@@ -90,65 +58,31 @@ begin
     BadUsage('Invalid command: '+Command);
 
   FreeAndNil(Output);
-  FreeAndNil(KanaTran);
   FreeAndNil(Yarxi);
 end;
 
 procedure TYarxiConvert.RunKanji;
-var ds: TSqliteDataset;
-  RecCount: integer;
-  rec: variant;
-  k: TKanjiRecord;
+var k: TKanjiRecord;
 begin
-  ds := Yarxi.Query('SELECT * FROM Kanji');
-  SetLength(Kanji, 7000); //should be enough
-  RecCount := 0;
-  for rec in ds do begin
-    k.Kanji := WideChar(word(rec.Uncd));
-    k.RusNick := DecodeRussian(rec.RusNick);
-    k.RusNicks := DecodeKanjiRusNick(k.RusNick);
-    k.RusNick := StripAlternativeRusNicks(k.RusNick);
-    k.OnYomi := SplitOnYomi(rec.OnYomi);
-    k.KunYomi := rec.KunYomi;
-    k.Russian := DecodeRussian(rec.Russian);
-    k.Compounds := rec.Compounds;
-    Kanji[RecCount] := k;
-    Inc(RecCount);
-  end;
-  SetLength(Kanji, RecCount); //trim
+  Yarxi.ParseKanji;
+  writeln(ErrOutput, IntToStr(Length(Yarxi.Kanji))+' kanji read.');
 
-  writeln(ErrOutput, IntToStr(RecCount)+' kanji read.');
-
-  for k in Kanji do
+  for k in Yarxi.Kanji do
     Output.WriteLn(
       SepJoin(k.RusNicks, '/') + #09
-        + k.JoinOns + #09 + KanaTran.RomajiToKana('K'+k.JoinOns(' '), 1, []) + #09
-        + k.KunYomi + #09 + KanaTran.RomajiToKana('H'+k.KunYomi, 1, []) + #09
+        + k.JoinOns + #09 + Yarxi.KanaTran.RomajiToKana('K'+k.JoinOns(' '), []) + #09
+        + k.KunYomi + #09 + Yarxi.KanaTran.RomajiToKana('H'+k.KunYomi, []) + #09
         + k.Russian
     );
 end;
 
 procedure TYarxiConvert.RunTango;
-var ds: TSqliteDataset;
-  RecCount: integer;
-  rec: variant;
-  k: TTangoRecord;
+var k: TTangoRecord;
 begin
-  ds := Yarxi.Query('SELECT * FROM Tango');
-  SetLength(Tango, 60000); //should be enough
-  RecCount := 0;
-  for rec in ds do begin
-    k.Kana := rec.Kana;
-    k.Reading := rec.Reading;
-    k.Russian := DecodeRussian(rec.Russian);
-    Tango[RecCount] := k;
-    Inc(RecCount);
-  end;
-  SetLength(Kanji, RecCount); //trim
+  Yarxi.ParseTango;
+  writeln(ErrOutput, IntToStr(Length(Yarxi.Tango))+' tango read.');
 
-  writeln(ErrOutput, IntToStr(RecCount)+' tango read.');
-
-  for k in Tango do
+  for k in Yarxi.Tango do
     Output.WriteLn(k.Kana + #09 + k.Reading + #09 + k.Russian);
 end;
 
