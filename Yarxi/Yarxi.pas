@@ -5,8 +5,9 @@ Usage:
   Yarxi.KanaTran.LoadFromFile('yarxi.kcs');
 }
 
-{$DEFINE USE_DB}
-{ Do not cache results, just query the DB. It's supposed to be fast after all. }
+//{$DEFINE USE_DB}
+{ Do not preload data, just query the DB. Better for small number of queries,
+ but if you're doing 1000+ lookups, it'd be faster to preload. }
 
 
 interface
@@ -54,7 +55,6 @@ type
     constructor Create(const AFilename: string);
     destructor Destroy; override;
     function GetKanji(const AChar: string; out ARec: TKanjiRecord): boolean;
-
 
   end;
 
