@@ -201,7 +201,6 @@ procedure TRadGen.YarxiInit;
 begin
   Yarxi := TYarxiDB.Create('yarxi.db');
   Yarxi.KanaTran.LoadFromFile('yarxi.kcs');
-  Yarxi.ParseKanji;
 end;
 
 procedure TRadGen.YarxiFree;
@@ -210,10 +209,9 @@ begin
 end;
 
 function TRadGen.YarxiGetDesc(const AChar: char): TStringArray;
-var kr: PKanjiRecord;
+var kr: TKanjiRecord;
 begin
-  kr := Yarxi.FindKanji(AChar);
-  if kr=nil then
+  if not Yarxi.GetKanji(AChar, kr) then
     SetLength(Result, 0)
   else begin
     SetLength(Result, 1);

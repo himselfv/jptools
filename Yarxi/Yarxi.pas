@@ -5,6 +5,10 @@ Usage:
   Yarxi.KanaTran.LoadFromFile('yarxi.kcs');
 }
 
+{$DEFINE USE_DB}
+{ Do not cache results, just query the DB. It's supposed to be fast after all. }
+
+
 interface
 uses SysUtils, sqlite3, sqlite3ds, uDataSetHelper, UniStrUtils, JWBKanaConv, YarxiFmt;
 
@@ -33,16 +37,23 @@ type
   TYarxiDB = class
   protected
     Db: TSqliteDb;
-  public
-    KanaTran: TRomajiTranslator;
+    function ParseKanji(const Rec: variant): TKanjiRecord;
+    function ParseTango(const Rec: variant): TTangoRecord;
+
+ {$IFNDEF USE_DB}
+  protected
     Kanji: array of TKanjiRecord;
     Tango: array of TTangoRecord;
+    procedure LoadKanji;
+    procedure LoadTango;
+    function FindKanjiIndex(const AChar: string): integer; //do not expose
+ {$ENDIF}
+
+  public
+    KanaTran: TRomajiTranslator;
     constructor Create(const AFilename: string);
     destructor Destroy; override;
-    procedure ParseKanji;
-    procedure ParseTango;
-    function FindKanjiIndex(const AChar: string): integer;
-    function FindKanji(const AChar: string): PKanjiRecord;
+    function GetKanji(const AChar: string; out ARec: TKanjiRecord): boolean;
 
 
   end;
@@ -75,48 +86,57 @@ begin
   inherited;
 end;
 
-procedure TYarxiDB.ParseKanji;
+function TYarxiDB.ParseKanji(const Rec: variant): TKanjiRecord;
+var i: integer;
+begin
+  Result.Kanji := WideChar(word(rec.Uncd));
+  Result.RawRusNick := DecodeRussian(rec.RusNick);
+  Result.RusNicks := DecodeKanjiRusNick(Result.RawRusNick);
+  Result.RusNick := StripAlternativeRusNicks(Result.RawRusNick);
+  Result.OnYomi := SplitOnYomi(rec.OnYomi);
+ //ѕреобразуем после сплита, т.к. может затронуть разметочные символы типа тире
+  for i := 0 to Length(Result.OnYomi)-1 do
+    Result.OnYomi[i].kana := KanaTran.RomajiToKana(Result.OnYomi[i].kana, []);
+  Result.KunYomi := rec.KunYomi;
+  Result.Russian := DecodeRussian(rec.Russian);
+  Result.Compounds := rec.Compounds;
+end;
+
+function TYarxiDB.ParseTango(const Rec: variant): TTangoRecord;
+begin
+  Result.Kana := rec.Kana;
+  Result.Reading := rec.Reading;
+  Result.Russian := DecodeRussian(rec.Russian);
+end;
+
+{$IFNDEF USE_DB}
+procedure TYarxiDB.LoadKanji;
 var ds: TSqliteDataset;
   RecCount: integer;
   rec: variant;
-  k: TKanjiRecord;
-  i: integer;
 begin
+  if Length(Kanji)>0 then exit; //already parsed;
   ds := Db.Query('SELECT * FROM Kanji');
   SetLength(Kanji, 7000); //should be enough
   RecCount := 0;
   for rec in ds do begin
-    k.Kanji := WideChar(word(rec.Uncd));
-    k.RawRusNick := DecodeRussian(rec.RusNick);
-    k.RusNicks := DecodeKanjiRusNick(k.RawRusNick);
-    k.RusNick := StripAlternativeRusNicks(k.RawRusNick);
-    k.OnYomi := SplitOnYomi(rec.OnYomi);
-   //ѕреобразуем после сплита, т.к. может затронуть разметочные символы типа тире
-    for i := 0 to Length(k.OnYomi)-1 do
-      k.OnYomi[i].kana := KanaTran.RomajiToKana(k.OnYomi[i].kana, []);
-    k.KunYomi := rec.KunYomi;
-    k.Russian := DecodeRussian(rec.Russian);
-    k.Compounds := rec.Compounds;
-    Kanji[RecCount] := k;
+    Kanji[RecCount] := ParseKanji(rec);
     Inc(RecCount);
   end;
   SetLength(Kanji, RecCount); //trim
 end;
 
-procedure TYarxiDB.ParseTango;
+procedure TYarxiDB.LoadTango;
 var ds: TSqliteDataset;
   RecCount: integer;
   rec: variant;
-  k: TTangoRecord;
 begin
+  if Length(Tango)>0 then exit; //already parsed;
   ds := Db.Query('SELECT * FROM Tango');
   SetLength(Tango, 60000); //should be enough
   RecCount := 0;
   for rec in ds do begin
-    k.Kana := rec.Kana;
-    k.Reading := rec.Reading;
-    k.Russian := DecodeRussian(rec.Russian);
-    Tango[RecCount] := k;
+    Tango[RecCount] := ParseTango(rec);
     Inc(RecCount);
   end;
   SetLength(Kanji, RecCount); //trim
@@ -125,6 +145,7 @@ end;
 function TYarxiDB.FindKanjiIndex(const AChar: string): integer;
 var i: integer;
 begin
+  LoadKanji;
  //Stupid for now, may have to
  //  1. Use internal BTrees, or
  //  2. Query DB and parse dynamically
@@ -135,16 +156,41 @@ begin
       break;
     end;
 end;
+{$ENDIF}
 
-function TYarxiDB.FindKanji(const AChar: string): PKanjiRecord;
+function TYarxiDB.GetKanji(const AChar: string; out ARec: TKanjiRecord): boolean;
+{$IFDEF USE_DB}
+var ds: TSqliteDataset;
+  charval: integer;
+begin
+  case Length(AChar) of
+    1: charval := Word(AChar[1]);
+    2: charval := Word(AChar[1]) + Word(AChar[2]) shl 16;
+  else //0 and 2+ are not valid
+    Result := false;
+    exit;
+  end;
+
+  ds := Db.Query('SELECT * FROM Kanji WHERE Kanji.Uncd='+IntToStr(charval));
+  if ds.EOF then
+    Result := false
+  else begin
+    ARec := ParseKanji(ds.CurrentRec);
+    Result := true;
+  end;
+end;
+{$ELSE}
 var idx: integer;
 begin
   idx := FindKanjiIndex(AChar);
   if idx<0 then begin
-    Result := nil;
+    Result := false;
     exit;
-  end else
-    Result := @Kanji[idx];
+  end else begin
+    ARec := Kanji[idx];
+    Result := true;
+  end;
 end;
+{$ENDIF}
 
 end.
