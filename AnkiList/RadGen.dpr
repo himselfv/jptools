@@ -1,7 +1,7 @@
 program RadGen;
 { Parses a list of kanji and lists all parts of characters used in each.
  Requires:
-   wakan.rad      as Raine radical table
+   radkfile       for RaineRadicals
    sqlite3.dll    for Yarxi, but statically linked, sorry
  And either:
    wakan.chr        for radical names
@@ -16,7 +16,7 @@ program RadGen;
 {$R *.res}
 
 uses
-  SysUtils, Classes, ConsoleToolbox, JwbStrings, JwbIo, JwbCharData, JwbRadical,
+  SysUtils, Classes, ConsoleToolbox, JwbStrings, JwbIo, JwbCharData, RaineRadicals,
   TextTable, Yarxi, YarxiFmt;
 
 type
@@ -30,6 +30,9 @@ type
     Output: TStreamEncoder;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
+
+  protected //Raine
+    RaineRadicals: TRaineRadicals;
 
   protected //Wakan.chr
     Chars: TTextTableCursor;
@@ -107,7 +110,8 @@ end;
 procedure TRadGen.Run;
 var AFile: string;
 begin
-  LoadRaineRadicals('WAKAN.RAD');
+  RaineRadicals := TRaineRadicals.Create;
+  RaineRadicals.LoadFromRadKFile('RADKFILE');
   if WakanDescCount>0 then
     WakanInit;
   if YarxiDescCount>0 then
@@ -233,8 +237,9 @@ begin
   else begin
     SetLength(Result, 1);
     Result[0] := StripRusNickFormatting(kr.RusNicks[0]);
+    if Result[0]='' then //nickname is empty, don't confuse callers
+      SetLength(Result, 0);
   end;
-
 end;
 
 begin
