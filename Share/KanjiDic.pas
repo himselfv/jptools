@@ -8,10 +8,6 @@
    common_ons := kd.FindEntry(char).readings[0].ons.Join(', ');
  }
 
-//{$DEFINE STATIC_ENTRIES}
-{ If set, preallocates space for all entries in the dictionary and does not
- allow adding entries dynamically -- faster. }
-
 interface
 uses SysUtils, Classes, JWBIO, BalancedTree, FastArray, KanjiDicReader;
 
@@ -30,11 +26,7 @@ type
 
   TKanjiDic = class
   protected
-   {$IFDEF STATIC_ENTRIES}
-    FEntries: TArray<TKanjiDicEntry>;
-   {$ELSE}
     FEntries: TArray<PKanjiDicEntry>;
-   {$ENDIF}
     FCharTree: TBinTree;
     function AllocEntry: PKanjiDicEntry;
     procedure RegisterEntry(const AEntry: PKanjiDicEntry);
@@ -96,12 +88,10 @@ var i: integer;
   ptr: PKanjiDicEntry;
 begin
   FCharTree.Clear;
- {$IFNDEF STATIC_ENTRIES}
   for i := FEntries.Length-1 downto 0 do begin
     ptr := PKanjiDicEntry(FEntries.GetPointer(i));
     Dispose(ptr);
   end;
- {$ENDIF}
   FEntries.Length := 0;
 end;
 
@@ -130,25 +120,8 @@ end;
 procedure TKanjiDic.Load(AInput: TStreamDecoder);
 var ed: PKanjiDicEntry;
   ln: string;
- {$IFDEF STATIC_ENTRIES}
-  rec_count: integer;
-  c: char;
- {$ENDIF}
 begin
   Clear;
-
- {$IFDEF STATIC_ENTRIES}
- { We keep a list of records directly, so every reallocation will break pointers.
-  Let's keep things simple and just allocate memory once.
-  For that, count the (maximal possible) number of records. }
-  rec_count := 0;
-  while AInput.ReadChar(c) do
-    if c=#$0A then Inc(rec_count);
-  Inc(rec_count,10); //we're generous
-  FEntries.Prealloc(rec_count);
- {$ELSE}
- //With dynamic allocation there's no need to scan the file.
- {$ENDIF}
 
   AInput.Rewind();
   while AInput.ReadLn(ln) do begin
@@ -164,16 +137,8 @@ end;
 
 function TKanjiDic.AllocEntry: PKanjiDicEntry;
 begin
- {$IFDEF STATIC_ENTRIES}
- { Entries are preallocated in Load() and must not be allocated on-the-fly,
-  or pointers will break everywhere. }
-  if FEntries.Length>=FEntries.PreallocatedLength then
-    raise Exception.Create('Cannot allocate one more entry.');
-  Result := PKanjiDicEntry(FEntries.AddNew);
- {$ELSE}
   New(Result);
   FEntries.Add(Result);
- {$ENDIF}
 end;
 
 procedure TKanjiDic.RegisterEntry(const AEntry: PKanjiDicEntry);
@@ -188,11 +153,7 @@ end;
 
 function TKanjiDic.GetEntry(const AIndex: integer): PKanjiDicEntry;
 begin
- {$IFDEF STATIC_ENTRIES}
-  Result := FEntries.P[AIndex];
- {$ELSE}
   Result := FEntries[AIndex];
- {$ENDIF}
 end;
 
 { Searches for a given entry }
