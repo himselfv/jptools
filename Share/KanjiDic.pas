@@ -13,7 +13,7 @@
  allow adding entries dynamically -- faster. }
 
 interface
-uses SysUtils, Classes, JWBIO, BalancedTree, KanjiDicReader;
+uses SysUtils, Classes, JWBIO, BalancedTree, FastArray, KanjiDicReader;
 
 type
  { Char lookups are indexed. We may add other indexes as the need arises }

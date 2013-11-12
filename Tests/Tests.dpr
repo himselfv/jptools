@@ -27,7 +27,8 @@ uses
   TestFramework,
   GUITestRunner,
   TextTestRunner,
-  SpeedTests in 'SpeedTests.pas';
+  SpeedTests in 'SpeedTests.pas',
+  FastArray in '..\Share\FastArray.pas';
 
 {$R *.RES}
 

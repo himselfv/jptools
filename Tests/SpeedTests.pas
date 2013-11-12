@@ -49,6 +49,8 @@ begin
   AInput := OpenTextFile('EDICT2');
   AInput.Rewind();
   while AInput.ReadLn(ln) do begin
+    ln := Trim(ln);
+    if ln='' then continue;
     ParseEdict2Line(ln, @ed);
   end;
 end;

@@ -29,7 +29,7 @@ Accessing fields:
 }
 
 interface
-uses SysUtils;
+uses SysUtils, FastArray;
 
 { Do not pass here lines starting with this character.
  Alternatively, use IsKanjidicComment() }
@@ -39,30 +39,6 @@ const
 { Some reasonable values. Increase if it's not enough one day }
 const
   MaxReadingClasses = 3;
-
-type
- //Array wrapper to support predictable memory preallocation
-  TArray<T> = record
-  type
-    PT = ^T;
-  public
-    FItems: array of T;
-    FItemCount: integer;
-    procedure Clear; inline;
-    function GetItem(const AIndex: integer): T; inline;
-    procedure SetItem(const AIndex: integer; const AItem: T); inline;
-    function GetPointer(const AIndex: integer): PT; inline;
-    procedure Add(const AItem: T);
-    function AddNew: PT;
-    procedure SetLength(const ALength: integer);
-    procedure Prealloc(const ACount: integer);
-    function GetPreallocatedLength: integer; inline;
-    property Length: integer read FItemCount write SetLength;
-    property PreallocatedLength: integer read GetPreallocatedLength;
-    property Items[const AIndex: integer]: T read GetItem write SetItem; default;
-  end;
-
-function Join(const AArray: TArray<string>; const ASep: string): string;
 
 type
   EKanjidicParsingException = class(Exception);
@@ -135,72 +111,6 @@ resourcestring
   eBrokenMeaningBrakets = 'Broken meaning brakets';
   eUnsupportedReadingClass = 'Unsupported reading class: %s';
 
-procedure TArray<T>.Clear;
-begin
-  FItemCount := 0;
-end;
-
-function TArray<T>.GetItem(const AIndex: integer): T;
-begin
-  Result := FItems[AIndex];
-end;
-
-procedure TArray<T>.SetItem(const AIndex: integer; const AItem: T);
-begin
-  FItems[AIndex] := AItem;
-end;
-
-function TArray<T>.GetPointer(const AIndex: integer): PT;
-begin
-  Result := @FItems[AIndex];
-end;
-
-procedure TArray<T>.Add(const AItem: T);
-begin
-  Self.Length := Self.Length + 1;
-  Self.Items[Self.Length-1] := AItem;
-end;
-
-function TArray<T>.AddNew: PT;
-begin
-  Self.Length := Self.Length + 1;
-  Result := @FItems[Self.Length-1];
-end;
-
-procedure TArray<T>.SetLength(const ALength: integer);
-begin
-  FItemCount := ALength;
-  if FItemCount=0 then exit; //do not preallocate on SetLength(0)
-  if FItemCount>System.Length(FItems) then
-    System.SetLength(FItems, FItemCount*2+5);
-end;
-
-procedure TArray<T>.Prealloc(const ACount: integer);
-begin
-  if ACount>System.Length(FItems) then
-    System.SetLength(FItems, ACount);
-end;
-
-function TArray<T>.GetPreallocatedLength: integer;
-begin
-  Result := System.Length(FItems);
-end;
-
-//Adds the items together, interleaving the additions with ASep
-function Join(const AArray: TArray<string>; const ASep: string): string;
-var i: integer;
-begin
-  case AArray.Length of
-   0: Result := Default(string);
-   1: Result := AArray.Items[0];
-  else
-    Result := AArray.Items[0];
-    for i := 0 to AArray.Length-1 do
-      Result := Result + ASep + AArray.Items[i];
-  end;
-end;
-
-
 { Entries }
 
 procedure TFieldEntry.Reset;
@@ -216,7 +126,7 @@ end;
 
 function TFieldEntry.Join(const sep: string): string;
 begin
-  Result := KanjiDicReader.Join(values, sep);
+  Result := FastArray.Join(values, sep);
 end;
 
 procedure TReadingClassEntry.Reset;
@@ -237,12 +147,12 @@ end;
 
 function TReadingClassEntry.JoinOns(const sep: UnicodeString): UnicodeString;
 begin
-  Result := KanjiDicReader.Join(ons, sep);
+  Result := FastArray.Join(ons, sep);
 end;
 
 function TReadingClassEntry.JoinKuns(const sep: UnicodeString): UnicodeString;
 begin
-  Result := KanjiDicReader.Join(kuns, sep);
+  Result := FastArray.Join(kuns, sep);
 end;
 
 procedure TKanjidicEntry.Reset;
