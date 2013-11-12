@@ -1,5 +1,5 @@
-unit JWBEdict;
-{ Basic in-memory EDICT representation. Quite slow in loading and quite heavy
+unit Edict;
+{ Basic in-memory EDICT representation. Quite slow in loading and heavy
  in keeping around, but fast and works well if you just need a simple task done.
  For daily use, consider converting EDICT to some sort of database format.
  No deflexion support. }
@@ -39,8 +39,7 @@ type
   end;
   PEdictEntry = ^TEdictEntry;
 
- { Only TExprItems are allowed to be in the tree. FExpr must not be nil.
-  Only PWideChar must be passed to CompareData. }
+ { FExpr must not be nil. }
   TExprItem = class(TBinTreeItem)
   protected
     FEntry: PEdictEntry;
@@ -50,7 +49,6 @@ type
     function CompareData(const a):Integer; override;
     function Compare(a:TBinTreeItem):Integer; override;
     procedure Copy(ToA:TBinTreeItem); override;
-    procedure List; override;
   end;
 
   TSourceFormat = (sfEdict, sfCEdict);
@@ -111,6 +109,7 @@ begin
   Self.FExpr := AExpr;
 end;
 
+//Only PWideChar must be passed to CompareData.
 function TExprItem.CompareData(const a):Integer;
 begin
   Result := WStrComp(PWideChar(Self.FExpr), PWideChar(a));
@@ -125,11 +124,6 @@ procedure TExprItem.Copy(ToA:TBinTreeItem);
 begin
   TExprItem(ToA).FEntry := Self.FEntry;
   TExprItem(ToA).FExpr := Self.FExpr;
-end;
-
-procedure TExprItem.List;
-begin
- //we don't support no listing
 end;
 
 constructor TEdict.Create;
@@ -196,6 +190,9 @@ begin
 
   AInput.Rewind();
   while AInput.ReadLn(ln) do begin
+    ln := Trim(ln);
+    if ln='' then continue;
+
     case ASourceFormat of
       sfEdict: ParseEdict2Line(ln, @ed);
       sfCEdict: ParseCCEdictLine(ln, @ed);

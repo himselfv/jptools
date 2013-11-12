@@ -22,7 +22,7 @@ program AnkiWordList;
 }
 uses
   SysUtils, Classes, StrUtils, UniStrUtils, ConsoleToolbox, JWBIO,
-  JWBEdictReader, JWBEdict;
+  JWBEdictReader, Edict;
 
 type
   TAnkiWordList = class(TCommandLineApp)

@@ -9,6 +9,8 @@ program RadGen;
  Or:
    yarxi.db       for radical names
    yarxi.kcs      for kana conversion
+ Or:
+   kanjidic       for kanjidic
 }
 
 {$APPTYPE CONSOLE}
@@ -17,7 +19,7 @@ program RadGen;
 
 uses
   SysUtils, Classes, ConsoleToolbox, JwbStrings, JwbIo, JwbCharData, RaineRadicals,
-  TextTable, Yarxi, YarxiFmt;
+  TextTable, Yarxi, YarxiFmt, KanjiDic;
 
 type
   TRadGen = class(TCommandLineApp)
@@ -33,6 +35,11 @@ type
 
   protected //Raine
     RaineRadicals: TRaineRadicals;
+
+  protected //Kanjidic
+    Kanjidic: TKanjidic;
+    procedure KanjidicInit;
+    procedure KanjidicFree;
 
   protected //Wakan.chr
     Chars: TTextTableCursor;
@@ -109,9 +116,19 @@ end;
 
 procedure TRadGen.Run;
 var AFile: string;
+  i: integer;
+  tm: cardinal;
 begin
   RaineRadicals := TRaineRadicals.Create;
   RaineRadicals.LoadFromRadKFile('RADKFILE');
+  tm := GetTickCount;
+  for i := 0 to 20 do begin
+    KanjidicInit;
+    KanjidicFree;
+  end;
+  tm := GetTickCount-tm;
+  writeln('Time: '+IntToStr(tm));
+
   if WakanDescCount>0 then
     WakanInit;
   if YarxiDescCount>0 then
@@ -129,6 +146,7 @@ begin
   FreeAndNil(Output);
   YarxiFree;
   WakanFree;
+  KanjidicFree;
 end;
 
 procedure TRadGen.ParseFile(const AFilename: string);
@@ -171,6 +189,17 @@ begin
     Output.WriteLn(ch+#09+expl);
   end;
   FreeAndNil(inp);
+end;
+
+procedure TRadGen.KanjidicInit;
+begin
+  Kanjidic := TKanjidic.Create;
+  Kanjidic.LoadFromFile('kanjidic');
+end;
+
+procedure TRadGen.KanjidicFree;
+begin
+  FreeAndNil(Kanjidic);
 end;
 
 procedure TRadGen.WakanInit;
