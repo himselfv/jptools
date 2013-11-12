@@ -39,6 +39,7 @@ type
     function AllocEntry: PKanjiDicEntry;
     procedure RegisterEntry(const AEntry: PKanjiDicEntry);
     function GetEntryCount: integer; inline;
+    function GetEntry(const AIndex: integer): PKanjiDicEntry;
   public
     constructor Create;
     destructor Destroy; override;
@@ -48,6 +49,7 @@ type
     procedure Load(AInput: TStreamDecoder);
     function FindEntry(const AChar: UnicodeString): PKanjiDicEntry;
     property EntryCount: integer read GetEntryCount;
+    property Entries[const Index: integer]: PKanjiDicEntry read GetEntry;
   end;
 
 implementation
@@ -182,6 +184,15 @@ end;
 function TKanjiDic.GetEntryCount: integer;
 begin
   Result := FEntries.Length;
+end;
+
+function TKanjiDic.GetEntry(const AIndex: integer): PKanjiDicEntry;
+begin
+ {$IFDEF STATIC_ENTRIES}
+  Result := FEntries.P[AIndex];
+ {$ELSE}
+  Result := FEntries[AIndex];
+ {$ENDIF}
 end;
 
 { Searches for a given entry }
