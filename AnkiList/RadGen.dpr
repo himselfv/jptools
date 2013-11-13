@@ -211,11 +211,12 @@ end;
 function TRadGen.YarxiGetDesc(const AChar: char): TStringArray;
 var kr: TKanjiRecord;
 begin
-  if not Yarxi.GetKanji(AChar, kr) then
+  if not Yarxi.GetKanji(AChar, kr)
+  or (kr.RusNicks.Length<=0) then
     SetLength(Result, 0)
   else begin
     SetLength(Result, 1);
-    Result[0] := StripRusNickFormatting(kr.RusNicks[0]);
+    Result[0] := kr.RusNicks[0];
     if Result[0]='' then //nickname is empty, don't confuse callers
       SetLength(Result, 0);
   end;

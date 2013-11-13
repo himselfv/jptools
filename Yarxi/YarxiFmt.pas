@@ -1,14 +1,16 @@
 unit YarxiFmt;
+{ Форматы, используемые в базе данных Яркси. Перед чтением убедитесь, что рядом
+ нет женщин и детей. }
 
 interface
-uses SysUtils, Classes, UniStrUtils;
+uses SysUtils, Classes, UniStrUtils, FastArray;
 
 { Во всех полях используется "обезъяний русский":
     <a   =>   a
     <b   =>   б
     <c   =>   в
 
-Обычно всё пишется маленькими, а загланвая буква первой делается автоматически.
+Обычно всё пишется маленькими, а заглавная буква первой делается автоматически.
 Но если записано имя собственное, то заглавная прописывается явно.
 Заглавные получаются из обычных так: <c -> <C. Для специальных букв заглавные
 смотри ниже по табличке.
@@ -20,14 +22,34 @@ function DecodeRussian(const inp: string): string;
 
 {
 Поле Kanji.RusNick:
-1. *#*: альтернативные записи
-  <e<f<z<g<c<3<k*#*<e<f<z<f<c<3<k* (дешёвый*#*дешевый*)
-2. ''text'': курсив (для названий радикалов)
-}
+1. Несколько вариантов:
+  человеколюбие*косточка*
+2. Альтернативные (скрытые) записи: *#*
+  дешёвый*#*дешевый*
+ Если вариантов несколько, альтернатива ставится ко всему набору:
+  лёгкий*обмен*#*легкий*обмен**  --- две звёздочки в конце
+3. Пробелы стандартно:
+  вишнёвая берёза*#*вишневая береза*
+4. Перенос строк: *_*
+  речь*_*различать*_*лепесток*косичка*_*управление*
+  По умолчанию Яркси каждый вариант пишет новой строкой, но там, где стоит _,
+  строка не переносится.
+5. Ударения
+  замок*!2  --- ударение на 2-й букве
+  ах!  --- просто восклицательный знак
+6. Курсив? (для названий радикалов)
+  ''капля''
+  ''обёртка''
+  ''лёд''*#*''лед''  --- совместно с альтернативой
+  императорское ''мы''  --- просто кавычки
 
-function StripAlternativeRusNicks(const inp: string): string;
-function DecodeKanjiRusNick(const inp: string): TStringArray;
-function StripRusNickFormatting(const inp: string): string;
+Ещё встречается:
+  -ха-  --- ничего не значит, отображается, как есть
+}
+type
+  TRusNicks = TArray<string>;
+
+function DecodeKanjiRusNick(const inp: string): TRusNicks;
 
 {
 Поле Kanji.OnYomi:
@@ -45,9 +67,10 @@ type
 
 function SplitOnYomi(const inp: string): TOnYomiEntries;
 
-
 implementation
+uses StrUtils;
 
+{ Заменяет весь обезъяний русский в тексте нормальными русскими буквами. }
 function DecodeRussian(const inp: string): string;
 const
   eng: string = 'abcdefghijklmnopqrstuvwxyz1234567ABCDEFGHIJKLMNOPQRSTUVWXYZ890!?=+';
@@ -89,66 +112,54 @@ begin
   SetLength(Result, StrLen(PChar(Result))); //trim
 end;
 
-{ Отбрасывает дополнительные варианты написания названия кандзи, оставляя только
- главный. Часто это удобнее, чем мучать себя и менеджер памяти, составляя их
- полный список.
- Тем более, что в 95% случаев вариант только один }
-function StripAlternativeRusNicks(const inp: string): string;
-var i: integer;
+
+function KillQuotes(const inp: string): string;
 begin
-  Result := inp;
-  i := pos('*#*', inp);
-  if i>0 then SetLength(Result, i-1);
-end;
-
-{ Разбирает строку и составляет список всех написаний названия кандзи.
- Первый вариант - основной. }
-function DecodeKanjiRusNick(const inp: string): TStringArray;
-var i, old_i, cnt: integer;
-begin
- //Считаем число вариантов, чтобы 10 раз не выделять
-  i := pos('*#*', inp);
-  if i<=0 then begin //fast common case
-    SetLength(Result, 1);
-    Result[0] := inp;
-    exit;
-  end;
-  Inc(i, 2); //length of *#* minus 1
-
-  cnt := 0;
-  while i>1 do begin
-    Inc(cnt);
-    Inc(i); //skip the char itself
-    i := pos('*', inp, i);
-  end;
-
-  SetLength(Result, cnt);
-  i := pos('*#*', inp);
-
-  cnt := 0;
-  old_i := 1;
-  while i>1 do begin
-    Result[cnt] := copy(inp, old_i, i-old_i+1-1);
-    if cnt=0 then
-      Inc(i,3)
-    else
-      Inc(i);
-    Inc(cnt);
-    old_i := i;
-    i := pos('*', inp, i);
-  end;
-end;
-
-//Удаляет всё графическое форматирование из одного пункта RusNick.
-//Используйте для упрощённого вывода, для полного нужна функция, заменяющая его
-//на что-то (скажем, на html)
-function StripRusNickFormatting(const inp: string): string;
-begin
-  if (Length(inp)>=4) and (inp[1]='''') and (inp[2]='''')
-  and (inp[Length(inp)]='''') and (inp[Length(inp)-1]='''') then
-    Result := copy(inp,3,Length(inp)-4)
+  if (Length(inp)<4) or (inp[1]<>'''') or (inp[2]<>'''')
+  or (inp[Length(inp)-1]<>'''') or (inp[Length(inp)]<>'''') then
+    Result := inp
   else
-    Result := inp;
+    Result := copy(inp, 3, Length(inp)-4);
+end;
+
+{ Разбирает строку и составляет список всех названий кандзи.
+ Альтернативы выбрасывает. Флаги непереноса строки выбрасывает. Акценты выбрасывает.
+ Можно было бы разобрать, но НААААФИИИГ. }
+function DecodeKanjiRusNick(const inp: string): TRusNicks;
+var tmp: string;
+  i_pos: integer;
+  i, i_start: integer;
+begin
+  Result.Clear;
+  tmp := inp;
+
+ //Альтернативы нафиг
+  i_pos := pos('*#*',tmp);
+  if i_pos>0 then
+    delete(tmp,i_pos,MaxInt);
+
+  tmp := UniReplaceStr(tmp, '*_*', '*');
+  tmp := UniReplaceStr(tmp, '**', '*');
+
+ //Звёздочки в конце
+  while (Length(tmp)>0) and (tmp[Length(tmp)]='*') do
+    SetLength(tmp, Length(tmp)-1);
+
+  if tmp='' then exit;
+
+  i := 1;
+  i_start := 1;
+  while i<=Length(tmp) do begin
+    if tmp[i]='*' then begin
+      if i_start<i then
+        Result.Add(KillQuotes(copy(tmp, i_start, i-i_start)));
+      i_start := i+1;
+    end;
+    Inc(i);
+  end;
+
+  if i>i_start then
+    Result.Add(KillQuotes(copy(tmp, i_start, i-i_start)))
 end;
 
 

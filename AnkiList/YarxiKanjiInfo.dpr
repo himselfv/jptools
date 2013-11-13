@@ -7,7 +7,7 @@ program YarxiKanjiInfo;
 {$R *.res}
 
 uses
-  SysUtils, ConsoleToolbox, JwbIo, Yarxi, YarxiFmt;
+  SysUtils, ConsoleToolbox, JwbIo, FastArray, Yarxi, YarxiFmt;
 
 type
   TYarxiKanjiInfo = class(TCommandLineApp)
@@ -30,6 +30,7 @@ type
     procedure ShowUsage; override;
     procedure Run; override;
     procedure ParseFile(const AFilename: string);
+
   end;
 
 procedure TYarxiKanjiInfo.ShowUsage;
@@ -72,6 +73,9 @@ end;
 procedure TYarxiKanjiInfo.Run;
 var AFile: string;
 begin
+  if Length(Files)<=0 then
+    BadUsage('No files given.');
+
   YarxiInit;
 
   if OutputFile<>'' then
@@ -91,18 +95,15 @@ procedure TYarxiKanjiInfo.ParseFile(const AFilename: string);
 var inp: TStreamDecoder;
   ch: char;
   ln: string;
-  idx: integer;
-  kj: PKanjiRecord;
+  kj: TKanjiRecord;
 begin
   inp := FileReader(AFilename);
   while inp.ReadChar(ch) do begin
-    idx := Yarxi.FindKanjiIndex(ch);
-    if idx<0 then continue; //no info for kanji
-    kj := @Yarxi.Kanji[idx];
+    if not Yarxi.GetKanji(ch, kj) then continue; //no info for kanji
 
     ln := ch+#09
-      +IntToStr(idx)+#09
-      +StripRusNickFormatting(kj.RusNick)+#09
+      +IntToStr(kj.Nomer)+#09
+      +FastArray.Join(kj.RusNicks,', ')+#09
       +MergeOnYomi(kj.OnYomi)+#09
      //Остальное пока хреново раскодируется
       +kj.KunYomi+#09
@@ -148,7 +149,6 @@ procedure TYarxiKanjiInfo.YarxiInit;
 begin
   Yarxi := TYarxiDB.Create('yarxi.db');
   Yarxi.KanaTran.LoadFromFile('yarxi.kcs');
-  Yarxi.ParseKanji;
 end;
 
 procedure TYarxiKanjiInfo.YarxiFree;

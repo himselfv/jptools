@@ -104,7 +104,7 @@ begin
    1: Result := AArray.FItems[0];
   else
     Result := AArray.FItems[0];
-    for i := 0 to AArray.Length-1 do
+    for i := 1 to AArray.Length-1 do
       Result := Result + ASep + AArray.FItems[i];
   end;
 end;

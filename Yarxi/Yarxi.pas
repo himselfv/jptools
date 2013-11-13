@@ -11,13 +11,15 @@ Usage:
 
 
 interface
-uses SysUtils, sqlite3, sqlite3ds, uDataSetHelper, UniStrUtils, JWBKanaConv, YarxiFmt;
+uses SysUtils, sqlite3, sqlite3ds, uDataSetHelper, UniStrUtils, JWBKanaConv,
+  FastArray, YarxiFmt;
 
 type
   TKanjiRecord = record
+    Nomer: integer;
     Kanji: string;
     RusNick: string;
-    RusNicks: TStringArray;
+    RusNicks: TRusNicks;
     RawRusNick: string;
     OnYomi: TOnYomiEntries;
     KunYomi: string;
@@ -58,7 +60,21 @@ type
 
   end;
 
+function Join(const AArray: TStringArray; const sep: string=', '): string; overload;
+
 implementation
+
+function Join(const AArray: TStringArray; const sep: string=', '): string;
+var i: integer;
+begin
+  if Length(AArray)<=0 then begin
+    Result := '';
+    exit;
+  end;
+  Result := AArray[0];
+  for i := 1 to Length(AArray)-1 do
+    Result := Result + sep + AArray[i];
+end;
 
 function TKanjiRecord.JoinOns(const sep: string=' '): string;
 var i: integer;
@@ -89,10 +105,14 @@ end;
 function TYarxiDB.ParseKanji(const Rec: variant): TKanjiRecord;
 var i: integer;
 begin
+  Result.Nomer := rec.Nomer;
   Result.Kanji := WideChar(word(rec.Uncd));
   Result.RawRusNick := DecodeRussian(rec.RusNick);
   Result.RusNicks := DecodeKanjiRusNick(Result.RawRusNick);
-  Result.RusNick := StripAlternativeRusNicks(Result.RawRusNick);
+  if Result.RusNicks.Length>0 then
+    Result.RusNick := Result.RusNicks[i]
+  else
+    Result.RusNick := '';
   Result.OnYomi := SplitOnYomi(rec.OnYomi);
  //ѕреобразуем после сплита, т.к. может затронуть разметочные символы типа тире
   for i := 0 to Length(Result.OnYomi)-1 do
