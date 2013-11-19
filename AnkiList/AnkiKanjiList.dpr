@@ -12,7 +12,7 @@ program AnkiKanjiList;
 }
 
 uses
-  SysUtils, Classes, UniStrUtils, ConsoleToolbox, JWBIO, JWBKanjiDicReader;
+  SysUtils, Classes, UniStrUtils, ConsoleToolbox, JWBIO, KanjiDicReader;
 
 type
   TKanjidicRecord = record
