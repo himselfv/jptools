@@ -89,7 +89,7 @@ begin
   if OutputFile<>'' then
     AOutput := FileWriter(OutputFile)
   else
-    AOutput := ConsoleWriter(TUTF8Encoding.Create);
+    AOutput := ConsoleWriter();
 
   if Command='info' then begin
     AConv := TKanaTranslator.Create;
@@ -198,7 +198,7 @@ procedure TKanaTest.RunConvert(AType: TConvertType);
 var i: integer;
 begin
   if Length(InputFiles)<=0 then
-    ConvertFile(ConsoleReader(TUTF16Encoding.Create), AType)
+    ConvertFile(ConsoleReader(), AType)
   else
     for i := 0 to Length(InputFiles)-1 do
       ConvertFile(FileReader(InputFiles[i]), AType);
