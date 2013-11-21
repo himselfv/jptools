@@ -3,7 +3,7 @@ program KanaTest;
 { Service utility for KanaConv conversion tables. }
 
 uses
-  SysUtils, ConsoleToolbox, BalancedTree, JWBKanaConv, JWBIO;
+  SysUtils, ConsoleToolbox, BalancedTree, JWBKanaConv, JWBIO, StreamUtils;
 
 type
   TConvertType = (ctKana, ctRomaji);

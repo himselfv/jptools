@@ -28,7 +28,8 @@ uses
   GUITestRunner,
   TextTestRunner,
   SpeedTests in 'SpeedTests.pas',
-  FastArray in '..\Share\FastArray.pas';
+  FastArray in '..\Share\FastArray.pas',
+  JWBIOTests in '..\Share\JWBIOTests.pas';
 
 {$R *.RES}
 
