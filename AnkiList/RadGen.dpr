@@ -107,6 +107,9 @@ end;
 procedure TRadGen.Run;
 var AFile: string;
 begin
+  if Length(Files)<=0 then
+    BadUsage('No files given.');
+
   RaineRadicals := TRaineRadicals.Create;
   RaineRadicals.LoadFromRadKFile('RADKFILE');
 
