@@ -897,6 +897,7 @@ begin
   while MaxChars>0 do begin
     if AStream.Read(b[0],1)<>1 then break;
     chno := 0;
+    i := 0;
 
     if (b[0] and UTF8_MASK1)=UTF8_VALUE1 then begin
      //Most common case, single-byte char

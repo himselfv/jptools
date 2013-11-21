@@ -18,7 +18,7 @@
  и поэтому очень много статей оказываются выброшены. }
 
 interface
-uses SysUtils, StreamUtils{$IFDEF ICONV_EDICT1}, iconv{$ENDIF};
+uses SysUtils, StreamUtils, JWBIO{$IFDEF ICONV_EDICT1}, iconv{$ENDIF};
 
 {$IFDEF FPC}
 type
@@ -135,7 +135,7 @@ type
 type
   TArticleWriter = class
   protected
-    outp: TCharWriter;
+    outp: TStreamEncoder;
     FAddedRecords: integer;
     procedure StartFile; virtual;
     procedure FinalizeFile; virtual;
@@ -355,7 +355,7 @@ ArticleWriter
 constructor TArticleWriter.Create(const filename: string);
 begin
   inherited Create;
-  outp := TCharWriter.Create(TFileStream.Create(filename, fmCreate), csUtf16LE, true);
+  outp := CreateTextFile(filename, TUTF16Encoding);
   outp.WriteBom;
   FAddedRecords := 0;
   StartFile;
@@ -558,7 +558,7 @@ begin
   or ((kana>=0) and art.kana[kana].pop) then
     ln := ln + '/(P)';
 
-  outp.WriteLine(ln+'/');
+  outp.WriteLn(ln+'/');
   Inc(FAddedRecords);
 end;
 
@@ -651,7 +651,7 @@ begin
 
   if art.ref<>'' then
     ln := ln + '/EntL'+art.ref;
-  outp.WriteLine(s_kanji+' '+ln+'/');
+  outp.WriteLn(s_kanji+' '+ln+'/');
   Inc(FAddedRecords);
 end;
 
@@ -663,13 +663,13 @@ JMDict
 procedure TJMDictWriter.StartFile;
 begin
   inherited;
-  outp.WriteLine('<!-- JMdict created: '+FormatDatetime('yyyy-mm-dd', now())+' -->');
-  outp.WriteLine('<JMdict>');
+  outp.WriteLn('<!-- JMdict created: '+FormatDatetime('yyyy-mm-dd', now())+' -->');
+  outp.WriteLn('<JMdict>');
 end;
 
 procedure TJMDictWriter.FinalizeFile;
 begin
-  outp.WriteLine('</JMdict>');
+  outp.WriteLn('</JMdict>');
   inherited;
 end;
 
@@ -683,72 +683,72 @@ begin
   tmp := tag_vals;
   t_pos := pos(tmp, ',');
   while t_pos>0 do begin
-    outp.WriteLine('<'+tag_name+'>&'+copy(tmp,1,t_pos-1)+';</'+tag_name+'>'); //каждый тег отдельно
+    outp.WriteLn('<'+tag_name+'>&'+copy(tmp,1,t_pos-1)+';</'+tag_name+'>'); //каждый тег отдельно
     tmp := copy(tmp,t_pos+1,Length(tmp)-t_pos);
     t_pos := pos(tmp, ',');
   end;
   if tmp<>'' then
-    outp.WriteLine('<'+tag_name+'>&'+tmp+';</'+tag_name+'>');
+    outp.WriteLn('<'+tag_name+'>&'+tmp+';</'+tag_name+'>');
 end;
 
 procedure TJMDictWriter.Print(art: PEdictArticle);
 var i,j: integer;
   se: PEdictSenseEntry;
 begin
-  outp.WriteLine('<entry>');
+  outp.WriteLn('<entry>');
   if art.ref<>'' then
-    outp.WriteLine('<ent_seq>'+art.ref+'</ent_seq>');
+    outp.WriteLn('<ent_seq>'+art.ref+'</ent_seq>');
 
   for i := 0 to art.kanji_used - 1 do begin
-    outp.WriteLine('<k_ele>');
-    outp.WriteLine('<keb>'+art.kanji[i].k+'</keb>');
+    outp.WriteLn('<k_ele>');
+    outp.WriteLn('<keb>'+art.kanji[i].k+'</keb>');
     if art.kanji[i].inf<>'' then PrintTags('ke_inf', art.kanji[i].inf);
     if art.kanji[i].pop then
-      outp.WriteLine('<ke_pri>spec1</ke_pri>');
-    outp.WriteLine('</k_ele>');
+      outp.WriteLn('<ke_pri>spec1</ke_pri>');
+    outp.WriteLn('</k_ele>');
   end;
 
   for i := 0 to art.kana_used - 1 do begin
-    outp.WriteLine('<r_ele>');
-    outp.WriteLine('<reb>'+art.kana[i].k+'</reb>');
+    outp.WriteLn('<r_ele>');
+    outp.WriteLn('<reb>'+art.kana[i].k+'</reb>');
     if art.kana[i].inf<>'' then PrintTags('re_inf', art.kana[i].inf);
     if not art.kana[i].AllKanji then begin
       if art.kana[i].Kanji_used<=0 then
-        outp.WriteLine('<re_nokanji/>')
+        outp.WriteLn('<re_nokanji/>')
       else
         for j := 0 to art.kana[i].Kanji_used - 1 do
-          outp.WriteLine('<re_restr>'+art.kanji[art.kana[i].Kanji[j]].k+'</re_restr>');
+          outp.WriteLn('<re_restr>'+art.kanji[art.kana[i].Kanji[j]].k+'</re_restr>');
       if art.kana[i].pop then
-        outp.WriteLine('<re_pri>spec1</re_pri>');
+        outp.WriteLn('<re_pri>spec1</re_pri>');
     end;
-    outp.WriteLine('</r_ele>');
+    outp.WriteLn('</r_ele>');
   end;
 
   for i := 0 to art.senses_used - 1 do begin
-    outp.WriteLine('<sense>');
+    outp.WriteLn('<sense>');
     se := @art.senses[i];
     for j := 0 to se.xrefs_used - 1 do
       if se.xrefs[j].tp='' then
-        outp.WriteLine('<xref>'+se.xrefs[j].val+'</xref>')
+        outp.WriteLn('<xref>'+se.xrefs[j].val+'</xref>')
       else
-        outp.WriteLine('<xref type="'+se.xrefs[j].tp+'">'+se.xrefs[j].val+'</xref>');
+        outp.WriteLn('<xref type="'+se.xrefs[j].tp+'">'+se.xrefs[j].val+'</xref>');
     for j := 0 to se.ants_used - 1 do
-      outp.WriteLine('<ant>'+se.ants[j]+'</ant>');
+      outp.WriteLn('<ant>'+se.ants[j]+'</ant>');
     for j := 0 to se.lsources_used - 1 do
       if se.lsources[j].expr='' then
-        outp.WriteLine('<lsource xml:lang='+se.lsources[j].lang+'/>')
+        outp.WriteLn('<lsource xml:lang='+se.lsources[j].lang+'/>')
       else
-        outp.WriteLine('<lsource xml:lang='+se.lsources[j].lang+'>'+se.lsources[j].expr+'</ant>');
+        outp.WriteLn('<lsource xml:lang='+se.lsources[j].lang+'>'+se.lsources[j].expr+'</ant>');
     if se.t_pos<>'' then PrintTags('pos', se.t_pos);
     if se.t_field<>'' then PrintTags('field', se.t_pos);
     if se.t_dial<>'' then PrintTags('dial', se.t_pos);
     if se.t_misc<>'' then PrintTags('misc', se.t_pos);
     for j := 0 to se.glosses_used - 1 do
-      outp.WriteLine('<gloss xml:lang="rus">'+se.glosses[j]+'</gloss>'); //note the gloss xml:lang attribute
-    outp.WriteLine('</sense>');
+      outp.WriteLn('<gloss xml:lang="rus">'+se.glosses[j]+'</gloss>'); //note the gloss xml:lang attribute
+    outp.WriteLn('</sense>');
   end;
 
-  outp.WriteLine('</entry>');
+  outp.WriteLn('</entry>');
   Inc(FAddedRecords);
 end;
 

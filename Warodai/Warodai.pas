@@ -1,7 +1,7 @@
 ﻿unit Warodai;
 
 interface
-uses SysUtils, UniStrUtils, StreamUtils, WcUtils;
+uses SysUtils, UniStrUtils, StreamUtils, WcUtils, JWBIO;
 {$INCLUDE 'Warodai.inc'}
 
 var
@@ -78,7 +78,7 @@ type
 
 
 type
-  TWarodaiReader = class(TCharReader)
+  TWarodaiReader = class(TStreamDecoder)
   protected
     FArticleLines: array[0..99] of string;
     FArticleLineCount: integer;
@@ -137,7 +137,7 @@ end;
 
 function TWarodaiReader.ReadLine(out ln: string): boolean;
 begin
-  Result := inherited ReadLine(ln);
+  Result := inherited ReadLn(ln);
   if not Result then exit;
 
  //От беспорядочно расставленных тегов <i> больше беды, чем пользы.

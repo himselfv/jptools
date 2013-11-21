@@ -15,6 +15,7 @@ uses
   Windows,
   UniStrUtils,
   StreamUtils,
+  JWBIO,
   iconv,
   EdictWriter,
   WcUtils,
@@ -131,7 +132,7 @@ var
   edict1: TArticleWriter;
   edict2: TArticleWriter;
   jmdict: TArticleWriter;
-  examples: TCharWriter;
+  examples: TStreamEncoder;
   stats: record
     artcnt: integer;
     badcnt: integer;
@@ -147,7 +148,7 @@ end;
 
 
 var
-  com: TCharWriter; //common meaning cases
+  com: TStreamEncoder; //common meaning cases
  //Для ускорения храним по одной копии,
  //чтобы не создавать-удалять каждый раз.
   hdr: TEntryHeader;
@@ -206,7 +207,7 @@ begin
       end;
       if examples<>nil then begin
         for i := 0 to ex_list.Count - 1 do
-          examples.WriteLine(ex_list.items[i]);
+          examples.WriteLn(ex_list.items[i]);
         Inc(stats.ex_cnt, ex_list.Count);
       end;
 
@@ -238,11 +239,11 @@ begin
     if com<>nil then
       for i := 0 to err.Count - 1 do
       begin
-        com.WriteLine('Line '+IntToStr(WarodaiStats.LinesRead)
+        com.WriteLn('Line '+IntToStr(WarodaiStats.LinesRead)
             + ' article '+IntToStr(stats.artcnt)+': '
             +err.items[i]);
-        com.WriteLine(inp.ArticleText);
-        com.WriteLine('');
+        com.WriteLn(inp.ArticleText);
+        com.WriteLn('');
       end;
   end;
 
@@ -260,13 +261,14 @@ var tm: cardinal;
 begin
   ExceptionStats.Clear;
   writeln(setlocale(LC_ALL, PAnsiChar(loc)));
-  inp := TWarodaiReader.Create(TFileStream.Create(InputFile, fmOpenRead), true);
-  com := TCharWriter.Create(TFileStream.Create('commng.txt', fmCreate), csUtf16LE, true);
+  inp := TWarodaiReader.Open(TFileStream.Create(InputFile, fmOpenRead),
+    TUTF16Encoding.Create, true);
+  com := CreateTextFile('commng.txt', TUTF16Encoding);
   edict1 := TEdict1Writer.Create(OutputFile+'.edict1');
   edict2 := TEdict2Writer.Create(OutputFile+'.edict2');
   jmdict := TJmDictWriter.Create(OutputFile+'.jmdict');
   if ExamplesFile<>'' then begin
-    examples := TCharWriter.Create(TFileStream.Create(ExamplesFile, fmCreate), csUtf16LE, true);
+    examples := CreateTextFile(ExamplesFile, TUTF16Encoding);
     examples.WriteBom();
   end else
     examples := nil;

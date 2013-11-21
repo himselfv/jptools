@@ -2,7 +2,7 @@
 {$APPTYPE CONSOLE}
 
 uses
-  SysUtils, Classes, Windows, UniStrUtils, StreamUtils;
+  SysUtils, Classes, Windows, UniStrUtils, StreamUtils, JWBIO;
 
 type
   EBadUsage = class(Exception)
@@ -74,7 +74,7 @@ begin
 
 end;
 
-procedure Run_Stats(inp: TCharReader);
+procedure Run_Stats(inp: TStreamDecoder);
 var c: char;
   CharCnt: integer;
   WhiteSpaceCnt: integer;
@@ -123,48 +123,28 @@ begin
   writeln('Rest char count: '+IntToStr(CharCnt-WhiteSpaceCnt-KanjiCnt-KanaCnt));
 end;
 
-procedure Run_Trim(inp: TCharReader; outp: TCharWriter);
-var s: string;
-  c, nc: char;
+procedure Run_Trim(inp: TStreamDecoder; outp: TStreamEncoder);
+var ln: string;
 begin
-  while inp.ReadChar(c) do begin
-    if (c=#13) or (c=#10) then begin
-      if (c=#13) and inp.PeekChar(nc) and (nc=#10) then
-        inp.ReadChar(nc)
-      else
-        nc := chr(0);
-      if s<>'' then begin
-        outp.WriteString(s);
-        outp.WriteChar(c);
-        if ord(nc)<>0 then
-          outp.WriteChar(nc);
-        s := '';
-      end;
-      continue;
-    end;
-    s := s + c;
-  end;
-  if s<>'' then begin
-    outp.WriteString(s);
-    s := '';
+  while inp.ReadLn(ln) do begin
+    if ln<>'' then
+      outp.WriteLn(ln);
   end;
 end;
 
 //Settings have been loaded already
 procedure Run;
-var inp: TCharReader;
-  outp: TCharWriter;
+var inp: TStreamDecoder;
+  outp: TStreamEncoder;
 begin
-  inp := TCharReader.Create(TFileStream.Create(InputFile, fmOpenRead), true);
+  inp := OpenTextFile(InputFile);
   outp := nil;
 
   if OutputFile<>'' then begin
-    outp := TCharWriter.Create(
-      TFileStream.Create(OutputFile, fmCreate), csUtf16Be, true);
+    outp := CreateTextFile(OutputFile, TUTF16Encoding);
     outp.WriteBom;
   end else
-    outp := TCharWriter.Create(
-      THandleStream.Create(GetStdHandle(STD_OUTPUT_HANDLE)), true);
+    outp := ConsoleWriter();
 
   try
     if SameStr(Command, 'stats') then

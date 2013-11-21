@@ -2,7 +2,7 @@ program KanjiStats;
 {$APPTYPE CONSOLE}
 
 uses
-  SysUtils, Classes, UniStrUtils, StreamUtils, SearchSort;
+  SysUtils, Classes, UniStrUtils, StreamUtils, SearchSort, JWBIO;
 
 type
   EBadUsage = class(Exception)
@@ -108,11 +108,10 @@ begin
 end;
 
 procedure LoadKnownKanjiFile(filename: UniString);
-var r: TCharReader;
+var r: TStreamDecoder;
   c: UniChar;
 begin
-  r := TCharReader.Create(
-    TFileStream.Create(filename, fmOpenRead), {OwnsStream=}true);
+  r := OpenTextFile(filename, TUTF16Encoding);
   try
     while r.ReadChar(c) do
       if IsKanji(c) and (FindKnownKanji(c)<0) then
@@ -153,11 +152,10 @@ end;
 
 //Kanjis have been loaded, dict initialized, we're parsing files one by one
 procedure ParseFile(filename: UniString);
-var r: TCharReader;
+var r: TStreamDecoder;
   c: UniChar;
 begin
-  r := TCharReader.Create(
-    TFileStream.Create(filename, fmOpenRead), {OwnsStream=}true);
+  r := OpenTextFile(filename, TUTF16Encoding);
   try
     while r.ReadChar(c) do
       if IsKanji(c) and (FindKnownKanji(c)<0) then
@@ -195,7 +193,7 @@ begin
 end;
 
 var
-  OutputStream: TStream;
+  OutputStream: TStreamEncoder;
 
 procedure OutputChar(const ks: TKanjiStats);
 var str: UniString;
@@ -204,31 +202,22 @@ begin
     str := ks.Kanji + '=' + IntToStr(ks.Count) + #13#10
   else
     str := ks.Kanji;
-  if OutputStream<>nil then
-    OutputStream.Write(str[1], Length(str)*SizeOf(UniChar))
-  else
-    write(str);
+  OutputStream.Write(str)
 end;
 
 procedure OutputResults;
 var i: integer;
- bom: char;
 begin
   if OutputFile <> '' then
-    OutputStream := TFileStream.Create(OutputFile, fmCreate)
-//    OutputStream := TStreamWriter.Create(
-//      TFileStream.Create(OutputFile, fmCreate), {OwnsStream=}true)
+    OutputStream := CreateTextFile(OutputFile, TUTF16Encoding)
   else
-    OutputStream := nil;
+    OutputStream := ConsoleWriter();
   try
-    bom := BOM_UTF16LE;
-    if OutputStream<>nil then
-      OutputStream.Write(bom, SizeOf(bom));
+    OutputStream.WriteBom;
     for i := 0 to Length(Stats) - 1 do
       OutputChar(Stats[i]);
   finally
-    if OutputStream<>nil then
-      FreeAndNil(OutputStream);
+    FreeAndNil(OutputStream);
   end;
 end;
 
