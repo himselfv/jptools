@@ -112,7 +112,7 @@ begin
   SetLength(Result, StrLen(PChar(Result))); //trim
 end;
 
-
+{ Убирает ''кавычки'' по сторонам RusNick }
 function KillQuotes(const inp: string): string;
 begin
   if (Length(inp)<4) or (inp[1]<>'''') or (inp[2]<>'''')
@@ -138,6 +138,7 @@ begin
   if i_pos>0 then
     delete(tmp,i_pos,MaxInt);
 
+ //Сложные случаи сводим к простым
   tmp := UniReplaceStr(tmp, '*_*', '*');
   tmp := UniReplaceStr(tmp, '**', '*');
 
@@ -151,14 +152,16 @@ begin
   i_start := 1;
   while i<=Length(tmp) do begin
     if tmp[i]='*' then begin
-      if i_start<i then
+      if (i_start<i)
+      and (tmp[i_start]<>'!') then //это было ударение - нафиг
         Result.Add(KillQuotes(copy(tmp, i_start, i-i_start)));
       i_start := i+1;
     end;
     Inc(i);
   end;
 
-  if i>i_start then
+  if (i>i_start)
+  and (tmp[i_start]<>'!') then
     Result.Add(KillQuotes(copy(tmp, i_start, i-i_start)))
 end;
 
