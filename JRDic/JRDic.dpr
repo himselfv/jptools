@@ -415,13 +415,8 @@ begin
     r := Query('SELECT id, word, reading FROM {$words} WHERE reading=""', {readonly=}false);
     while not r.EOF do begin
       kj := r.Fields[1].Value;
-      if EvalChars(kj) and not (
-        (1 shl EC_HIRAGANA)
-        or (1 shl EC_KATAKANA)
-        or (1 shl EC_IDG_PUNCTUATION)
-        or (1 shl EC_LATIN_HW)
-        or (1 shl EC_LATIN_FW)
-      ) <> 0 then
+      if EvalChars(kj) * [EC_HIRAGANA, EC_KATAKANA, EC_IDG_PUNCTUATION,
+        EC_LATIN_HW, EC_LATIN_FW] <> [] then
       begin
         cdic.LookupKanji(kj);
         if cdic.HaveMatch then begin

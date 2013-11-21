@@ -74,7 +74,7 @@ begin
   edict.FillInfo(filename);
   edict.Load;
   cdic := edict.NewLookup(mtExactMatch);
-  roma_t := TRomajiTranslator.Create;
+  roma_t := TKanaTranslator.Create;
   roma_t.LoadFromFile('c_romaji_base.kcs');
 end;
 
@@ -103,7 +103,7 @@ begin
     exit;
   end;
 
-  kana := roma_t.KanaToRomaji(kana, 1, [rfConvertLatin,rfConvertPunctuation]);
+  kana := roma_t.KanaToRomaji(kana, [rfConvertLatin,rfConvertPunctuation]);
 
   if kanji<>'' then
     cdic.LookupKanji(kanji)

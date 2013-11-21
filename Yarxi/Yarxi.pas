@@ -45,11 +45,12 @@ type
 
  {$IFNDEF USE_DB}
   protected
-    Kanji: array of TKanjiRecord;
-    Tango: array of TTangoRecord;
     procedure LoadKanji;
     procedure LoadTango;
     function FindKanjiIndex(const AChar: string): integer; //do not expose
+  public
+    Kanji: array of TKanjiRecord;
+    Tango: array of TTangoRecord;
  {$ENDIF}
 
   public
@@ -57,6 +58,8 @@ type
     constructor Create(const AFilename: string);
     destructor Destroy; override;
     function GetKanji(const AChar: string; out ARec: TKanjiRecord): boolean;
+    function KanjiCount: integer;
+    function TangoCount: integer;
 
   end;
 
@@ -110,7 +113,7 @@ begin
   Result.RawRusNick := DecodeRussian(rec.RusNick);
   Result.RusNicks := DecodeKanjiRusNick(Result.RawRusNick);
   if Result.RusNicks.Length>0 then
-    Result.RusNick := Result.RusNicks[i]
+    Result.RusNick := Result.RusNicks[0]
   else
     Result.RusNick := '';
   Result.OnYomi := SplitOnYomi(rec.OnYomi);
@@ -210,6 +213,34 @@ begin
     ARec := Kanji[idx];
     Result := true;
   end;
+end;
+{$ENDIF}
+
+function TYarxiDB.KanjiCount: integer;
+{$IFDEF USE_DB}
+var ds: TSqliteDataset;
+begin
+  ds := Db.Query('SELECT COUNT(*) FROM Kanji');
+  Result := ds.Fields[0];
+end;
+{$ELSE}
+begin
+  LoadKanji;
+  Result := Length(Kanji);
+end;
+{$ENDIF}
+
+function TYarxiDB.TangoCount: integer;
+{$IFDEF USE_DB}
+var ds: TSqliteDataset;
+begin
+  ds := Db.Query('SELECT COUNT(*) FROM Tango');
+  Result := ds.Fields[0];
+end;
+{$ELSE}
+begin
+  LoadTango;
+  Result := Length(Tango);
 end;
 {$ENDIF}
 

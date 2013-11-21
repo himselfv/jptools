@@ -9,6 +9,7 @@ uses
   UniStrUtils,
   ConsoleToolbox,
   JWBIO,
+  FastArray,
   Yarxi in 'Yarxi.pas';
 
 type
@@ -64,12 +65,10 @@ end;
 procedure TYarxiConvert.RunKanji;
 var k: TKanjiRecord;
 begin
-  Yarxi.ParseKanji;
-  writeln(ErrOutput, IntToStr(Length(Yarxi.Kanji))+' kanji read.');
-
+  writeln(ErrOutput, IntToStr(Yarxi.KanjiCount)+' kanji in DB.');
   for k in Yarxi.Kanji do
     Output.WriteLn(
-      SepJoin(k.RusNicks, '/') + #09
+      FastArray.Join(k.RusNicks, '/') + #09
         + k.JoinOns + #09 + Yarxi.KanaTran.RomajiToKana('K'+k.JoinOns(' '), []) + #09
         + k.KunYomi + #09 + Yarxi.KanaTran.RomajiToKana('H'+k.KunYomi, []) + #09
         + k.Russian
@@ -79,8 +78,7 @@ end;
 procedure TYarxiConvert.RunTango;
 var k: TTangoRecord;
 begin
-  Yarxi.ParseTango;
-  writeln(ErrOutput, IntToStr(Length(Yarxi.Tango))+' tango read.');
+  writeln(ErrOutput, IntToStr(Yarxi.TangoCount)+' tango in DB.');
 
   for k in Yarxi.Tango do
     Output.WriteLn(k.Kana + #09 + k.Reading + #09 + k.Russian);
