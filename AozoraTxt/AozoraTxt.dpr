@@ -3,23 +3,24 @@
 
 
 uses
-  SysUtils,
-  Classes,
-  Windows,
-  UniStrUtils,
-  StreamUtils,
+  SysUtils, Classes, Windows, ConsoleToolbox, UniStrUtils, StreamUtils,
   AozoraParser;
 
 type
-  EBadUsage = class(Exception)
+  TAozoraTxt = class(TCommandLineApp)
+  protected
+    Command: UniString;
+    InputFile: UniString;
+    OutputFile: UniString; //empty means console
+    function HandleParam(const s: string; var i: integer): boolean; override;
+  public
+    procedure ShowUsage; override;
+    procedure Run; override;
+    procedure Run_Stats(InputFile: string);
+    procedure Run_Strip(InputFile, OutputFile: string);
   end;
 
-procedure BadUsage(msg: UniString);
-begin
-  raise EBadUsage.Create(msg);
-end;
-
-procedure PrintUsage;
+procedure TAozoraTxt.ShowUsage;
 begin
   writeln('Usage: ');
   writeln('  '+ExtractFileName(paramstr(0))+'<command> <filename> <output file>');
@@ -29,58 +30,35 @@ begin
   writeln('  strip = delete all common aozora tags');
 end;
 
-var
-  Command: UniString;
-  InputFile: UniString;
-  OutputFile: UniString; {пустой - значит, консоль}
-
-procedure ParseCommandLine;
-var i: integer;
-  s: UniString;
+function TAozoraTxt.HandleParam(const s: string; var i: integer): boolean;
 begin
-  Command := '';
-  InputFile := '';
-  OutputFile := '';
-
-  i := 1;
-  while i <= ParamCount do begin
-    s := ParamStr(i);
-    if Length(s)=0 then begin
-      Inc(i);
-      continue;
-    end;
-    if s[1]<>'-' then begin
-      if Command='' then
-        Command := s
-      else
-      if InputFile='' then
-        InputFile := s
-      else
-      if OutputFile='' then
-        OutputFile := s
-      else
-        BadUsage('Too many params.');
-      Inc(i);
-      continue;
-    end;
-
-    BadUsage('Unrecognized switch: '+s);
-  end;
-
   if Command='' then
-    BadUsage('You have to specify a command');
+    Command := s
+  else
   if InputFile='' then
-    BadUsage('You have to specify an input file');
-
-  if SameStr(Command, 'stats') then
+    InputFile := s
   else
-  if SameStr(Command, 'strip') then
+  if OutputFile='' then
+    OutputFile := s
   else
-    BadUsage('Unrecognized command: '+Command);
-
+    BadUsage('Too many params.');
+  Result := true;
 end;
 
-procedure Run_Stats(InputFile: string);
+procedure TAozoraTxt.Run;
+begin
+  if Command='' then BadUsage();
+  if InputFile='' then BadUsage('Input file required');
+  if SameStr(Command, 'stats') then
+    Run_Stats(InputFile)
+  else
+  if SameStr(Command, 'strip') then
+    Run_Strip(InputFile, OutputFile)
+  else
+    BadUsage('Unrecognized command: '+Command);
+end;
+
+procedure TAozoraTxt.Run_Stats(InputFile: string);
 var p: TAozoraStatParser;
 begin
   p := TAozoraStatParser.Create;
@@ -96,7 +74,7 @@ begin
   writeln('Comment sz: '+IntToStr(p.Stats.CommentSz));
 end;
 
-procedure Run_Strip(InputFile, OutputFile: string);
+procedure TAozoraTxt.Run_Strip(InputFile, OutputFile: string);
 var p: TAozoraStripParser;
   outp: TStream;
   Bom: AnsiString;
@@ -111,34 +89,6 @@ begin
   p.Parse(TFileStream.Create(InputFile, fmOpenRead), outp);
 end;
 
-//Settings have been loaded already
-procedure Run;
 begin
-  if SameStr(Command, 'stats') then
-    Run_Stats(InputFile)
-  else
-  if SameStr(Command, 'strip') then
-    Run_Strip(InputFile, OutputFile)
-  else
-    BadUsage('Unrecognized command: '+Command);
-end;
-
-begin
-  if ParamCount=0 then begin
-    PrintUsage;
-    exit;
-  end;
-
-  try
-    ParseCommandLine;
-    Run;
-  except
-    on E: EBadUsage do begin
-      writeln('Bad usage. ');
-      writeln('  '+E.Message);
-      PrintUsage;
-    end;
-    on E: Exception do
-      Writeln(E.ClassName, ': ', E.Message);
-  end;
+  RunApp(TAozoraTxt);
 end.

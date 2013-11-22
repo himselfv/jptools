@@ -2,18 +2,29 @@
 {$APPTYPE CONSOLE}
 
 uses
-  SysUtils, Classes, Windows, UniStrUtils, StreamUtils, JWBIO;
+  SysUtils, Classes, Windows, ConsoleToolbox, UniStrUtils, StreamUtils, JWBIO;
 
 type
-  EBadUsage = class(Exception)
+  TMiscTxt = class(TCommandLineApp)
+  protected
+    Command: UniString;
+    InputFile: UniString;
+    OutputFile: UniString;
+    function HandleParam(const s: string; var i: integer): boolean; override;
+  public
+    procedure ShowUsage; override;
+    procedure Run; override;
+    procedure Run_Stats(inp: TStreamDecoder);
+    procedure Run_Trim(inp: TStreamDecoder; outp: TStreamEncoder);
   end;
 
-procedure BadUsage(msg: UniString);
-begin
-  raise EBadUsage.Create(msg);
-end;
+  TMiscTxt = class(TCommandLineApp)
+  published
+    procedure Trim;
+    procedure Stats;
+  end;
 
-procedure PrintUsage;
+procedure TMiscTxt.ShowUsage;
 begin
   writeln('Usage: ');
   writeln('  '+ExtractFileName(paramstr(0))+'<command> <filename> <output file>');
@@ -23,58 +34,53 @@ begin
   writeln('  stats = output file stats');
 end;
 
-var
-  Command: UniString;
-  InputFile: UniString;
-  OutputFile: UniString; {пустой - значит, консоль}
-
-procedure ParseCommandLine;
-var i: integer;
-  s: UniString;
+function TMiscTxt.HandleParam(const s: string; var i: integer): boolean;
 begin
-  Command := '';
-  InputFile := '';
-  OutputFile := '';
-
-  i := 1;
-  while i <= ParamCount do begin
-    s := ParamStr(i);
-    if Length(s)=0 then begin
-      Inc(i);
-      continue;
-    end;
-    if s[1]<>'-' then begin
-      if Command='' then
-        Command := s
-      else
-      if InputFile='' then
-        InputFile := s
-      else
-      if OutputFile='' then
-        OutputFile := s
-      else
-        BadUsage('Too many params.');
-      Inc(i);
-      continue;
-    end;
-
-    BadUsage('Unrecognized switch: '+s);
-  end;
-
+  Result := true;
   if Command='' then
-    BadUsage('You have to specify a command');
+    Command := s
+  else
+  if InputFile='' then
+    InputFile := s
+  else
+  if OutputFile='' then
+    OutputFile := s
+  else
+    BadUsage('Too many params.');
+end;
+
+procedure TMiscTxt.Run;
+var inp: TStreamDecoder;
+  outp: TStreamEncoder;
+begin
+  if Command='' then BadUsage;
   if InputFile='' then
     BadUsage('You have to specify an input file');
 
-  if SameStr(Command, 'stats') then
-  else
-  if SameStr(Command, 'trim') then
-  else
-    BadUsage('Unrecognized command: '+Command);
+  inp := OpenTextFile(InputFile);
+  outp := nil;
 
+  if OutputFile<>'' then begin
+    outp := CreateTextFile(OutputFile, TUTF16Encoding);
+    outp.WriteBom;
+  end else
+    outp := ConsoleWriter();
+
+  try
+    if SameStr(Command, 'stats') then
+      Run_Stats(inp)
+    else
+    if SameStr(Command, 'trim') then
+      Run_Trim(inp, outp)
+    else
+      BadUsage('Unrecognized command: '+Command);
+  finally
+    FreeAndNil(inp);
+    FreeAndNil(outp);
+  end;
 end;
 
-procedure Run_Stats(inp: TStreamDecoder);
+procedure TMiscTxt.Run_Stats(inp: TStreamDecoder);
 var c: char;
   CharCnt: integer;
   WhiteSpaceCnt: integer;
@@ -123,7 +129,7 @@ begin
   writeln('Rest char count: '+IntToStr(CharCnt-WhiteSpaceCnt-KanjiCnt-KanaCnt));
 end;
 
-procedure Run_Trim(inp: TStreamDecoder; outp: TStreamEncoder);
+procedure TMiscTxt.Run_Trim(inp: TStreamDecoder; outp: TStreamEncoder);
 var ln: string;
 begin
   while inp.ReadLn(ln) do begin
@@ -132,51 +138,7 @@ begin
   end;
 end;
 
-//Settings have been loaded already
-procedure Run;
-var inp: TStreamDecoder;
-  outp: TStreamEncoder;
 begin
-  inp := OpenTextFile(InputFile);
-  outp := nil;
-
-  if OutputFile<>'' then begin
-    outp := CreateTextFile(OutputFile, TUTF16Encoding);
-    outp.WriteBom;
-  end else
-    outp := ConsoleWriter();
-
-  try
-    if SameStr(Command, 'stats') then
-      Run_Stats(inp)
-    else
-    if SameStr(Command, 'trim') then
-      Run_Trim(inp, outp)
-    else
-      BadUsage('Unrecognized command: '+Command);
-  finally
-    FreeAndNil(inp);
-    FreeAndNil(outp);
-  end;
-end;
-
-begin
-  if ParamCount=0 then begin
-    PrintUsage;
-    exit;
-  end;
-
-  try
-    ParseCommandLine;
-    Run;
-  except
-    on E: EBadUsage do begin
-      writeln('Bad usage. ');
-      writeln('  '+E.Message);
-      PrintUsage;
-    end;
-    on E: Exception do
-      Writeln(E.ClassName, ': ', E.Message);
-  end;
+  RunApp(TMiscTxt);
 end.
 

@@ -2,95 +2,108 @@ program KanjiStats;
 {$APPTYPE CONSOLE}
 
 uses
-  SysUtils, Classes, UniStrUtils, StreamUtils, SearchSort, JWBIO;
+  SysUtils, Classes, ConsoleToolbox, UniStrUtils, StreamUtils, SearchSort, JWBIO;
 
 type
-  EBadUsage = class(Exception)
+  TKanjiStatEntry = record
+    Kanji: char;
+    Count: integer;
+  end;
+  PKanjiStatEntry = ^TKanjiStatEntry;
+
+  TKanjiStatList = array of TKanjiStatEntry;
+  PKanjiStatList = ^TKanjiStatList;
+
+  TKanjiStats = class(TCommandLineApp)
+  protected
+    InputFiles: array of string;
+    KanjiFiles: array of string;
+    OutputFile: string;
+    VerboseOutput: boolean;
+    OutputStream: TStreamEncoder;
+    function HandleSwitch(const s: string; var i: integer): boolean; override;
+    function HandleParam(const s: string; var i: integer): boolean; override;
+    procedure OutputChar(const ks: TKanjiStatEntry);
+    procedure OutputResults;
+  protected
+    KnownKanjis: array of char;
+    function FindKnownKanji(c: char): integer;
+    procedure AddKnownKanji(c: char);
+    procedure LoadKnownKanjiFile(filename: string);
+  protected
+    Stats: TKanjiStatList;
+    function GetKanjiStats(c: char): PKanjiStatEntry;
+    procedure ParseFile(filename: string);
+    procedure SortResults;
+  public
+    procedure ShowUsage; override;
+    procedure Run; override;
   end;
 
-procedure BadUsage(msg: UniString);
+
+procedure TKanjiStats.ShowUsage;
 begin
-  raise EBadUsage.Create(msg);
+  writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
+  writeln('Flags:');
+  writeln('  -k known_kanji    ');
+  writeln('  -o output file    (otherwise console)');
+  writeln('  -v                verbose output (kanji=count)');
 end;
 
-procedure PrintUsage;
+function TKanjiStats.HandleSwitch(const s: string; var i: integer): boolean;
 begin
-  writeln('Usage: ');
-  writeln('  '+ExtractFileName(paramstr(0))+'<file1> [file2] '
-    +'[-k known_kanji] [-o output file] [-v]');
-  writeln('If no output specified, console will be used.');
-  writeln('-v enables verbose output (kanji=count)');
+  Result := false;
+
+  if SameText(s, '-k') then begin
+    if i=ParamCount then
+      BadUsage('After -k you have to specify a kanji list file.');
+    Inc(i);
+    SetLength(KanjiFiles, Length(KanjiFiles)+1);
+    KanjiFiles[Length(KanjiFiles)-1] := ParamStr(i);
+    Result := true;
+  end else
+
+  if SameText(s, '-v') then begin
+    VerboseOutput := true;
+    Result := true;
+  end else
+
+  if SameText(s, '-o') then begin
+    if i=ParamCount then
+      BadUsage('After -o you have to specify an output file.');
+    Inc(i);
+    if OutputFile<>'' then
+      BadUsage('Output file already set to '+OutputFile+', '
+        +'cannot set to '+ParamStr(i)+'.');
+    OutputFile := ParamStr(i);
+    Result := true;
+  end;
 end;
 
-var
-  InputFiles: array of UniString;
-  KanjiFiles: array of UniString;
-  OutputFile: UniString; {пустой - значит, консоль}
-  VerboseOutput: boolean;
+function TKanjiStats.HandleParam(const s: string; var i: integer): boolean;
+begin
+  SetLength(InputFiles, Length(InputFiles)+1);
+  InputFiles[Length(InputFiles)-1] := s;
+  Result := true;
+end;
 
-procedure ParseCommandLine;
+procedure TKanjiStats.Run;
 var i: integer;
-  s: UniString;
 begin
-  SetLength(InputFiles, 0);
-  SetLength(KanjiFiles, 0);
-  OutputFile := '';
-  VerboseOutput := false;
-
-  i := 1;
-  while i <= ParamCount do begin
-    s := ParamStr(i);
-    if Length(s)=0 then begin
-      Inc(i);
-      continue;
-    end;
-    if s[1]<>'-' then begin
-      SetLength(InputFiles, Length(InputFiles)+1);
-      InputFiles[Length(InputFiles)-1] := s;
-      Inc(i);
-      continue;
-    end;
-
-    if SameText(s, '-k') then begin
-      if i=ParamCount then
-        BadUsage('After -k you have to specify a kanji list file.');
-      Inc(i);
-      SetLength(KanjiFiles, Length(KanjiFiles)+1);
-      KanjiFiles[Length(KanjiFiles)-1] := ParamStr(i);
-      Inc(i);
-      continue;
-    end;
-
-    if SameText(s, '-v') then begin
-      VerboseOutput := true;
-      Inc(i);
-      continue;
-    end;
-
-    if SameText(s, '-o') then begin
-      if i=ParamCount then
-        BadUsage('After -o you have to specify an output file.');
-      Inc(i);
-      if OutputFile<>'' then
-        BadUsage('Output file already set to '+OutputFile+', '
-          +'cannot set to '+ParamStr(i)+'.');
-      OutputFile := ParamStr(i);
-      Inc(i);
-      continue;
-    end;
-
-    BadUsage('Unrecognized switch: '+s);
-  end;
-
   if Length(InputFiles)<1 then
     BadUsage('You have to specify an input file');
+
+  SetLength(KnownKanjis, 0);
+  SetLength(Stats, 0);
+  for i := 0 to Length(KanjiFiles) - 1 do
+    LoadKnownKanjiFile(KanjiFiles[i]);
+  for I := 0 to Length(InputFiles) - 1 do
+    ParseFile(InputFiles[i]);
+  SortResults;
+  OutputResults;
 end;
 
-
-var
-  KnownKanjis: array of UniChar;
-
-function FindKnownKanji(c: UniChar): integer;
+function TKanjiStats.FindKnownKanji(c: char): integer;
 var i: integer;
 begin
   Result := -1;
@@ -101,15 +114,15 @@ begin
     end;
 end;
 
-procedure AddKnownKanji(c: UniChar);
+procedure TKanjiStats.AddKnownKanji(c: char);
 begin
   SetLength(KnownKanjis, Length(KnownKanjis)+1);
   KnownKanjis[Length(KnownKanjis)-1] := c;
 end;
 
-procedure LoadKnownKanjiFile(filename: UniString);
+procedure TKanjiStats.LoadKnownKanjiFile(filename: string);
 var r: TStreamDecoder;
-  c: UniChar;
+  c: char;
 begin
   r := OpenTextFile(filename, TUTF16Encoding);
   try
@@ -121,21 +134,7 @@ begin
   end;
 end;
 
-
-type
-  TKanjiStats = record
-    Kanji: UniChar;
-    Count: integer;
-  end;
-  PKanjiStats = ^TKanjiStats;
-
-  TKanjiStatList = array of TKanjiStats;
-  PKanjiStatList = ^TKanjiStatList;
-
-var
-  Stats: TKanjiStatList;
-
-function GetKanjiStats(c: UniChar): PKanjiStats;
+function TKanjiStats.GetKanjiStats(c: char): PKanjiStatEntry;
 var i: integer;
 begin
   for i := 0 to Length(Stats) - 1 do
@@ -151,9 +150,9 @@ begin
 end;
 
 //Kanjis have been loaded, dict initialized, we're parsing files one by one
-procedure ParseFile(filename: UniString);
+procedure TKanjiStats.ParseFile(filename: string);
 var r: TStreamDecoder;
-  c: UniChar;
+  c: char;
 begin
   r := OpenTextFile(filename, TUTF16Encoding);
   try
@@ -176,7 +175,7 @@ end;
 //Moves item I to cell NewI, shifting the rest downwards. I is always >= NewI.
 procedure StatsMov(data: pointer; I, NewI: integer);
 var list: PKanjiStatList absolute data;
-  ks: TKanjiStats;
+  ks: TKanjiStatEntry;
 begin
   ks := list^[i];
   while i > newi do begin
@@ -186,26 +185,22 @@ begin
   list^[i] := ks;
 end;
 
-
-procedure SortResults;
+procedure TKanjiStats.SortResults;
 begin
   BubbleSort(@Stats, Length(Stats), StatsCmp, StatsMov);
 end;
 
-var
-  OutputStream: TStreamEncoder;
-
-procedure OutputChar(const ks: TKanjiStats);
-var str: UniString;
+procedure TKanjiStats.OutputChar(const ks: TKanjiStatEntry);
+var str: string;
 begin
   if VerboseOutput then
     str := ks.Kanji + '=' + IntToStr(ks.Count) + #13#10
   else
     str := ks.Kanji;
-  OutputStream.Write(str)
+  OutputStream.Write(str);
 end;
 
-procedure OutputResults;
+procedure TKanjiStats.OutputResults;
 var i: integer;
 begin
   if OutputFile <> '' then
@@ -221,36 +216,6 @@ begin
   end;
 end;
 
-//Settings have been loaded already
-procedure Run;
-var i: integer;
 begin
-  SetLength(KnownKanjis, 0);
-  SetLength(Stats, 0);
-  for i := 0 to Length(KanjiFiles) - 1 do
-    LoadKnownKanjiFile(KanjiFiles[i]);
-  for I := 0 to Length(InputFiles) - 1 do
-    ParseFile(InputFiles[i]);
-  SortResults;
-  OutputResults;
-end;
-
-begin
-  if ParamCount=0 then begin
-    PrintUsage;
-    exit;
-  end;
-
-  try
-    ParseCommandLine;
-    Run;
-  except
-    on E: EBadUsage do begin
-      writeln('Bad usage. ');
-      writeln('  '+E.Message);
-      PrintUsage;
-    end;
-    on E: Exception do
-      Writeln(E.ClassName, ': ', E.Message);
-  end;
+  RunApp(TKanjiStats);
 end.
