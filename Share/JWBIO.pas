@@ -21,23 +21,16 @@ How to use:
     ProcessChar(ch);
   line := AReader.Readln();
 
-3. Writing file:
+3. Writing to file:
 
   AWriter := CreateTextFile(filename, TUTF8Encoding);
   AWriter := AppendToTextFile(filename, TUTF8Encoding);
   AWriter.Writeln('Hello world');
 
-4. Permanently storing encoding selection:
+4. Working with console:
 
-  WriteString(ChosenEncoding.ClassName);
-  ChosenEncoding := FindEncoding(ReadString()).Create();
-
-  Note that encodings can be parametrized:
-    TMultibyteEncoding.Create('win-1251')
-  And same encoding can be implemented in a different ways:
-    TUTF8Encoding
-    TMultibyteEncoding.Create('utf8')
-  Therefore only use this method for a limited set of known encodings.
+  AReader := ConsoleReader()
+  AWriter := ConsoleWriter()
 }
 
 interface
@@ -47,64 +40,76 @@ type
   {
   TEncoding design dogmas.
 
-  1. Encodings are stateless.
-  Nothing must be saved in the encoding object itself. Use TStreamDecoder
-  and specialized TStream wrappers to keep track of decoding state.
+  1.1. Encodings are stateless.
+  1.2. Encodings can be parametrized:
+    TMultibyteEncoding.Create('win-1251')
+  Although there's a subclass of encodings which aren't:
+    TUTF8Encoding
+    TUTF16LEEncoding
+  Some functions accept or return encoding classes instead of instances:
+    function GuessEncoding(const AFilename: string): CEncoding;
+  If you want to use parametrized encodings this way, inherit and parametrize:
+    TWin1251Encoding = class(TMultibyteEncoding);
 
-  2. Encodings can be parametrized.
-  Class type alone does not uniquely reference encoding, although with some
-  encodings it does.
+  1.3. There can be multiple implementations of the same encoding:
+    TUTF8Encoding.Create();
+    TMultibyteEncoding.Create(CP_UTF8);
 
-  3. Encodings operate on Streams, not Buffers.
+  1.4. If you need to uniquely identify encodings or permanently store encoding
+  selection, your best bet is to assign them some standard names:
+    Register(TUTF8Encoding, ['utf8','utf-8']);
+    Register(TWin1251Encoding, ['win1251']);
+    WriteString('LastEncoding', 'utf-8');
+    fileEncoding := Find(ReadString('LastEncoding'));
+
+  2. Encodings operate on Streams, not Buffers.
   Standard encoding design is to make a function like this:
     DecodeBytes(AFrom: PByte; ATo: PWideChar; var AFromRemaining: integer;
       var AToRemaining: integer);
-  Which would decode as many complete characters as possible and return the
+  It would decode as many complete characters as possible and return the
   remainder until next time.
 
-  This is clumsy by Delphi's norms. We have classes to handle stream reading/
-  writing:
+  This is clumsy in Delphi. We have classes to handle stream reading/writing:
     DecodeBytes(AFrom: TStream; AMaxChars: integer): string;
   Principially it's the same, but TStream encapsulates the concept of "remaining
   bytes" in the buffer.
 
-  4. Decoding stops when the stream is over.
+  2.1. Decoding stops when the stream is over.
   Instead of decrementing AFromRemaining, TEncoding moves through a stream. When
-  the stream returns 0 on any non-zero read request, it is considered over (just
-  like with sockets).
+  the stream returns 0 on any read request, it is considered over (just like
+  with sockets).
 
-  5. Encodings leave incomplete characters unread.
+  2.2. Encodings leave incomplete characters unread.
   If there's 2 bytes in the input stream and a character needs 3, TEncoding must
   roll back and leave 2 bytes for the next time.
-  Even if those were the last 2 bytes of the stream.
 
-  6. Encodings leave surrogate parts unread.
+  2.3. Encodings leave surrogate parts unread.
   If TEncoding needs to return a two-character combination and there's only one
-  character slot available, it must roll back and leave both chars for the next
-  time.
+  character slot left, it must roll back and leave both chars for the next time.
 
-  7. Encoding may return less characters than requested.
-  It doesn't mean that the stream is over -- check the stream itself.
-  Although, if all the data is available and TEncoding makes no progress on the
-  stream, the remainder is probably non-productive.
+  3. Encoding can return less than requested.
+  E.g. 0 chars if there's not enough for a char.
 
-  8. Encodings require *special TStreams*.
-  Not all TStreams are good to use with TEncoding -- explanations below.
+  3.1. Detecting EOF is hard.
+  Data left in the stream + TEncoding makes no progress + there's enough output
+  buffer.
+
+  4. Encodings require special TStreams. Explanations below.
   Use:
     TStreamBuf to wrap generic streams.
     TMemoryStream to decode from memory.
 
-  9. Encodings require seek.
+  4.1. Encodings require seek.
   Testing for BOM and reading multibyte characters requires encoding to be able
   to roll back in case there's not enough data.
 
-  10. Encodings do not give up.
-  If you ask for 500 WideChars, TEncoding makes its best effort to give you 500
-  WideChars. It's going to request data from the underlying stream again and again.
+  4.2. Encodings do not give up.
+  If you ask for 500 chars, TEncoding will try to give you 500 chars. It's going
+  to request data from the underlying stream again and again.
   Socket-like streams which return "as much as available" are going to block the
   second time they are queried.
 
-  11. If you just need to decode a file, use TStreamDecoder/TStreamEncoder.
+  If you just need to decode a file, use TStreamDecoder/TStreamEncoder.
   }
 
   TEncodingLikelihood = (
@@ -217,6 +222,7 @@ type
     function Read(AStream: TStream; MaxChars: integer): string; override;
     procedure Write(AStream: TStream; const AData: string); override;
   end;
+
 
 const
   INBUFSZ = 1024; //in characters
@@ -535,11 +541,23 @@ end;
 procedure TStreamDecoder.ConvertMoreChars;
 var new_sz: integer;
   new_chunk: string;
+  bytes_read: integer;
+  bytes_rem: integer;
 begin
+{
+  Stream --> ByteBuf --> CharBuf [Buffer]
+  1. ByteBuf overflows if TEncoding never converts anything, no matter how big
+     chunk of bytes it's given.
+  2. CharBuf overflows if someone calls ConvertMoreChars without reading those
+     out.
+  In both cases, no harm done but no data flows further. ReadChar may be stuck
+  calling us again and again.
+}
+
  //Read more data from the stream. We immediately convert the data, so there
  //should be close to no previous data in ByteBuf.
-  FByteBuf.UpdateChunk;
-  FByteEOF := (FByteBuf.rem=0); //no data at all => end of stream
+  bytes_read := FByteBuf.UpdateChunk;
+  bytes_rem := FByteBuf.ChunkBytesRemaining;
 
  //Convert all the available data
   new_sz := INBUFSZ-(Length(FBuffer)-FBufferPos);
@@ -550,13 +568,21 @@ begin
     + new_chunk;
   FBufferPos := 0;
 
- { Two pitfalls here:
-   1. ByteBuf overflow if TEncoding never converts anything, no matter how big
-     chunk of bytes it given.
-   2. CharBuf overflow if someone calls ConvertMoreChars without reading those
-     out.
-   In both cases, no harm done but no data flows further. ReadChar is going to
-   be stuck. }
+ { ByteEOF means that 1. stream is EOF, 2. byte buffer is empty or contains only
+  unparsable remainder.
+  Test for 1? UpdateChunk produces no data.
+  Test for 2? TEncoding eats no bytes.
+  Complications: 1. ByteBuf overflow => UpdateChunk runs empty, 2. CharBuf
+    overflow => TEncoding eats no bytes even though it could.
+  Solutions: 2. Less than 2 empty chars => skip ByteEOF detection until someone
+    reads those out.
+    1. => condition satisfied (if 2? is also true, we're stuck forever, so EOF) }
+
+  if (bytes_read=0) {for whatever reason, mb overflow}
+  and (new_sz>=2) {there was enough space for any char/surrogate}
+  and (FByteBuf.ChunkBytesRemaining>=bytes_rem) {and no bytes was read}
+  then
+    FByteEOF := true;
 end;
 
 procedure TStreamDecoder.DetachStream;
@@ -967,7 +993,11 @@ begin
       Dec(pc);
 
    //Store complicated characters by setting their chno insteead
-    if chno<>0 then begin
+    if chno=0 then begin
+      Inc(pc);
+      Dec(MaxChars);
+    end
+    else begin
       if chno<$10000 then begin
         pc^ := WideChar(chno);
         Inc(pc);

@@ -49,22 +49,23 @@ type
 
   protected
     flag_reallocbuf: boolean;
-    FNextChunkSize: integer;
-    FChunkSize: integer; //size of a chunk we'll try to read next time
+    FNextChunkSize: integer; //size of a chunk we'll try to read next time
+    FChunkSize: integer; //size of current chunk
     buf: pbyte;   //cached data
     ptr: pbyte;   //current location in buf
     adv: integer; //number of bytes read from buf
     rem: integer; //number of bytes remaining in buf.
      //adv+rem not always equals to FChunkSize since we could have read only
      //partial chunk or FChunkSize could have been changed after that.
-    procedure NewChunk;
-    procedure UpdateChunk;
+    function NewChunk: integer;
+    function UpdateChunk: integer;
     procedure SetChunkSize(AValue: integer);
     procedure ResetBuf;
     function ReallocBuf(size: integer): boolean;
     procedure FreeBuf;
   public
     property ChunkSize: integer read FChunkSize write SetChunkSize;
+    property ChunkBytesRemaining: integer read rem;
 
   public
     constructor Create(AStream: TStream; AOwnStream: boolean = false);
@@ -244,8 +245,8 @@ begin
   end;
 end;
 
-//Закачивает полностью новый блок
-procedure TStreamReader.NewChunk;
+{ Downloads a complete new chunk of data. Returns the number of bytes read. }
+function TStreamReader.NewChunk: integer;
 begin
  //Delayed reallocation
   if flag_reallocbuf and ReallocBuf(FNextChunkSize) then begin
@@ -256,15 +257,17 @@ begin
   rem := FStream.Read(buf^, FChunkSize);
   adv := 0;
   ptr := buf;
+  Result := rem;
 end;
 
-//Moves remaining data to the beginning of the cache and downloads more
-procedure TStreamReader.UpdateChunk;
+{ Moves remaining data to the beginning of the cache and downloads more.
+ Returns the number of bytes read. }
+function TStreamReader.UpdateChunk: integer;
 var DataPtr: Pbyte;
 begin
  //Full cache download
   if rem <= 0 then begin
-    NewChunk;
+    Result := NewChunk;
     exit;
   end;
 
@@ -279,7 +282,8 @@ begin
   end;
 
   DataPtr := PByte(cardinal(buf) + cardinal(adv+rem));
-  rem := rem + Stream.Read(DataPtr^, FChunkSize-adv-rem);
+  Result := Stream.Read(DataPtr^, FChunkSize-adv-rem);
+  rem := rem + Result;
 end;
 
 //Clears the contents of the cache
