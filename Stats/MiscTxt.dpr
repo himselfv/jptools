@@ -18,12 +18,6 @@ type
     procedure Run_Trim(inp: TStreamDecoder; outp: TStreamEncoder);
   end;
 
-  TMiscTxt = class(TCommandLineApp)
-  published
-    procedure Trim;
-    procedure Stats;
-  end;
-
 procedure TMiscTxt.ShowUsage;
 begin
   writeln('Usage: ');
