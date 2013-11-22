@@ -41,7 +41,7 @@ How to use:
 }
 
 interface
-uses SysUtils, Classes, JWBStrings, StreamUtils;
+uses SysUtils, Classes, StreamUtils;
 
 type
   {
@@ -301,6 +301,7 @@ function Conv_DetectType(const AFilename: string): CEncoding; overload;
 function Conv_DetectType(const AFilename: string; out AEncoding: CEncoding): boolean; overload;
 
 function OpenStream(const AStream: TStream; AOwnsStream: boolean; AEncoding: CEncoding = nil): TStreamDecoder;
+function WriteToStream(const AStream: TStream; AOwnsStream: boolean; AEncoding: CEncoding): TStreamEncoder;
 function OpenTextFile(const AFilename: string; AEncoding: CEncoding = nil): TStreamDecoder; inline;
 function CreateTextFile(const AFilename: string; AEncoding: CEncoding): TStreamEncoder;
 function AppendToTextFile(const AFilename: string; AEncoding: CEncoding = nil): TStreamEncoder;
@@ -1692,7 +1693,7 @@ begin
   end;
 end;
 
-function OpenStream(const AStream: TStream; AOwnsStream: boolean; AEncoding: CEncoding = nil): TStreamDecoder;
+function OpenStream(const AStream: TStream; AOwnsStream: boolean; AEncoding: CEncoding): TStreamDecoder;
 var fsr: TStreamReader;
 begin
   fsr := TStreamReader.Create(AStream, AOwnsStream);
@@ -1702,6 +1703,18 @@ begin
         AEncoding := TAsciiEncoding;
     fsr.Seek(0, soBeginning);
     Result := TStreamDecoder.Open(fsr, AEncoding.Create, {OwnsStream=}true);
+  except
+    FreeAndNil(fsr);
+    raise;
+  end;
+end;
+
+function WriteToStream(const AStream: TStream; AOwnsStream: boolean; AEncoding: CEncoding): TStreamEncoder;
+var fsr: TStreamWriter;
+begin
+  fsr := TStreamWriter.Create(AStream, AOwnsStream);
+  try
+    Result := TStreamEncoder.Open(fsr, AEncoding.Create, {OwnsStream=}true);
   except
     FreeAndNil(fsr);
     raise;

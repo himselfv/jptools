@@ -1,7 +1,7 @@
 ﻿unit AozoraParser;
 
 interface
-uses SysUtils, Classes, UniStrUtils, StreamUtils;
+uses SysUtils, Classes, UniStrUtils, StreamUtils, JWBIO;
 
 {
 Aozora Bunko fragments:
@@ -48,7 +48,7 @@ type
 
   TAozoraStripParser = class(TAozoraStatParser)
   protected
-    FWriter: TCharWriter;
+    FWriter: TStreamEncoder;
     procedure OnChar(c: char); override;
   public
     procedure Parse(ASource: TStream; AOutput: TStream); reintroduce;
@@ -66,156 +66,137 @@ type
   TParsingMode = (pmNormal, pmPreruby, pmRuby, pmTag, pmComment);
 
 procedure TAozoraParser.Parse(ASource: TStream);
-var r: TCharReader;
-  c, nc: UniChar;
+var r: TStreamDecoder;
+  c, prevchar: UniChar;
   pm: TParsingMode;
 
   PreRuby: string;
 
   LineCnt: integer;
-  AfterCR: boolean; //last symbol was CR
-  OnNewline: boolean;
+
   s: string;
+  ln: string;
+  i: integer;
 begin
   pm := pmNormal;
   LineCnt := 0;
-  AfterCR := false;
-  OnNewline := true;
   s := '';
   PreRuby := '';
 
-  r := TCharReader.Create(ASource, {OwnsStream=}false);
+  r := OpenStream(ASource, {OwnsStream=}false);
   try
-    while r.ReadChar(c) do begin
+    while r.ReadLn(ln) do begin
+      Inc(LineCnt);
+      c := #00;
 
-     //First things first
-      if c=#13 then begin
-        Inc(LineCnt);
-        AfterCR := true;
-        OnNewline := true;
-      end else
-      if (c=#10) and not AfterCR then begin
-        Inc(LineCnt);
-        OnNewline := true;
-      end else begin
-        AfterCR := false;
-      end;
+      for i := 1 to Length(ln) do begin
+        prevchar := c;
+        c := ln[i];
 
-      if (pm in [pmNormal]) and (c='｜') then begin
-        pm := pmPreRuby;
-        PreRuby := '';
-        continue;
-      end;
-
-      if (pm in [pmNormal, pmPreRuby]) and (c='《') then begin
-        pm := pmRuby;
-        s := '';
-        continue;
-      end;
-
-      if (pm = pmPreRuby) then begin
-        PreRuby := PreRuby + c;
-        if Length(PreRuby)>MAX_PRERUBY_LENGTH then begin
-          pm := pmNormal;
-          writeln(ErrOutput, 'Broken pre-ruby found with no ruby @ line '+IntToStr(LineCnt));
-          OnChar('｜');
-          OnStr(PreRuby);
+        if (pm in [pmNormal]) and (c='｜') then begin
+          pm := pmPreRuby;
+          PreRuby := '';
+          continue;
         end;
-        continue;
-      end;
 
-      if (pm = pmRuby) and (c='》') then begin
-        pm := pmNormal;
-        OnRuby(PreRuby, s);
-        PreRuby := '';
-        continue;
-      end;
+        if (pm in [pmNormal, pmPreRuby]) and (c='《') then begin
+          pm := pmRuby;
+          s := '';
+          continue;
+        end;
 
-      if (pm = pmRuby) then begin
-        s := s + c;
-        if Length(s)>MAX_RUBY_LENGTH then begin
-          pm := pmNormal;
-          OnRuby('', ''); //register as empty
-          writeln(ErrOutput, 'Broken ruby found with no closing @ line '+IntToStr(LineCnt));
-          if PreRuby<>'' then begin
+        if (pm = pmPreRuby) then begin
+          PreRuby := PreRuby + c;
+          if Length(PreRuby)>MAX_PRERUBY_LENGTH then begin
+            pm := pmNormal;
+            writeln(ErrOutput, 'Broken pre-ruby found with no ruby @ line '+IntToStr(LineCnt));
             OnChar('｜');
             OnStr(PreRuby);
           end;
-          OnChar('《'); //have to guess that was legal
-          OnStr(s);
+          continue;
+        end;
+
+        if (pm = pmRuby) and (c='》') then begin
+          pm := pmNormal;
+          OnRuby(PreRuby, s);
           PreRuby := '';
+          continue;
         end;
-        continue;
-      end;
 
-
-      if (pm in [pmNormal]) and (c='<') and OnNewline then begin
-        pm := pmTag;
-        s := '';
-        continue;
-      end;
-
-      if (pm = pmTag) and (c='>') then begin
-        pm := pmNormal;
-        OnTag(s);
-       //Если на тэге кончается строчка, то съедаем перенос
-        if r.PeekChar(nc) and ((nc=#13) or (nc=#10)) then begin
-          r.ReadChar(nc);
-          if (nc=#13) and r.PeekChar(nc) and (nc=#10) then
-            r.ReadChar(nc);
+        if (pm = pmRuby) then begin
+          s := s + c;
+          if Length(s)>MAX_RUBY_LENGTH then begin
+            pm := pmNormal;
+            OnRuby('', ''); //register as empty
+            writeln(ErrOutput, 'Broken ruby found with no closing @ line '+IntToStr(LineCnt));
+            if PreRuby<>'' then begin
+              OnChar('｜');
+              OnStr(PreRuby);
+            end;
+            OnChar('《'); //have to guess that was legal
+            OnStr(s);
+            PreRuby := '';
+          end;
+          continue;
         end;
-        continue;
-      end;
 
-      if (pm = pmTag) then begin
-        s := s + c;
-        if Length(s)>MAX_TAG_LENGTH then begin
+        if (pm in [pmNormal]) and (c='<') and (prevchar=#00) then begin
+          pm := pmTag;
+          s := '';
+          continue;
+        end;
+
+        if (pm = pmTag) and (c='>') then begin
           pm := pmNormal;
-          OnTag(''); //register as empty
-          writeln(ErrOutput, 'Broken tag found with no closing @ line '+IntToStr(LineCnt));
-          OnChar('<');
-          OnStr(s);
+          OnTag(s);
+          continue;
         end;
-        continue;
-      end;
+
+        if (pm = pmTag) then begin
+          s := s + c;
+          if Length(s)>MAX_TAG_LENGTH then begin
+            pm := pmNormal;
+            OnTag(''); //register as empty
+            writeln(ErrOutput, 'Broken tag found with no closing @ line '+IntToStr(LineCnt));
+            OnChar('<');
+            OnStr(s);
+          end;
+          continue;
+        end;
 
 
-      if (pm in [pmNormal]) and (c='［')
-      and r.PeekChar(nc) and (nc='＃') then begin
-        r.ReadChar(nc);
-        pm := pmComment;
-        s := '';
-        continue;
-      end;
+        if (pm in [pmNormal]) and (c='＃') and (prevchar='［') then begin
+          pm := pmComment;
+          s := '';
+          continue;
+        end;
 
-      if (pm = pmComment) and (c='］') then begin
-        pm := pmNormal;
-        OnComment(s);
-        continue;
-      end;
-
-      if (pm = pmComment) then begin
-        s := s + c;
-        if Length(s)>MAX_COMMENT_LENGTH then begin
+        if (pm = pmComment) and (c='］') then begin
           pm := pmNormal;
-          OnComment(''); //register as empty
-          writeln(ErrOutput, 'Broken comment found with no closing @ line '+IntToStr(LineCnt));
-          OnStr('［＃');
-          OnStr(s);
+          OnComment(s);
+          continue;
         end;
-        continue;
+
+        if (pm = pmComment) then begin
+          s := s + c;
+          if Length(s)>MAX_COMMENT_LENGTH then begin
+            pm := pmNormal;
+            OnComment(''); //register as empty
+            writeln(ErrOutput, 'Broken comment found with no closing @ line '+IntToStr(LineCnt));
+            OnStr('［＃');
+            OnStr(s);
+          end;
+          continue;
+        end;
+
+       //Finally, more broken stuff detection
+        if c='》' then
+          writeln(ErrOutput, 'Broken ruby found with no opening @ line '+IntToStr(LineCnt));
+       //can't test for > since it's used in comparisons and smiles
+       //can't test for ］ since there could be legal ［s without ＃
+
+        OnChar(c);
       end;
-
-     //Finally, more broken stuff detection
-      if c='》' then
-        writeln(ErrOutput, 'Broken ruby found with no opening @ line '+IntToStr(LineCnt));
-     //can't test for > since it's used in comparisons and smiles
-     //can't test for ］ since there could be legal ［s without ＃
-
-      OnChar(c);
-
-      if (c<>#13) and (c<>#10) then
-        OnNewline := false;
     end;
 
   finally
@@ -273,7 +254,7 @@ end;
 procedure TAozoraStripParser.Parse(ASource: TStream; AOutput: TStream);
 begin
   FreeAndNil(FWriter); //if we had one
-  FWriter := TCharWriter.Create(AOutput, false);
+  FWriter := WriteToStream(AOutput, false, TUTF16Encoding);
   inherited Parse(ASource);
 end;
 

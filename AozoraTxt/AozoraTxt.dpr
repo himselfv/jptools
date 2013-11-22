@@ -99,13 +99,13 @@ end;
 procedure Run_Strip(InputFile, OutputFile: string);
 var p: TAozoraStripParser;
   outp: TStream;
-  Bom: WideChar;
+  Bom: AnsiString;
 begin
   p := TAozoraStripParser.Create;
   if OutputFile<>'' then begin
     outp := TFileStream.Create(OutputFile, fmCreate);
     Bom := BOM_UTF16LE;
-    outp.Write(Bom, SizeOf(Bom));
+    outp.Write(Bom[1], Length(Bom));
   end else
     outp := THandleStream.Create(GetStdHandle(STD_OUTPUT_HANDLE));
   p.Parse(TFileStream.Create(InputFile, fmOpenRead), outp);
