@@ -29,7 +29,10 @@ type
 
 procedure TYarxiConvert.ShowUsage;
 begin
-  writeln('Usage: '+ProgramName);
+  writeln('Usage: '+ProgramName+' <command>');
+  writeln('Supported commands:');
+  writeln('  kanji = print kanji table');
+  writeln('  tango = print tango table');
 end;
 
 function TYarxiConvert.HandleSwitch(const s: string; var i: integer): boolean;
@@ -45,6 +48,9 @@ end;
 
 procedure TYarxiConvert.Run;
 begin
+  if Command='' then
+    BadUsage();
+
   Yarxi := TYarxiDB.Create('yarxi.db');
   Yarxi.KanaTran.LoadFromFile('yarxi.kcs');
 
