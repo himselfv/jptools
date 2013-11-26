@@ -10,7 +10,8 @@ uses
   ConsoleToolbox,
   JWBIO,
   FastArray,
-  Yarxi in 'Yarxi.pas';
+  Yarxi in 'Yarxi.pas',
+  YarxiFmt;
 
 type
   TYarxiConvert = class(TCommandLineApp)
@@ -76,8 +77,11 @@ begin
     Output.WriteLn(
       FastArray.Join(k.RusNicks, '/') + #09
         + k.JoinOns + #09 + Yarxi.KanaTran.RomajiToKana('K'+k.JoinOns(' '), []) + #09
-        + k.KunYomi + #09 + Yarxi.KanaTran.RomajiToKana('H'+k.KunYomi, []) + #09
-        + k.Russian
+        + k.RawKunYomi + #09
+        + DumpKanjiKunYomi(k.KunYomi) + #09
+//        + Yarxi.KanaTran.RomajiToKana('H'+k.KunYomi, []) + #09
+        + k.Russian + #09
+        + DumpKanjiCompounds(k.Compounds)
     );
 end;
 

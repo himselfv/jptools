@@ -2,8 +2,30 @@ unit YarxiFmt;
 { Форматы, используемые в базе данных Яркси. Перед чтением убедитесь, что рядом
  нет женщин и детей. }
 
+{$DEFINE STRICT}
+{ Допускать только те вольности в формате, которые действительно встречались
+ в базе Яркси. Рекомендуется.
+ Без этого парсер старается быть терпимым к ошибкам. }
+
 interface
 uses SysUtils, Classes, UniStrUtils, FastArray;
+
+{ Полезные функции для работы со строками }
+
+function pop(var s: string; const sep: char): string;
+function ifpop(var s: string; const sep: char): string;
+function spancopy(ps, pe: PChar): string;
+function Split(const s: string; const sep: char): TStringArray; inline;
+function Unquote(const s: string; op, ed: char): string;
+function TryUnquote(var s: string; op, ed: char): boolean;
+
+{ Функции посылают сюда жалобы на жизнь. В дальнейшем надо сделать нормальный
+ сборщик жалоб, как в WarodaiConvert. }
+
+procedure Complain(msg: string); overload;
+procedure Complain(source, msg: string); overload;
+procedure Complain(source, msg, data: string); overload;
+
 
 { Во всех полях используется "обезъяний русский":
     <a   =>   a
@@ -18,7 +40,6 @@ uses SysUtils, Classes, UniStrUtils, FastArray;
 }
 
 function DecodeRussian(const inp: string): string;
-
 
 {
 Поле Kanji.RusNick:
@@ -49,7 +70,7 @@ function DecodeRussian(const inp: string): string;
 type
   TRusNicks = TArray<string>;
 
-function DecodeKanjiRusNick(const inp: string): TRusNicks;
+function ParseKanjiRusNick(const inp: string): TRusNicks;
 
 {
 Поле Kanji.OnYomi:
@@ -65,10 +86,195 @@ type
   POnYomiEntry = ^TOnYomiEntry;
   TOnYomiEntries = array of TOnYomiEntry; //пустой => кокудзи
 
-function SplitOnYomi(const inp: string): TOnYomiEntries;
+function ParseOnYomi(const inp: string): TOnYomiEntries;
+
+{
+Поле: Kanji.KunYomi, блок NameReadings.
+Формат: [в именах]|[также]|[реже]-[скрыто]
+Любые блоки могут отсутствовать, но появляются последовательно:
+  [в именах]||[реже]
+Исключение: || в начале - то же, что |           (#4)
+Исключение: -[скрыто] обрывает цепочку.
+  [в именах]-[скрыто]|[всё равно скрыто]
+  [в именах]-[скрыто]-[скрыто]
+Формат блока: $чтение$чтение$
+В мягком режиме:
+  - деление запятой $чтение,чтение$ (яркси это терпит)
+  - отсутствие $рамок$
+}
+type
+  TNameReadingType = (
+    ntCommon,       //обычные чтения
+    ntOccasional,   //"также"
+    ntRare,         //"реже"
+    ntHidden        //скрытые, только для поиска
+  );
+  TNameReading = record
+    _type: TNameReadingType;
+    text: string;
+  end;
+  PNameReading = ^TNameReading;
+  TNameReadings = array of TNameReading;
+
+function ParseKanjiNameReadings(const inp: string): TNameReadings;
+function DumpKanjiNameReadings(const AReadings: TNameReadings): string;
+function DumpKanjiNameReading(const AReading: TNameReading): string;
+
+{
+Поле: Kanji.KunYomi. Работает в сочетании с Russian и Compounds.
+Формат: [куны]|[чтения в сочетаниях]|[чтения в именах|c|палками]
+Любые блоки могут отсутствовать, однако появляются последовательно. Блок может
+быть пуст.
+}
+type
+  TKunYomiReadingSet = record
+  end;
+  PKunYomiReadingSet = ^TKunYomiReadingSet;
+
+  TCompoundReadingSet = record
+  end;
+  PCompoundReadingSet = ^TCompoundReadingSet;
+
+  TKanjiReadings = record
+    kun: array of TKunYomiReadingSet;
+    compound: array of TCompoundReadingSet;
+    name: TNameReadings;
+  end;
+  PKanjiReadings = ^TKanjiReadings;
+
+function ParseKanjiKunYomi(const inp: string): TKanjiReadings;
+function DumpKanjiKunYomi(const AReadings: TKanjiReadings): string;
+
+{
+Поле: Kanji.Compounds. Работает в сочетании с KunYomi и Russian.
+Формат: 1:48667,N:8502@,N:2280,N:2279,N:55637,[блок]:[слово][флаги]
+Специальный блок N означает "В именах".
+Флаги:
+ @   по соответствующему чтению (обычно не входящему в общий список) данный
+     иероглиф может читаться только в одиночку и никогда в сочетаниях с другими
+     знаками (отметить значение флажком 1)
+ ^   нестандартное чтение (отметить треугольничком)
+ *   нестандартное значение (отметить ромбиком)
+ &   нестандартное чтение и значение (отметить и ромбиком, и треугольничком,
+     а также отступить немного после предыдущего слова)
+ #   с виду никак не влияет, может сочетаться с другими
+Фигурные скобки (в комментарии заменил на квадратные) означают одно из нескольких
+заранее известных сообщений для конкретных кандзи:
+  1:6590,1:6579,1:[27]
+Cохраняем в msgref, wordref при этом пуст.
+# Решётка в начале списка означает, что список длинный и его нужно показывать
+свёрнуто (#54,#67).
+
+Выбросы:
+1. В ограниченном числе случаев встречается _!мусор_мусор_1:нормальная,2:статья.
+2. Встречается и _какое-то_число_1:нормальная,2:статья.
+3. Иногда: "=мусор мусор" вместо статьи (впрочем, статья пустая).
+}
+type
+  TCompoundFlag = (cfIrregularReading, cfIrregularMeaning, cfSingular, cfHashtag);
+  TCompoundFlags = set of TCompoundFlag;
+  TCompoundEntry = record
+    block: integer; //special purpose blocks are negative
+    wordref: integer;
+    msgref: integer;
+    flags: TCompoundFlags;
+  end;
+  PCompoundEntry = ^TCompoundEntry;
+  TCompoundEntries = array of TCompoundEntry;
+
+const //special purpose blocks
+  BLOCK_NAMES = -1;
+
+function ParseKanjiCompounds(inp: string): TCompoundEntries;
+function DumpKanjiCompounds(const ACompounds: TCompoundEntries): string;
+function DumpKanjiCompound(const ACompound: TCompoundEntry): string;
+
 
 implementation
 uses StrUtils;
+
+{ Полезные функции для работы со строками }
+
+{ Извлекает начало строки до разделителя; уничтожает разделитель. Если
+ разделителя нет, извлекает остаток строки. }
+function pop(var s: string; const sep: char): string;
+var i: integer;
+begin
+  i := pos(sep, s);
+  if i<=0 then begin
+    Result := s;
+    s := '';
+  end else begin
+    Result := copy(s, 1, i-1);
+    delete(s, 1, i);
+  end;
+end;
+
+{ То же, но когда разделителя нет, ничего не возвращает и оставляет хвост, как
+ есть. }
+function ifpop(var s: string; const sep: char): string;
+var i: integer;
+begin
+  i := pos(sep, s);
+  if i<=0 then
+    Result := ''
+  else begin
+    Result := copy(s, 1, i-1);
+    delete(s, 1, i);
+  end;
+end;
+
+{ Копирует набор символов с ps по pe не включительно }
+function spancopy(ps, pe: PChar): string;
+var i: integer;
+begin
+  SetLength(Result, (NativeUInt(pe)-NativeUInt(ps)) div SizeOf(char));
+  for i := 1 to Length(Result) do begin
+    Result[i] := ps^;
+    Inc(ps);
+  end;
+end;
+
+{ Чуть более удобная обёртка для функции StrSplit }
+function Split(const s: string; const sep: char): TStringArray;
+begin
+  Result := StrSplit(PChar(s), sep);
+end;
+
+function Unquote(const s: string; op, ed: char): string;
+begin
+  if (Length(s)>=2) and (s[1]=op) and (s[Length(s)]=ed) then
+    Result := copy(s,2,Length(s)-2);
+end;
+
+function TryUnquote(var s: string; op, ed: char): boolean;
+begin
+  Result := (Length(s)>=2) and (s[1]=op) and (s[Length(s)]=ed);
+  if Result then
+    s := copy(s,2,Length(s)-2);
+end;
+
+
+
+{ Сборщик жалоб }
+
+procedure Complain(msg: string);
+begin
+  writeln(ErrOutput, msg);
+end;
+
+procedure Complain(source, msg: string);
+begin
+  writeln(ErrOutput, source+': '+msg);
+end;
+
+procedure Complain(source, msg, data: string);
+begin
+  writeln(ErrOutput, source+': '+msg);
+  writeln(ErrOutput, '  '+data);
+end;
+
+
 
 { Заменяет весь обезъяний русский в тексте нормальными русскими буквами. }
 function DecodeRussian(const inp: string): string;
@@ -125,7 +331,7 @@ end;
 { Разбирает строку и составляет список всех названий кандзи.
  Альтернативы выбрасывает. Флаги непереноса строки выбрасывает. Акценты выбрасывает.
  Можно было бы разобрать, но НААААФИИИГ. }
-function DecodeKanjiRusNick(const inp: string): TRusNicks;
+function ParseKanjiRusNick(const inp: string): TRusNicks;
 var tmp: string;
   i_pos: integer;
   i, i_start: integer;
@@ -166,7 +372,7 @@ begin
 end;
 
 
-function SplitOnYomi(const inp: string): TOnYomiEntries;
+function ParseOnYomi(const inp: string): TOnYomiEntries;
 var i_beg, i_pos, cnt: integer;
 
   procedure PostWord;
@@ -219,6 +425,225 @@ begin
     Inc(i_pos);
   end;
   PostWord;
+end;
+
+{ Разбирает поле Kanji.KunYomi. Полученную информацию необходимо совместить
+ с данными из .Russian и .Compounds }
+function ParseKanjiKunYomi(const inp: string): TKanjiReadings;
+var ln, block: string;
+begin
+  ln := inp;
+  block := pop(ln, '|');
+ //Result.kun := ParseKanjiKunReadings(block);
+  block := pop(ln, '|');
+ //Result.compound := ParseKanjiCompoundReadings(block);
+ //The rest is names
+  Result.name := ParseKanjiNameReadings(ln);
+end;
+
+function DumpKanjiKunYomi(const AReadings: TKanjiReadings): string;
+begin
+  Result := 'Names: '+DumpKanjiNameReadings(AReadings.name);
+end;
+
+{ Разбирает блоки чтений кандзи в именах из поля Kanji.KunYomi }
+function ParseKanjiNameReadings(const inp: string): TNameReadings;
+var blockType: TNameReadingType;
+  pc, ps: PChar;
+  readingSetOpen: boolean; //видели $ после прошлого | или -
+
+ //ps должен стоять на начальном символе $, pc на конечном.
+  procedure CommitReading;
+  begin
+    if ps>=pc then exit;
+    if (ps+1=pc) and (ps^=' ') then
+      exit; //Яркси любит такие пустые пробельные позиции, но по сути не нужны
+    SetLength(Result, Length(Result)+1);
+    Result[Length(Result)-1]._type := blockType;
+    Result[Length(Result)-1].text := spancopy(ps,pc);
+  end;
+
+begin
+  SetLength(Result, 0);
+  if inp='' then exit;
+
+  blockType := ntCommon;
+  readingSetOpen := false;
+  pc := PChar(inp);
+  if pc^='|' then Inc(pc); // иногда лишний | в начале, см. формат
+  ps := pc;
+  while pc^<>#00 do begin
+    if pc^='|' then begin
+     {$IFDEF STRICT}
+      if ps<pc then
+        raise Exception.Create('ParseKanjiNameReadings: No closing tag for a reading');
+     {$ELSE}
+      CommitReading;
+     {$ENDIF}
+      case blockType of
+        ntCommon: blockType := ntOccasional;
+        ntOccasional: blockType := ntRare;
+      else //rare or hidden
+        raise Exception.Create('ParseKanjiNameReadings: additional | not allowed.');
+      end;
+      ps := pc+1;
+      readingSetOpen := false;
+    end else
+
+   //note: могут быть и как часть текста: $asd$-bsd$  $asd-$bsd$
+    if (pc^='-') and ((pc+1)^='$') and (ps>=pc) then begin
+     {$IFDEF STRICT}
+      if ps<pc then
+        raise Exception.Create('ParseKanjiNameReadings: No closing tag for a reading');
+     {$ELSE}
+      CommitReading;
+     {$ENDIF}
+      blockType := ntHidden;
+      ps := pc+1;
+      readingSetOpen := false;
+    end else
+
+    if pc^='$' then begin
+      CommitReading; //если это переключатель
+      readingSetOpen := true;
+      ps := pc+1;
+    end else
+
+    begin
+     {$IFDEF STRICT}
+      if not ReadingSetOpen then
+        raise Exception.Create('ParseKanjiNameReadings: No opening tag for a reading');
+     {$ENDIF}
+    end;
+
+    Inc(pc);
+  end;
+
+  CommitReading;
+end;
+
+function DumpKanjiNameReadings(const AReadings: TNameReadings): string;
+var i: integer;
+begin
+  if Length(AReadings)<=0 then begin
+    Result := '';
+    exit;
+  end;
+  Result := DumpKanjiNameReading(AReadings[0]);
+  for i := 1 to Length(AReadings)-1 do
+    Result := Result + ', ' + DumpKanjiNameReading(AReadings[i]);
+end;
+
+function DumpKanjiNameReading(const AReading: TNameReading): string;
+begin
+  case AReading._type of
+    ntCommon: Result := 'C:';
+    ntOccasional: Result := 'O:';
+    ntRare: Result := 'R:';
+    ntHidden: Result := 'H:';
+  else
+    raise Exception.Create('DumpKanjiNameReading: Unexpected name reading type');
+  end;
+  Result := Result + AReading.text;
+end;
+
+
+{ Разбирает поле Kanji.Compounds. Полученную информацию необходимо совместить
+ с данными из .KunYomi и .Russian }
+function ParseKanjiCompounds(inp: string): TCompoundEntries;
+var parts: TStringArray;
+  i: integer;
+  block_id: string;
+  ch: char;
+begin
+ //Есть ровно ограниченное число случаев, когда по какой-то причине копия KunYomi
+ //вываливается в Compounds. Все они начинаются с _ и мусор заканчивается _
+  if (Length(inp)>0) and (inp[1]='_') then begin
+    Complain('ParseKanjiCompounds', 'KunYomi leak', inp);
+    parts := Split(inp, '_'); //боже помоги
+    if Length(parts)>0 then
+      inp := parts[Length(parts)-1];
+  end;
+
+ //Изредка вместо всей статьи фигня вида "=мусор мусор"
+  if (Length(inp)>0) and (inp[1]='=') then begin
+    Complain('ParseKanjiCompounds', '= operator leak', inp);
+    inp := '';
+  end;
+
+  parts := Split(inp, ',');
+  SetLength(Result, Length(parts));
+  if Length(parts)<=0 then exit; //меньше проверок
+
+ //Решётка в начале списка означает, что список длинный и его нужно показывать
+ //сжато. Игнорируем.
+  if (Length(parts[0])>0) and (parts[0][1]='#') then
+    delete(parts[0],1,1);
+
+  for i := 0 to Length(parts)-1 do begin
+    block_id := ifpop(parts[i], ':');
+    if block_id='' then
+      raise Exception.Create('ParseKanjiCompounds: no block_id separator.');
+   //Блок может быть и двухциферным, 10+
+    if block_id='N' then
+      Result[i].block := BLOCK_NAMES
+    else
+      Result[i].block := StrToInt(block_id);
+
+    Result[i].flags := [];
+    while Length(parts[i])>0 do begin
+      ch := parts[i][Length(parts[i])];
+      if ch='@' then
+        Result[i].flags := Result[i].flags + [cfSingular]
+      else
+      if ch='^' then
+        Result[i].flags := Result[i].flags + [cfIrregularReading]
+      else
+      if ch='*' then
+        Result[i].flags := Result[i].flags + [cfIrregularMeaning]
+      else
+      if ch='&' then
+        Result[i].flags := Result[i].flags + [cfIrregularReading, cfIrregularMeaning]
+      else
+      if ch='#' then
+        Result[i].flags := Result[i].flags + [cfHashtag]
+      else
+        break;
+      delete(parts[i], Length(parts[i]), 1);
+    end;
+
+    if tryunquote(parts[i],'{','}') then
+      Result[i].msgref := StrToInt(parts[i])
+    else
+      Result[i].wordref := StrToInt(parts[i]);
+  end;
+end;
+
+function DumpKanjiCompounds(const ACompounds: TCompoundEntries): string;
+var i: integer;
+begin
+  if Length(ACompounds)<=0 then begin
+    Result := '';
+    exit;
+  end;
+  Result := DumpKanjiCompound(ACompounds[0]);
+  for i := 1 to Length(ACompounds)-1 do
+    Result := Result + ', ' + DumpKanjiCompound(ACompounds[i]);
+end;
+
+function DumpKanjiCompound(const ACompound: TCompoundEntry): string;
+begin
+  Result := IntToStr(ACompound.block)+':'+IntToStr(ACompound.wordref);
+  if ACompound.msgref>0 then
+    Result := Result+':'+IntToStr(ACompound.msgref);
+  if cfIrregularReading in ACompound.flags then
+    Result := Result + '^';
+  if cfIrregularMeaning in ACompound.flags then
+    Result := Result + '*';
+  if cfSingular in ACompound.flags then
+    Result := Result + '@';
+  if cfHashtag in ACompound.flags then
+    Result := Result + '#';
 end;
 
 end.

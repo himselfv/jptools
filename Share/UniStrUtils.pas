@@ -987,6 +987,11 @@ function StrSplitA(s: PAnsiChar; sep: AnsiChar): TAnsiStringArray;
 var pc: PAnsiChar;
   i: integer;
 begin
+  if (s=nil) or (s^=#00) then begin
+    SetLength(Result, 0);
+    exit;
+  end;
+
  //Count the number of separator characters
   i := 1;
   pc := s;
@@ -1019,6 +1024,11 @@ function StrSplitW(s: PUniChar; sep: UniChar): TUniStringArray;
 var pc: PUniChar;
   i: integer;
 begin
+  if (s=nil) or (s^=#00) then begin
+    SetLength(Result, 0);
+    exit;
+  end;
+
  //Count the number of separator characters
   i := 1;
   pc := s;

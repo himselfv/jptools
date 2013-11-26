@@ -22,9 +22,11 @@ type
     RusNicks: TRusNicks;
     RawRusNick: string;
     OnYomi: TOnYomiEntries;
-    KunYomi: string;
+    KunYomi: TKanjiReadings;
+    RawKunYomi: string;
     Russian: string;
-    Compounds: string;
+    Compounds: TCompoundEntries;
+    RawCompounds: string;
     function JoinOns(const sep: string=' '): string;
   end;
   PKanjiRecord = ^TKanjiRecord;
@@ -111,18 +113,20 @@ begin
   Result.Nomer := rec.Nomer;
   Result.Kanji := WideChar(word(rec.Uncd));
   Result.RawRusNick := DecodeRussian(rec.RusNick);
-  Result.RusNicks := DecodeKanjiRusNick(Result.RawRusNick);
+  Result.RusNicks := ParseKanjiRusNick(Result.RawRusNick);
   if Result.RusNicks.Length>0 then
     Result.RusNick := Result.RusNicks[0]
   else
     Result.RusNick := '';
-  Result.OnYomi := SplitOnYomi(rec.OnYomi);
+  Result.OnYomi := ParseOnYomi(rec.OnYomi);
  //ѕреобразуем после сплита, т.к. может затронуть разметочные символы типа тире
   for i := 0 to Length(Result.OnYomi)-1 do
     Result.OnYomi[i].kana := KanaTran.RomajiToKana(Result.OnYomi[i].kana, []);
-  Result.KunYomi := rec.KunYomi;
+  Result.RawKunYomi := rec.KunYomi;
+  Result.KunYomi := ParseKanjiKunYomi(Result.RawKunYomi);
   Result.Russian := DecodeRussian(rec.Russian);
-  Result.Compounds := rec.Compounds;
+  Result.RawCompounds := rec.Compounds;
+  Result.Compounds := ParseKanjiCompounds(Result.RawCompounds);
 end;
 
 function TYarxiDB.ParseTango(const Rec: variant): TTangoRecord;
