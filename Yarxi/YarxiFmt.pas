@@ -1,16 +1,16 @@
-unit YarxiFmt;
-{ Форматы, используемые в базе данных Яркси. Перед чтением убедитесь, что рядом
- нет женщин и детей. }
+п»їunit YarxiFmt;
+{ Р¤РѕСЂРјР°С‚С‹, РёСЃРїРѕР»СЊР·СѓРµРјС‹Рµ РІ Р±Р°Р·Рµ РґР°РЅРЅС‹С… РЇСЂРєСЃРё. РџРµСЂРµРґ С‡С‚РµРЅРёРµРј СѓР±РµРґРёС‚РµСЃСЊ, С‡С‚Рѕ СЂСЏРґРѕРј
+ РЅРµС‚ Р¶РµРЅС‰РёРЅ Рё РґРµС‚РµР№. }
 
 {$DEFINE STRICT}
-{ Допускать только те вольности в формате, которые действительно встречались
- в базе Яркси. Рекомендуется.
- Без этого парсер старается быть терпимым к ошибкам. }
+{ Р”РѕРїСѓСЃРєР°С‚СЊ С‚РѕР»СЊРєРѕ С‚Рµ РІРѕР»СЊРЅРѕСЃС‚Рё РІ С„РѕСЂРјР°С‚Рµ, РєРѕС‚РѕСЂС‹Рµ РґРµР№СЃС‚РІРёС‚РµР»СЊРЅРѕ РІСЃС‚СЂРµС‡Р°Р»РёСЃСЊ
+ РІ Р±Р°Р·Рµ РЇСЂРєСЃРё. Р РµРєРѕРјРµРЅРґСѓРµС‚СЃСЏ.
+ Р‘РµР· СЌС‚РѕРіРѕ РїР°СЂСЃРµСЂ СЃС‚Р°СЂР°РµС‚СЃСЏ Р±С‹С‚СЊ С‚РµСЂРїРёРјС‹Рј Рє РѕС€РёР±РєР°Рј. }
 
 interface
 uses SysUtils, Classes, UniStrUtils, FastArray;
 
-{ Полезные функции для работы со строками }
+{ РџРѕР»РµР·РЅС‹Рµ С„СѓРЅРєС†РёРё РґР»СЏ СЂР°Р±РѕС‚С‹ СЃРѕ СЃС‚СЂРѕРєР°РјРё }
 
 function pop(var s: string; const sep: char): string;
 function trypop(var s: string; const sep: char): string;
@@ -20,46 +20,49 @@ function Split(const s: string; const sep: char): TStringArray; inline;
 function Unquote(const s: string; op, ed: char): string;
 function TryUnquote(var s: string; op, ed: char): boolean;
 
-{ Функции посылают сюда жалобы на жизнь. В дальнейшем надо сделать нормальный
- сборщик жалоб, как в WarodaiConvert. }
+function IsLatin(const ch: char): boolean; inline;
+function IsUpperCaseLatin(const ch: char): boolean; inline;
+
+{ Р¤СѓРЅРєС†РёРё РїРѕСЃС‹Р»Р°СЋС‚ СЃСЋРґР° Р¶Р°Р»РѕР±С‹ РЅР° Р¶РёР·РЅСЊ. Р’ РґР°Р»СЊРЅРµР№С€РµРј РЅР°РґРѕ СЃРґРµР»Р°С‚СЊ РЅРѕСЂРјР°Р»СЊРЅС‹Р№
+ СЃР±РѕСЂС‰РёРє Р¶Р°Р»РѕР±, РєР°Рє РІ WarodaiConvert. }
 
 procedure Complain(msg: string); overload;
 procedure Complain(source, msg: string); overload;
 procedure Complain(source, msg, data: string); overload;
 
 
-{ Во всех полях используется "обезъяний русский":
+{ Р’Рѕ РІСЃРµС… РїРѕР»СЏС… РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ "РѕР±РµР·СЉСЏРЅРёР№ СЂСѓСЃСЃРєРёР№":
     <a   =>   a
-    <b   =>   б
-    <c   =>   в
+    <b   =>   Р±
+    <c   =>   РІ
 
-Обычно всё пишется маленькими, а заглавная буква первой делается автоматически.
-Но если записано имя собственное, то заглавная прописывается явно.
-Заглавные получаются из обычных так: <c -> <C. Для специальных букв заглавные
-смотри ниже по табличке.
-Цифры не кодируются.
+РћР±С‹С‡РЅРѕ РІСЃС‘ РїРёС€РµС‚СЃСЏ РјР°Р»РµРЅСЊРєРёРјРё, Р° Р·Р°РіР»Р°РІРЅР°СЏ Р±СѓРєРІР° РїРµСЂРІРѕР№ РґРµР»Р°РµС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё.
+РќРѕ РµСЃР»Рё Р·Р°РїРёСЃР°РЅРѕ РёРјСЏ СЃРѕР±СЃС‚РІРµРЅРЅРѕРµ, С‚Рѕ Р·Р°РіР»Р°РІРЅР°СЏ РїСЂРѕРїРёСЃС‹РІР°РµС‚СЃСЏ СЏРІРЅРѕ.
+Р—Р°РіР»Р°РІРЅС‹Рµ РїРѕР»СѓС‡Р°СЋС‚СЃСЏ РёР· РѕР±С‹С‡РЅС‹С… С‚Р°Рє: <c -> <C. Р”Р»СЏ СЃРїРµС†РёР°Р»СЊРЅС‹С… Р±СѓРєРІ Р·Р°РіР»Р°РІРЅС‹Рµ
+СЃРјРѕС‚СЂРё РЅРёР¶Рµ РїРѕ С‚Р°Р±Р»РёС‡РєРµ.
+Р¦РёС„СЂС‹ РЅРµ РєРѕРґРёСЂСѓСЋС‚СЃСЏ.
 }
 
 function DecodeRussian(const inp: string): string;
 
 {
-Поле Kanji.RusNick:
-Формат:  человеколюбие*косточка*вишнёвая берёза
-*#* - альтернативные записи (ставятся ко всему набору):
-  дешёвый*#*дешевый*
-  лёгкий*обмен*#*легкий*обмен**  --- две звёздочки в конце
-*_* - там, где стоит, строка не переносится:
-  речь*_*различать*_*лепесток*косичка*_*управление*
-Ударения:
-  замок*!2  --- ударение на 2-й букве
-  ах!  --- просто восклицательный знак
-Курсив? (для названий радикалов):
-  ''капля''
-  ''лёд''*#*''лед''  --- совместно с альтернативой
-  императорское ''мы''  --- просто кавычки
+РџРѕР»Рµ Kanji.RusNick:
+Р¤РѕСЂРјР°С‚:  С‡РµР»РѕРІРµРєРѕР»СЋР±РёРµ*РєРѕСЃС‚РѕС‡РєР°*РІРёС€РЅС‘РІР°СЏ Р±РµСЂС‘Р·Р°
+*#* - Р°Р»СЊС‚РµСЂРЅР°С‚РёРІРЅС‹Рµ Р·Р°РїРёСЃРё (СЃС‚Р°РІСЏС‚СЃСЏ РєРѕ РІСЃРµРјСѓ РЅР°Р±РѕСЂСѓ):
+  РґРµС€С‘РІС‹Р№*#*РґРµС€РµРІС‹Р№*
+  Р»С‘РіРєРёР№*РѕР±РјРµРЅ*#*Р»РµРіРєРёР№*РѕР±РјРµРЅ**  --- РґРІРµ Р·РІС‘Р·РґРѕС‡РєРё РІ РєРѕРЅС†Рµ
+*_* - С‚Р°Рј, РіРґРµ СЃС‚РѕРёС‚, СЃС‚СЂРѕРєР° РЅРµ РїРµСЂРµРЅРѕСЃРёС‚СЃСЏ:
+  СЂРµС‡СЊ*_*СЂР°Р·Р»РёС‡Р°С‚СЊ*_*Р»РµРїРµСЃС‚РѕРє*РєРѕСЃРёС‡РєР°*_*СѓРїСЂР°РІР»РµРЅРёРµ*
+РЈРґР°СЂРµРЅРёСЏ:
+  Р·Р°РјРѕРє*!2  --- СѓРґР°СЂРµРЅРёРµ РЅР° 2-Р№ Р±СѓРєРІРµ
+  Р°С…!  --- РїСЂРѕСЃС‚Рѕ РІРѕСЃРєР»РёС†Р°С‚РµР»СЊРЅС‹Р№ Р·РЅР°Рє
+РљСѓСЂСЃРёРІ? (РґР»СЏ РЅР°Р·РІР°РЅРёР№ СЂР°РґРёРєР°Р»РѕРІ):
+  ''РєР°РїР»СЏ''
+  ''Р»С‘Рґ''*#*''Р»РµРґ''  --- СЃРѕРІРјРµСЃС‚РЅРѕ СЃ Р°Р»СЊС‚РµСЂРЅР°С‚РёРІРѕР№
+  РёРјРїРµСЂР°С‚РѕСЂСЃРєРѕРµ ''РјС‹''  --- РїСЂРѕСЃС‚Рѕ РєР°РІС‹С‡РєРё
 
-Ещё встречается:
-  -ха-  --- ничего не значит, отображается, как есть
+Р•С‰С‘ РІСЃС‚СЂРµС‡Р°РµС‚СЃСЏ:
+  -С…Р°-  --- РЅРёС‡РµРіРѕ РЅРµ Р·РЅР°С‡РёС‚, РѕС‚РѕР±СЂР°Р¶Р°РµС‚СЃСЏ, РєР°Рє РµСЃС‚СЊ
 }
 type
   TRusNicks = TArray<string>;
@@ -67,93 +70,87 @@ type
 function ParseKanjiRusNick(const inp: string): TRusNicks;
 
 {
-Поле Kanji.OnYomi:
-Формат: *kana*;*kana**;*kana*
-Если в конце две звёздочки, чтение малоупотребляемое.
-Строка пустая или стоит тире - кокудзи.
+РџРѕР»Рµ Kanji.OnYomi:
+Р¤РѕСЂРјР°С‚: *kana*;*kana**;*kana*
+Р•СЃР»Рё РІ РєРѕРЅС†Рµ РґРІРµ Р·РІС‘Р·РґРѕС‡РєРё, С‡С‚РµРЅРёРµ РјР°Р»РѕСѓРїРѕС‚СЂРµР±Р»СЏРµРјРѕРµ.
+РЎС‚СЂРѕРєР° РїСѓСЃС‚Р°СЏ РёР»Рё СЃС‚РѕРёС‚ С‚РёСЂРµ - РєРѕРєСѓРґР·Рё.
 }
 type
   TOnYomiEntry = record
-    kana: string; //если пустое => кокудзи
+    kana: string; //РµСЃР»Рё РїСѓСЃС‚РѕРµ => РєРѕРєСѓРґР·Рё
     rare: boolean;
   end;
   POnYomiEntry = ^TOnYomiEntry;
-  TOnYomiEntries = array of TOnYomiEntry; //пустой => кокудзи
+  TOnYomiEntries = array of TOnYomiEntry; //РїСѓСЃС‚РѕР№ => РєРѕРєСѓРґР·Рё
 
 function ParseOnYomi(const inp: string): TOnYomiEntries;
 
 
 {
-Поле: Kanji.KunYomi, блок KunReadings.
-Формат: 334*aware*awareppoi*kanashii
-Набор цифр определяет, сколько букв покрывает кандзи в соотв. чтении:
-  AWAre*AWAreppoi*KANAshii
-0 означает "покрывает всё слово".
-
-Дальше, разделённые *, идут наборы вариантов чтения кунёми. Обычно в наборе одно
-чтение, если несколько - разделяются "*/*":
-  034*jiji*/*jijii*/*jii*aware*kanashii
-Последняя * не ставится.
-
-&чтение        не показывать, но учитывать при поиске
-чтение*!!*     транскрипция помещается ПОД словом, кол-во транскрипций может быть
-               больше одной (#1196)
-чтение*!R*     то же, что !!, но только для русского словаря
-чтение*Qn*     "и" вместо "й" в русской транскрипции в n-й позиции
-чтение*~n*     n символов от начале чтения вынести перед кандзи (обычно для гонорификов)
-чтение*[3]5*   часть чтения с 4-й буквы по 5-ю опциональна (кв. скобки)
-
-После каждого набора через * могут стоять ссылки в форме:
-  ^01129	см. также
-После каждой тоже ставится *, последняя * не ставится (однако ставится
-закрывающая для набора, если требуется).
-Иногда ссылки не отделены звёздочкой (*hiroi^50859* или *ateru*^12060^11250*)
+ РљР°РЅРґР·Рё: С‡С‚РµРЅРёСЏ РІ СЃР»РѕРІР°С….
 }
 
 type
   TCharLinkRef = record
-   //Одно из двух:
+   //РћРґРЅРѕ РёР· РґРІСѓС…:
     charref: integer;
     text: string;
+    brackets: boolean; //РІ РѕР±С‹С‡РЅС‹С… СЃСЃС‹Р»РєР°С… РЅРµ РїСЂРёСЃСѓС‚СЃС‚РІСѓСЋС‚, С‚РѕР»СЊРєРѕ РІ additional_kanji
   end;
   PCharLinkRef = ^TCharLinkRef;
+  TCharLinkRefChain = array of TCharLinkRef;
   TCharLink = record
     _type: byte;
-    refs: array of TCharLinkRef;
-    wordref: integer; //обычно ноль
+    tlvar: integer; //РЅРѕРјРµСЂ РІР°СЂРёР°РЅС‚Р° РїРµСЂРµРІРѕРґР°, Рє Рє-РјСѓ РїСЂРёРїРёСЃР°РЅР° СЃСЃС‹Р»РєР°. РћР±С‹С‡РЅРѕ РЅРѕР»СЊ
+    refs: TCharLinkRefChain;
+    wordref: integer; //РІРµСЃСЊ РЅР°Р±РѕСЂ С†РµР»РёРєРѕРј СЃСЃС‹Р»Р°РµС‚СЃСЏ РЅР° СЃР»РѕРІРѕ. РћР±С‹С‡РЅРѕ РЅРѕР»СЊ
   end;
   PCharLink = ^TCharLink;
+  TKunReadingFlag = (
+    krIgnoreInSearch, //РЅРµ СѓС‡РёС‚С‹РІР°С‚СЊ РїСЂРё РїРѕРёСЃРєРµ
+    krOnReading       //РѕРЅРЅРѕРµ С‡С‚РµРЅРёРµ РІ СЏРїРѕРЅСЃРєРѕРј СЃР»РѕРІРµ (РЅР°РїСЂ. РђРСЂР°СЃРёРё)
+  );
+  TKunReadingFlags = set of TKunReadingFlag;
   TKunReading = record
     text: string;
-    ipos: array of byte; //места, в к-х в транскрипции вместо й должно стоять и.
-    //В дальнейшем нужно скомбинировать эти поля в расширенную транскрипцию типа:
+    ipos: array of byte; //РјРµСЃС‚Р°, РІ Рє-С… РІ С‚СЂР°РЅСЃРєСЂРёРїС†РёРё РІРјРµСЃС‚Рѕ Р№ РґРѕР»Р¶РЅРѕ СЃС‚РѕСЏС‚СЊ Рё.
+    //Р’ РґР°Р»СЊРЅРµР№С€РµРј РЅСѓР¶РЅРѕ СЃРєРѕРјР±РёРЅРёСЂРѕРІР°С‚СЊ СЌС‚Рё РїРѕР»СЏ РІ СЂР°СЃС€РёСЂРµРЅРЅСѓСЋ С‚СЂР°РЅСЃРєСЂРёРїС†РёСЋ С‚РёРїР°:
     //  jii'jii'
-    //Чтобы парсер мог работать по фиксированным правилам (ii'->ии, ii->ий).
-    hidden: boolean;
+    //Р§С‚РѕР±С‹ РїР°СЂСЃРµСЂ РјРѕРі СЂР°Р±РѕС‚Р°С‚СЊ РїРѕ С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Рј РїСЂР°РІРёР»Р°Рј (ii'->РёРё, ii->РёР№).
+    tpos: array of byte; //РјРµСЃС‚Р°, РіРґРµ РЅР°РґРѕ РІСЃС‚Р°РІРёС‚СЊ С‚РёСЂРµ (РЅРµ РјРµРЅСЏСЏ РёРЅРґРµРєСЃР°С†РёРё РѕСЃС‚Р°Р»СЊРЅРѕРіРѕ)
+    flags: TKunReadingFlags;
   end;
   PKunReading = ^TKunReading;
   TKunReadingSetFlag = (
-    kfTranscriptionUnderWord
+    ksHidden,                  //РЅРµ РїРѕРєР°Р·С‹РІР°С‚СЊ, РЅРѕ СѓС‡РёС‚С‹РІР°С‚СЊ РїСЂРё РїРѕРёСЃРєРµ
+    ksTranscriptionUnderWord,
+    ksUsuallyInHiragana,
+    ksWithKurikaeshi,
+    ksUnchecked
   );
   TKunReadingSetFlags = set of TKunReadingSetFlag;
   TKunReadingSet = record
     items: array of TKunReading;
-    prefix_chars: byte; //число символов префикса (до кандзи)
-    main_chars: byte; //префикс + число символов, заменяемых кандзи
-    optional_op: byte; //опциональный блок начинается после ...
-    optional_ed: byte; //опциональный блок кончается после ...
+    prefix_chars: byte; //С‡РёСЃР»Рѕ СЃРёРјРІРѕР»РѕРІ РїСЂРµС„РёРєСЃР° (РґРѕ РєР°РЅРґР·Рё)
+    main_chars: byte; //РїСЂРµС„РёРєСЃ + С‡РёСЃР»Рѕ СЃРёРјРІРѕР»РѕРІ, Р·Р°РјРµРЅСЏРµРјС‹С… РєР°РЅРґР·Рё
+    optional_op: byte; //РѕРїС†РёРѕРЅР°Р»СЊРЅС‹Р№ Р±Р»РѕРє РЅР°С‡РёРЅР°РµС‚СЃСЏ РїРѕСЃР»Рµ ...
+    optional_ed: byte; //РѕРїС†РёРѕРЅР°Р»СЊРЅС‹Р№ Р±Р»РѕРє РєРѕРЅС‡Р°РµС‚СЃСЏ РїРѕСЃР»Рµ ...
     refs: array of TCharLink;
     flags: TKunReadingSetFlags;
+    tail: string; //РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅС‹Р№ С…РІРѕСЃС‚ РІРёРґР° ~СЃСѓСЂСѓ
+    additional_kanji_pos: integer; //С‚РѕС‡РєР° РІСЃС‚Р°РІРєРё РґРѕРї. С†РµРїРѕС‡РєРё РєР°РЅРґР·Рё, РѕР±С‹С‡РЅРѕ 0
+    additional_kanji: TCharLinkRefChain; //РїРѕРєР° С‡С‚Рѕ С‚Р°РєРёРµ Р¶Рµ СЃРІРѕР№СЃС‚РІР°, РєР°Рє РІ СЃСЃС‹Р»РєР°С…
   end;
   PKunReadingSet = ^TKunReadingSet;
   TKunReadings = array of TKunReadingSet;
 
 function ParseKanjiKunReadings(inp: string): TKunReadings;
-procedure ParseCharLink(var pc: PChar; out rset: PKunReadingSet);
+function ParseCharLink(var pc: PChar): TCharLink;
+function ParseAdditionalKanjiChain(var pc: PChar): TCharLinkRefChain;
 
 
 {
-  Кандзи: Чтения в сочетаниях.
+  РљР°РЅРґР·Рё: Р§С‚РµРЅРёСЏ РІ СЃРѕС‡РµС‚Р°РЅРёСЏС….
 }
 type
   TCompoundReadingType = (ctCommon, ctRare);
@@ -175,14 +172,14 @@ function DumpKanjiCompoundReading(const AReading: TCompoundReading): string;
 
 
 {
-  Кандзи: Чтения в именах.
+  РљР°РЅРґР·Рё: Р§С‚РµРЅРёСЏ РІ РёРјРµРЅР°С….
 }
 type
   TNameReadingType = (
-    ntCommon,       //обычные чтения
-    ntOccasional,   //"также"
-    ntRare,         //"реже"
-    ntHidden        //скрытые, только для поиска
+    ntCommon,       //РѕР±С‹С‡РЅС‹Рµ С‡С‚РµРЅРёСЏ
+    ntOccasional,   //"С‚Р°РєР¶Рµ"
+    ntRare,         //"СЂРµР¶Рµ"
+    ntHidden        //СЃРєСЂС‹С‚С‹Рµ, С‚РѕР»СЊРєРѕ РґР»СЏ РїРѕРёСЃРєР°
   );
   TNameReading = record
     _type: TNameReadingType;
@@ -197,12 +194,12 @@ function DumpKanjiNameReading(const AReading: TNameReading): string;
 
 
 {
-  Кандзи: Kanji.Kunyomi
+  РљР°РЅРґР·Рё: Kanji.Kunyomi
 }
 type
   TKanjiReadings = record
-    show_kuns: byte; //показывать n кунов, остальное под кат
-    show_tango: byte; //показывать n танго, остальное под кат
+    show_kuns: byte; //РїРѕРєР°Р·С‹РІР°С‚СЊ n РєСѓРЅРѕРІ, РѕСЃС‚Р°Р»СЊРЅРѕРµ РїРѕРґ РєР°С‚
+    show_tango: byte; //РїРѕРєР°Р·С‹РІР°С‚СЊ n С‚Р°РЅРіРѕ, РѕСЃС‚Р°Р»СЊРЅРѕРµ РїРѕРґ РєР°С‚
     kun: TKunReadings;
     compound: TCompoundReadings;
     name: TNameReadings;
@@ -214,7 +211,7 @@ function DumpKanjiKunYomi(const AReadings: TKanjiReadings): string;
 
 
 {
-  Кандзи: Kanji.Compounds. Работает в сочетании с KunYomi и Russian.
+  РљР°РЅРґР·Рё: Kanji.Compounds. Р Р°Р±РѕС‚Р°РµС‚ РІ СЃРѕС‡РµС‚Р°РЅРёРё СЃ KunYomi Рё Russian.
 }
 type
   TCompoundFlag = (cfIrregularReading, cfIrregularMeaning, cfSingular, cfHashtag);
@@ -239,10 +236,10 @@ function DumpKanjiCompound(const ACompound: TCompoundEntry): string;
 implementation
 uses StrUtils;
 
-{ Полезные функции для работы со строками }
+{ РџРѕР»РµР·РЅС‹Рµ С„СѓРЅРєС†РёРё РґР»СЏ СЂР°Р±РѕС‚С‹ СЃРѕ СЃС‚СЂРѕРєР°РјРё }
 
-{ Извлекает начало строки до разделителя; уничтожает разделитель. Если
- разделителя нет, извлекает остаток строки. }
+{ РР·РІР»РµРєР°РµС‚ РЅР°С‡Р°Р»Рѕ СЃС‚СЂРѕРєРё РґРѕ СЂР°Р·РґРµР»РёС‚РµР»СЏ; СѓРЅРёС‡С‚РѕР¶Р°РµС‚ СЂР°Р·РґРµР»РёС‚РµР»СЊ. Р•СЃР»Рё
+ СЂР°Р·РґРµР»РёС‚РµР»СЏ РЅРµС‚, РёР·РІР»РµРєР°РµС‚ РѕСЃС‚Р°С‚РѕРє СЃС‚СЂРѕРєРё. }
 function pop(var s: string; const sep: char): string;
 var i: integer;
 begin
@@ -256,8 +253,8 @@ begin
   end;
 end;
 
-{ То же, но когда разделителя нет, ничего не возвращает и оставляет хвост, как
- есть. }
+{ РўРѕ Р¶Рµ, РЅРѕ РєРѕРіРґР° СЂР°Р·РґРµР»РёС‚РµР»СЏ РЅРµС‚, РЅРёС‡РµРіРѕ РЅРµ РІРѕР·РІСЂР°С‰Р°РµС‚ Рё РѕСЃС‚Р°РІР»СЏРµС‚ С…РІРѕСЃС‚, РєР°Рє
+ РµСЃС‚СЊ. }
 function trypop(var s: string; const sep: char): string;
 var i: integer;
 begin
@@ -275,7 +272,7 @@ begin
   Result := UniReplaceStr(s, AFrom, ATo);
 end;
 
-{ Копирует набор символов с ps по pe не включительно }
+{ РљРѕРїРёСЂСѓРµС‚ РЅР°Р±РѕСЂ СЃРёРјРІРѕР»РѕРІ СЃ ps РїРѕ pe РЅРµ РІРєР»СЋС‡РёС‚РµР»СЊРЅРѕ }
 function spancopy(ps, pe: PChar): string;
 var i: integer;
 begin
@@ -286,7 +283,7 @@ begin
   end;
 end;
 
-{ Чуть более удобная обёртка для функции StrSplit }
+{ Р§СѓС‚СЊ Р±РѕР»РµРµ СѓРґРѕР±РЅР°СЏ РѕР±С‘СЂС‚РєР° РґР»СЏ С„СѓРЅРєС†РёРё StrSplit }
 function Split(const s: string; const sep: char): TStringArray;
 begin
   Result := StrSplit(PChar(s), sep);
@@ -305,17 +302,27 @@ begin
     s := copy(s,2,Length(s)-2);
 end;
 
+function IsLatin(const ch: char): boolean;
+begin
+  Result := ((ch>='A') and (ch<='Z')) or ((ch>='a') and (ch<='z'));
+end;
 
-{ Проверки }
+function IsUpperCaseLatin(const ch: char): boolean;
+begin
+  Result := (ch>='A') and (ch<='Z');
+end;
 
-procedure Check(ACondition: boolean; AErrorText: string); inline;
+
+{ РџСЂРѕРІРµСЂРєРё }
+
+procedure Check(ACondition: boolean; AErrorText: string = ''); inline;
 begin
   if not ACondition then
     raise Exception.Create(AErrorText);
 end;
 
 
-{ Сборщик жалоб }
+{ РЎР±РѕСЂС‰РёРє Р¶Р°Р»РѕР± }
 
 procedure Complain(msg: string);
 begin
@@ -335,11 +342,11 @@ end;
 
 
 
-{ Заменяет весь обезъяний русский в тексте нормальными русскими буквами. }
+{ Р—Р°РјРµРЅСЏРµС‚ РІРµСЃСЊ РѕР±РµР·СЉСЏРЅРёР№ СЂСѓСЃСЃРєРёР№ РІ С‚РµРєСЃС‚Рµ РЅРѕСЂРјР°Р»СЊРЅС‹РјРё СЂСѓСЃСЃРєРёРјРё Р±СѓРєРІР°РјРё. }
 function DecodeRussian(const inp: string): string;
 const
   eng: string = 'abcdefghijklmnopqrstuvwxyz1234567ABCDEFGHIJKLMNOPQRSTUVWXYZ890!?=+';
-  rus: string = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ';
+  rus: string = 'Р°Р±РІРіРґРµС‘Р¶Р·РёР№РєР»РјРЅРѕРїСЂСЃС‚СѓС„С…С†С‡С€С‰СЉС‹СЊСЌСЋСЏРђР‘Р’Р“Р”Р•РЃР–Р—РР™РљР›РњРќРћРџР РЎРўРЈР¤РҐР¦Р§РЁР©РЄР«Р¬Р­Р®РЇ';
 var pc, po: PChar;
   i: integer;
   found: boolean;
@@ -377,7 +384,7 @@ begin
   SetLength(Result, StrLen(PChar(Result))); //trim
 end;
 
-{ Убирает ''кавычки'' по сторонам RusNick }
+{ РЈР±РёСЂР°РµС‚ ''РєР°РІС‹С‡РєРё'' РїРѕ СЃС‚РѕСЂРѕРЅР°Рј RusNick }
 function KillQuotes(const inp: string): string;
 begin
   if (Length(inp)<4) or (inp[1]<>'''') or (inp[2]<>'''')
@@ -387,9 +394,9 @@ begin
     Result := copy(inp, 3, Length(inp)-4);
 end;
 
-{ Разбирает строку и составляет список всех названий кандзи.
- Альтернативы выбрасывает. Флаги непереноса строки выбрасывает. Акценты выбрасывает.
- Можно было бы разобрать, но НААААФИИИГ. }
+{ Р Р°Р·Р±РёСЂР°РµС‚ СЃС‚СЂРѕРєСѓ Рё СЃРѕСЃС‚Р°РІР»СЏРµС‚ СЃРїРёСЃРѕРє РІСЃРµС… РЅР°Р·РІР°РЅРёР№ РєР°РЅРґР·Рё.
+ РђР»СЊС‚РµСЂРЅР°С‚РёРІС‹ РІС‹Р±СЂР°СЃС‹РІР°РµС‚. Р¤Р»Р°РіРё РЅРµРїРµСЂРµРЅРѕСЃР° СЃС‚СЂРѕРєРё РІС‹Р±СЂР°СЃС‹РІР°РµС‚. РђРєС†РµРЅС‚С‹ РІС‹Р±СЂР°СЃС‹РІР°РµС‚.
+ РњРѕР¶РЅРѕ Р±С‹Р»Рѕ Р±С‹ СЂР°Р·РѕР±СЂР°С‚СЊ, РЅРѕ РќРђРђРђРђР¤РРРР“. }
 function ParseKanjiRusNick(const inp: string): TRusNicks;
 var tmp: string;
   i_pos: integer;
@@ -398,16 +405,16 @@ begin
   Result.Clear;
   tmp := inp;
 
- //Альтернативы нафиг
+ //РђР»СЊС‚РµСЂРЅР°С‚РёРІС‹ РЅР°С„РёРі
   i_pos := pos('*#*',tmp);
   if i_pos>0 then
     delete(tmp,i_pos,MaxInt);
 
- //Сложные случаи сводим к простым
+ //РЎР»РѕР¶РЅС‹Рµ СЃР»СѓС‡Р°Рё СЃРІРѕРґРёРј Рє РїСЂРѕСЃС‚С‹Рј
   tmp := repl(tmp, '*_*', '*');
   tmp := repl(tmp, '**', '*');
 
- //Звёздочки в конце
+ //Р—РІС‘Р·РґРѕС‡РєРё РІ РєРѕРЅС†Рµ
   while (Length(tmp)>0) and (tmp[Length(tmp)]='*') do
     SetLength(tmp, Length(tmp)-1);
 
@@ -418,7 +425,7 @@ begin
   while i<=Length(tmp) do begin
     if tmp[i]='*' then begin
       if (i_start<i)
-      and (tmp[i_start]<>'!') then //это было ударение - нафиг
+      and (tmp[i_start]<>'!') then //СЌС‚Рѕ Р±С‹Р»Рѕ СѓРґР°СЂРµРЅРёРµ - РЅР°С„РёРі
         Result.Add(KillQuotes(copy(tmp, i_start, i-i_start)));
       i_start := i+1;
     end;
@@ -441,9 +448,9 @@ var i_beg, i_pos, cnt: integer;
       Result[cnt].kana := ''; //kokuji
       Result[cnt].rare := false;
     end else
-   { Вообще говоря, судя по формату, каждое он-ёми должно быть обёрнуто в
-    *звёздочки*, и исключений быть не может.
-    Но они есть. Так что будем очень терпимы. }
+   { Р’РѕРѕР±С‰Рµ РіРѕРІРѕСЂСЏ, СЃСѓРґСЏ РїРѕ С„РѕСЂРјР°С‚Сѓ, РєР°Р¶РґРѕРµ РѕРЅ-С‘РјРё РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РѕР±С‘СЂРЅСѓС‚Рѕ РІ
+    *Р·РІС‘Р·РґРѕС‡РєРё*, Рё РёСЃРєР»СЋС‡РµРЅРёР№ Р±С‹С‚СЊ РЅРµ РјРѕР¶РµС‚.
+    РќРѕ РѕРЅРё РµСЃС‚СЊ. РўР°Рє С‡С‚Рѕ Р±СѓРґРµРј РѕС‡РµРЅСЊ С‚РµСЂРїРёРјС‹. }
     begin
       i_end := i_pos;
       Result[cnt].rare := false;
@@ -465,7 +472,7 @@ begin
     exit;
   end;
 
- //Считаем число ;,
+ //РЎС‡РёС‚Р°РµРј С‡РёСЃР»Рѕ ;,
   cnt := 0;
   for i_pos := 1 to Length(inp) do
     if (inp[i_pos]=';') or (inp[i_pos]=',') then
@@ -487,13 +494,13 @@ begin
 end;
 
 {
-Поле: Kanji.KunYomi. Работает в сочетании с Russian и Compounds.
-Формат: [префиксы][куны]|[чтения в сочетаниях]|[чтения в именах|c|палками]
-Префиксы:
-  !2!  показывать 2 куна, остальное под кат
-  !2?  2 танго, остальное под кат
-Любые блоки могут отсутствовать, однако появляются последовательно. Блок может
-быть пуст.
+РџРѕР»Рµ: Kanji.KunYomi. Р Р°Р±РѕС‚Р°РµС‚ РІ СЃРѕС‡РµС‚Р°РЅРёРё СЃ Russian Рё Compounds.
+Р¤РѕСЂРјР°С‚: [РїСЂРµС„РёРєСЃС‹][РєСѓРЅС‹]|[С‡С‚РµРЅРёСЏ РІ СЃРѕС‡РµС‚Р°РЅРёСЏС…]|[С‡С‚РµРЅРёСЏ РІ РёРјРµРЅР°С…|c|РїР°Р»РєР°РјРё]
+РџСЂРµС„РёРєСЃС‹:
+  !2!  РїРѕРєР°Р·С‹РІР°С‚СЊ 2 РєСѓРЅР°, РѕСЃС‚Р°Р»СЊРЅРѕРµ РїРѕРґ РєР°С‚
+  !2?  2 С‚Р°РЅРіРѕ, РѕСЃС‚Р°Р»СЊРЅРѕРµ РїРѕРґ РєР°С‚
+Р›СЋР±С‹Рµ Р±Р»РѕРєРё РјРѕРіСѓС‚ РѕС‚СЃСѓС‚СЃС‚РІРѕРІР°С‚СЊ, РѕРґРЅР°РєРѕ РїРѕСЏРІР»СЏСЋС‚СЃСЏ РїРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅРѕ. Р‘Р»РѕРє РјРѕР¶РµС‚
+Р±С‹С‚СЊ РїСѓСЃС‚.
 }
 function ParseKanjiKunYomi(inp: string): TKanjiReadings;
 var block: string;
@@ -502,8 +509,8 @@ begin
   Result.show_kuns := 0;
   Result.show_tango := 0;
 
- { Вынимаем из начала строки флаги вида !2!, !2?. Несколько флагов подряд мы
-  пока не встречали и не поддерживаем. }
+ { Р’С‹РЅРёРјР°РµРј РёР· РЅР°С‡Р°Р»Р° СЃС‚СЂРѕРєРё С„Р»Р°РіРё РІРёРґР° !2!, !2?. РќРµСЃРєРѕР»СЊРєРѕ С„Р»Р°РіРѕРІ РїРѕРґСЂСЏРґ РјС‹
+  РїРѕРєР° РЅРµ РІСЃС‚СЂРµС‡Р°Р»Рё Рё РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµРј. }
   if (Length(inp)>0) and (inp[1]='!') then begin
     i := 2;
     while (i<=Length(inp)) and (inp[i]<>'!') and (inp[i]<>'?') do
@@ -518,10 +525,10 @@ begin
   end;
 
   block := pop(inp, '|');
- // Result.kun := ParseKanjiKunReadings(block);
+  Result.kun := ParseKanjiKunReadings(block);
   block := pop(inp, '|');
   Result.compound := ParseKanjiCompoundReadings(block);
- //Остальное - имена
+ //РћСЃС‚Р°Р»СЊРЅРѕРµ - РёРјРµРЅР°
   Result.name := ParseKanjiNameReadings(inp);
 end;
 
@@ -531,153 +538,402 @@ begin
     +'Names: '+DumpKanjiNameReadings(AReadings.name);
 end;
 
-{ Разбирает блок чтений кандзи в японских словах.
-  НЕ ДОПИСАНО ПО-ЧЕЛОВЕЧЕСКИ. }
+{
+РќР• Р”РћРџРРЎРђРќРћ РџРћ-Р§Р•Р›РћР’Р•Р§Р•РЎРљР.
+РџРѕР»Рµ: Kanji.KunYomi, Р±Р»РѕРє KunReadings.
+Р¤РѕСЂРјР°С‚: 334*aware*awareppoi*kanashii
+РќР°Р±РѕСЂ С†РёС„СЂ РѕРїСЂРµРґРµР»СЏРµС‚, СЃРєРѕР»СЊРєРѕ Р±СѓРєРІ РїРѕРєСЂС‹РІР°РµС‚ РєР°РЅРґР·Рё РІ СЃРѕРѕС‚РІ. С‡С‚РµРЅРёРё:
+  AWAre*AWAreppoi*KANAshii
+0 РѕР·РЅР°С‡Р°РµС‚ "РїРѕРєСЂС‹РІР°РµС‚ РІСЃС‘ СЃР»РѕРІРѕ".
+
+Р”Р°Р»СЊС€Рµ, СЂР°Р·РґРµР»С‘РЅРЅС‹Рµ *, РёРґСѓС‚ РЅР°Р±РѕСЂС‹ РІР°СЂРёР°РЅС‚РѕРІ С‡С‚РµРЅРёСЏ РєСѓРЅС‘РјРё. РћР±С‹С‡РЅРѕ РІ РЅР°Р±РѕСЂРµ РѕРґРЅРѕ
+С‡С‚РµРЅРёРµ, РµСЃР»Рё РЅРµСЃРєРѕР»СЊРєРѕ - СЂР°Р·РґРµР»СЏСЋС‚СЃСЏ "*/*":
+  034*jiji*/*jijii*/*jii*aware*kanashii
+РџРѕСЃР»РµРґРЅСЏСЏ * РЅРµ СЃС‚Р°РІРёС‚СЃСЏ.
+
+С‡С‚РµРЅРёРµ*Qn*     "Рё" РІРјРµСЃС‚Рѕ "Р№" РІ СЂСѓСЃСЃРєРѕР№ С‚СЂР°РЅСЃРєСЂРёРїС†РёРё РІ n-Р№ РїРѕР·РёС†РёРё
+Р§РўР•РќРР•         РѕРЅРЅРѕРµ С‡С‚РµРЅРёРµ РІ СЏРї. СЃР»РѕРІРµ (РЅР°РїСЂ. РђРСЂР°СЃРёРё) - РѕС‚РѕР±СЂ. СЃРёРЅРёРј
+* С‡С‚РµРЅРёРµ *     РїСЂРѕР±РµР»С‹ РІРѕРєСЂСѓРі => РЅРµ РёСЃРєР°С‚СЊ РїРѕ СЌС‚РѕРјСѓ С‡С‚РµРЅРёСЋ
+*&*РЅР°Р±РѕСЂ       РЅРµ РїРѕРєР°Р·С‹РІР°С‚СЊ, РЅРѕ СѓС‡РёС‚С‹РІР°С‚СЊ РїСЂРё РїРѕРёСЃРєРµ (РёРЅРѕРіРґР° &СЃР»РёС‚РЅРѕ).
+               РћС‚РЅРѕСЃРёС‚СЃСЏ РёРјРµРЅРЅРѕ Рє РЅР°Р±РѕСЂСѓ, С‚.Рє. РїРѕРєСЂС‹С‚РёРµ РѕС‚РЅРѕСЃРёС‚СЃСЏ Рє РЅР°Р±РѕСЂСѓ, Р° РґР»СЏ
+               СЃРєСЂС‹С‚С‹С… С‡С‚РµРЅРёР№ РЅРµС‚ РїРѕРєСЂС‹С‚РёСЏ
+*=*С‡С‚РµРЅРёРµ      СЂР°Р·РЅРѕРІРёРґРЅРѕСЃС‚СЊ РїСЂРµРґС‹РґСѓС‰РµРіРѕ С‡С‚РµРЅРёСЏ, РЅРµ РїРѕРєР°Р·С‹РІР°С‚СЊ
+С‡С‚РµРЅРёРµ*-n*     РІСЃС‚Р°РІРёС‚СЊ С‚РёСЂРµ РІ n-СЋ РїРѕР·РёС†РёСЋ С‡С‚РµРЅРёСЏ. РќРµРїРѕРЅСЏС‚РЅРѕ, Р·Р°С‡РµРј РЅСѓР¶РЅРѕ.
+РЅР°Р±РѕСЂ*!!*      С‚СЂР°РЅСЃРєСЂРёРїС†РёСЏ РїРѕРјРµС‰Р°РµС‚СЃСЏ РџРћР” СЃР»РѕРІРѕРј, РєРѕР»-РІРѕ С‚СЂР°РЅСЃРєСЂРёРїС†РёР№ РјРѕР¶РµС‚ Р±С‹С‚СЊ
+               Р±РѕР»СЊС€Рµ РѕРґРЅРѕР№ (#1196)
+РЅР°Р±РѕСЂ*!R*      С‚Рѕ Р¶Рµ, С‡С‚Рѕ !!, РЅРѕ С‚РѕР»СЊРєРѕ РґР»СЏ СЂСѓСЃСЃРєРѕРіРѕ СЃР»РѕРІР°СЂСЏ
+РЅР°Р±РѕСЂ*~n*      n СЃРёРјРІРѕР»РѕРІ РѕС‚ РЅР°С‡Р°Р»Рµ С‡С‚РµРЅРёСЏ РІС‹РЅРµСЃС‚Рё РїРµСЂРµРґ РєР°РЅРґР·Рё (РѕР±С‹С‡РЅРѕ РґР»СЏ РіРѕРЅРѕСЂРёС„РёРєРѕРІ)
+РЅР°Р±РѕСЂ*[3]5*    С‡Р°СЃС‚СЊ С‡С‚РµРЅРёСЏ СЃ 4-Р№ Р±СѓРєРІС‹ РїРѕ 5-СЋ РѕРїС†РёРѕРЅР°Р»СЊРЅР° (РєРІ. СЃРєРѕР±РєРё)
+РЅР°Р±РѕСЂ*^^*      С‡Р°С‰Рµ С…РёСЂР°РіР°РЅРѕР№ (РёРЅРѕРіРґР° СЃР»РёС‚РЅРѕ^^)
+РЅР°Р±РѕСЂ*^!^*     С‚Рѕ Р¶Рµ, СЂР°Р·РјРµСЃС‚РёС‚СЊ С‚РµРєСЃС‚ РїРѕРґ РєР°РЅРґР·Рё
+РЅР°Р±РѕСЂ*^01129*  СЃС‚Р°РЅРґР°СЂС‚РЅР°СЏ СЃСЃС‹Р»РєР° -- СЃРј. ParseCharLink (РёРЅРѕРіРґР° СЃР»РёС‚РЅРѕ:
+               *hiroi^50859* РёР»Рё *ateru*^12060^11250*)
+РЅР°Р±РѕСЂ*+6*      РґРѕР±Р°РІРёС‚СЊ РєСѓСЂРёРєР°СЌСЃРё (зЁ®гЂ…). Р¦РёС„СЂР° РїРµСЂРµРѕРїСЂРµРґРµР»СЏРµС‚, СЃРєРѕР»СЊРєРѕ Р±СѓРєРІ
+               РїРѕРєСЂС‹РІР°СЋС‚ РєР°РЅРґР·Рё+РєСѓСЂРё РІРјРµСЃС‚Рµ. Р—Р°С‡РµРј - РЅРµ Р·РЅР°СЋ.
+РЅР°Р±РѕСЂ*#С…РІРѕСЃС‚*  С‚РµРєСЃС‚РѕРІС‹Р№ С…РІРѕСЃС‚ Рє РЅР°Р±РѕСЂСѓ (~СЃСѓСЂСѓ). РРЅРѕРіРґР° РїСЂРѕР±РµР» *#РІ РєРѕРЅС†Рµ *
+**РЅР°Р±РѕСЂ        РЅРµ РѕС‚СЂРµРґР°РєС‚РёСЂРѕРІР°РЅРѕ (РЅР°Р±РѕСЂ Рё РµРіРѕ РїРµСЂРµРІРѕРґС‹ Р±Р»РµРґРЅС‹Рј С†РІРµС‚РѕРј)
+*РЅР°Р±РѕСЂ*$1[..]* РЅР°С‡Р°С‚СЊ СЃ СѓРєР°Р·Р°РЅРЅРѕР№ РїРѕР·РёС†РёРё РєР°РЅРґР·Рё-РїРѕР·РёС†РёРё (РІ РёС‚РѕРіРѕРІРѕРј С‚РµРєСЃС‚Рµ):
+  1084         РєР°РЅРґР·Рё РїРѕ РЅРѕРјРµСЂСѓ
+  [1084]       РєР°РЅРґР·Рё РІ СЃРєРѕР±РєР°С…
+  ''РєР°РЅР°''     РєР°РЅР°
+               РћС‚ СЃС‚Р°РЅРґР°СЂС‚РЅРѕРіРѕ С‡С‚РµРЅРёСЏ РїРѕ-РїСЂРµР¶РЅРµРјСѓ РґРѕР±Р°РІР»СЏРµС‚СЃСЏ С…РІРѕСЃС‚ РїРѕСЃР»Рµ РІСЃРµРіРѕ.
+
+РџРѕСЃР»Рµ РєР°Р¶РґРѕРіРѕ С„Р»Р°РіР° С‚РѕР¶Рµ СЃС‚Р°РІРёС‚СЃСЏ *, РїРѕСЃР»РµРґРЅСЏСЏ * РЅРµ СЃС‚Р°РІРёС‚СЃСЏ (РѕРґРЅР°РєРѕ СЃС‚Р°РІРёС‚СЃСЏ
+Р·Р°РєСЂС‹РІР°СЋС‰Р°СЏ РґР»СЏ РЅР°Р±РѕСЂР°, РµСЃР»Рё С‚СЂРµР±СѓРµС‚СЃСЏ).
+
+Р”Р»СЏ СЃРєСЂС‹С‚С‹С… С‡С‚РµРЅРёР№ РёРЅС„РѕСЂРјР°С†РёСЏ Рѕ РїРѕРєСЂС‹С‚РёРё РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ (РЅР°РїСЂ. #13):
+!2!041133* AKU *warui*ashi*ashikarazu*akutareru*^!^*akutare*^^*&*nikui*|AKU,WARU/O/-NIKUI
+}
 function ParseKanjiKunReadings(inp: string): TKunReadings;
 var lead, word: string;
   rset: PKunReadingSet;
   rd: PKunReading;
   pc: PChar;
   flag_next_hidden: boolean;
+  flag_next_unchecked: boolean;
   flag_slash: boolean;
 begin
   FillChar(Result, SizeOf(Result), 0);
   if Length(inp)<=0 then exit;
 
   flag_next_hidden := false;
+  flag_next_unchecked := false;
   flag_slash := false;
 
   lead := pop(inp,'*');
+  inp := repl(inp, '**', '*%*'); //С‡С‚РѕР±С‹ РѕР±Р»РµРіС‡РёС‚СЊ РЅР°Рј Р¶РёР·РЅСЊ РЅРёР¶Рµ
   rset := nil;
   rd := nil;
   word := '';
-  while (inp<>'') and (word<>'') do begin
+  while (inp<>'') or (word<>'') do begin
     if word='' then
       word := pop(inp,'*');
     if Length(word)<=0 then continue;
 
     if word[1]='!' then begin
-      Check((word='!!') or (word='!R'), 'ParseKanjiKunReadings: Unexpected !-sequence: '+word);
-      Check(rset=nil, 'ParseKanjiKunReadings: mod "'+word+'": no open reading set.');
-      rset.flags := rset.flags + [kfTranscriptionUnderWord]
+      Check(rset<>nil, 'mod "'+word+'": no open reading set');
+      Check((word='!!') or (word='!R') or (word='!R '), 'mod "'+word+'": Invalid !-sequence');
+      Check(not (ksTranscriptionUnderWord in rset.flags), 'Duplicate !-sequence' );
+      rset.flags := rset.flags + [ksTranscriptionUnderWord];
+      word := '';
     end else
 
     if word[1]='Q' then begin
-      Check(rd=nil, 'ParseKanjiKunReadings: mod "'+word+'": no open reading.');
+      Check(rd<>nil, 'mod "'+word+'": no open reading');
       delete(word,1,1);
       SetLength(rd.ipos, Length(rd.ipos)+1);
       rd.ipos[Length(rd.ipos)-1] := StrToInt(word);
       word := '';
     end else
 
+    if word[1]='-' then begin
+      Check(rd<>nil, 'mod "'+word+'": no open reading');
+      delete(word,1,1);
+      SetLength(rd.tpos, Length(rd.tpos)+1);
+      rd.tpos[Length(rd.tpos)-1] := StrToInt(word);
+      word := '';
+    end else
+
     if word[1]='~' then begin
-      Check(rset=nil, 'ParseKanjiKunReadings: mod "'+word+'": no open reading set.');
+      Check(rset<>nil, 'mod "'+word+'": no open reading set');
       Check(rset.prefix_chars<=0,
-        'ParseKanjiKunReadings: duplicate prefix char declaration in a single reading set');
+        'Duplicate prefix char declaration in a single reading set');
       delete(word,1,1);
       rset.prefix_chars := StrToInt(word);
       word := '';
     end else
 
     if word[1]='[' then begin
-      Check(rset=nil, 'ParseKanjiKunReadings: mod "'+word+'": no open reading set.');
+      Check(rset<>nil, 'mod "'+word+'": no open reading set');
       Check((rset.optional_op<=0) and (rset.optional_ed<=0),
-        'ParseKanjiKunReadings: duplicate optional_pos declaration in a single reading set.');
+        'Duplicate optional_pos declaration in a single reading set');
       delete(word,1,1);
-      rset.optional_op := StrToInt(trypop(word,']')); //должно присутствовать => ошибка, если вернёт пустую строку
-      if word<>'' then //что-то осталось
+      rset.optional_op := StrToInt(trypop(word,']')); //РґРѕР»Р¶РЅРѕ РїСЂРёСЃСѓС‚СЃС‚РІРѕРІР°С‚СЊ => РѕС€РёР±РєР°, РµСЃР»Рё РІРµСЂРЅС‘С‚ РїСѓСЃС‚СѓСЋ СЃС‚СЂРѕРєСѓ
+      if word<>'' then //С‡С‚Рѕ-С‚Рѕ РѕСЃС‚Р°Р»РѕСЃСЊ
         rset.optional_ed := StrToInt(word);
       word := '';
     end else
 
-    if word[1]='&' then begin
+    if (word[1]='&') or (word[1]='=') then begin
+      Check(not flag_next_hidden, 'mod "'+word+'": Duplicate flag_hidden.');
       flag_next_hidden := true;
       delete(word,1,1);
-     //может комбинироваться с последующими
+     //РјРѕР¶РµС‚ СЃР»РёРїР°С‚СЊСЃСЏ СЃ РїРѕСЃР»РµРґСѓСЋС‰РёРјРё
     end else
 
     if word[1]='/' then begin
-      Check(word='/', 'ParseKanjiKunReadings: invalid /-sequence');
+      Check(word='/', 'Invalid /-sequence');
       rd := nil;
       flag_slash := true;
+      word := '';
+    end else
+
+    if ((word[1]='^') and (word[2]='^'))
+    or ((word[1]='^') and (word[2]='!') and (word[3]='^')) then begin
+      Check(rset<>nil, 'mod "'+word+'": no open reading set');
+      Check(not (ksUsuallyInHiragana in rset.flags),
+        'Duplicate ^^ flag for a reading set');
+      rset.flags := rset.flags + [ksUsuallyInHiragana];
+      if word[2]='!' then
+        delete(word,1,3)
+      else
+        delete(word,1,2);
+     //РІРѕР·РјРѕР¶РЅРѕ, С‡С‚Рѕ-С‚Рѕ РѕСЃС‚Р°Р»РѕСЃСЊ
     end else
 
     if word[1]='^' then begin
-      Check(rset=nil, 'ParseKanjiKunReadings: mod "'+word+'": no open reading set.');
+      Check(rset<>nil, 'mod "'+word+'": no open reading set');
       pc := PChar(word);
-      ParseCharLink(pc, rset);
+      SetLength(rset.refs, Length(rset.refs)+1);
+      rset.refs[Length(rset.refs)-1] := ParseCharLink(pc);
       delete(word, 1, pc-PChar(word));
-     //возможно, что-то осталось
+     //РІРѕР·РјРѕР¶РЅРѕ, С‡С‚Рѕ-С‚Рѕ РѕСЃС‚Р°Р»РѕСЃСЊ
+    end else
+
+    if word[1]='#' then begin
+      Check(rset<>nil, 'mod "'+word+'": no open reading set');
+      rset.tail := word;
+      word := ''
+    end else
+
+    if word[1]='+' then begin
+      Check(rset<>nil, 'mod "'+word+'": no open reading set');
+      Check(not (ksWithKurikaeshi in rset.flags),
+        'Duplicate +kurikaeshi flag for a reading set');
+      delete(word,1,1);
+      rset.main_chars := StrToInt(word);
+      rset.flags := rset.flags + [ksWithKurikaeshi];
+      word := '';
+    end else
+
+    if word='%' then begin //РЅР°С€ СЃРїРµС†РёР°Р»СЊРЅС‹Р№ СЃРёРјРІРѕР» -- С†РµР»РёРєРѕРј
+      flag_next_unchecked := true;
+      word := '';
+    end else
+
+    if word[1]='$' then begin
+      Check(rset<>nil, 'mod "'+word+'": no open reading set');
+      Check(rset.additional_kanji_pos<=0, 'duplicate additional kanji');
+      pc := PChar(word);
+
+      Inc(pc);
+      Check((pc^>='0') and (pc^<='9'), 'invalid additional_kanji_pos');
+      rset.additional_kanji_pos := Ord(pc^)-Ord('0');
+
+      Inc(pc);
+      rset.additional_kanji := ParseAdditionalKanjiChain(pc);
+      delete(word, 1, pc-PChar(word));
+     //РІРѕР·РјРѕР¶РЅРѕ, С‡С‚Рѕ-С‚Рѕ РѕСЃС‚Р°Р»РѕСЃСЊ
     end else
 
     begin
       pc := PChar(word);
-      while (pc^ in ['a'..'z']) or (pc^ in ['A'..'Z']) or (pc^='-') do
+      while IsLatin(pc^) or (pc^='-') or (pc^=' ') do
         Inc(pc);
-      Check(pc=PChar(word), 'ParseKanjiKunReadings: Cannot parse this part: '+pc);
-      if pc>PChar(word) then begin
-        if not flag_slash then begin
-          SetLength(Result, Length(Result)+1);
-          rset := @Result[Length(Result)-1];
-          FillChar(rset^, SizeOf(rset^), 0);
+
+     //РњС‹ РѕР±СЏР·Р°РЅС‹ С…РѕС‚СЊ С‡С‚Рѕ-С‚Рѕ РїСЂРѕС‡РµСЃС‚СЊ, С‚.Рє. РІСЃРµ С„Р»Р°РіРё РјС‹ СѓР¶Рµ РёСЃРєР»СЋС‡РёР»Рё
+      Check(pc>PChar(word), 'Cannot parse this part: '+pc);
+
+      if not flag_slash then begin
+        SetLength(Result, Length(Result)+1);
+        rset := @Result[Length(Result)-1];
+        FillChar(rset^, SizeOf(rset^), 0);
+
+        if flag_next_hidden then begin
+         //РќСѓ Рё С‡С‚Рѕ, Р±Р»РёРЅ, РґРµР»Р°С‚СЊ? РћС‚РєСѓРґР° Р±СЂР°С‚СЊ РЅР°СЃС‚РѕСЏС‰СѓСЋ РёРЅС„РѕСЂРјР°С†РёСЋ Рѕ РїРѕРєСЂС‹С‚РёРё?
+         //РџРѕС‚РѕРјСѓ, С‡С‚Рѕ РїРѕРїР°РґР°СЋС‚СЃСЏ С‡С‚РµРЅРёСЏ С‚РёРїР° nikui, РєРѕС‚РѕСЂС‹Рµ Рё СЏРІРЅРѕ РІР°Р¶РЅС‹,
+         //Рё РїРѕРєСЂС‹С‚РёРµ РЅРµС‚СЂРёРІРёР°Р»СЊРЅРѕ.
+         //РРґРёРѕС‚СЃРєРёР№ С„РѕСЂРјР°С‚.
+          rset.main_chars := 0; //С‚Р°Рє РґРµР»Р°РµС‚ СЃР°Рј СЏСЂРєСЃРё
+        end else begin
+         //РЎСЉРµРґР°РµРј РѕРґРЅСѓ РїРѕР·РёС†РёСЋ РёР· lead
+          Check(lead<>'', 'No char coverage data for another reading block');
+          Check((lead[1]>='0') and (lead[1]<='9'), 'Invalid char coverage position: '+lead[1]+' (digit expected)');
+          rset.main_chars := Ord(lead[1])-Ord('0');
+          delete(lead,1,1);
         end;
 
-        SetLength(rset.items, Length(rset.items)+1);
-        rd := @rset.items[Length(rset.items)-1];
-        FillChar(rd^, SizeOf(rd^), 0);
+        if flag_next_unchecked then
+          rset.flags := rset.flags + [ksUnchecked];
+        flag_next_unchecked := false;
 
-        rd.hidden := flag_next_hidden;
+        if flag_next_hidden then
+          rset.flags := rset.flags + [ksHidden];
         flag_next_hidden := false;
-        rd.text := spancopy(PChar(word),pc);
+      end else
+        flag_slash := false; //СЃР»РµС€ СЂР°Р±РѕС‚Р°РµС‚ РЅР° РѕРґРЅРѕ С‡С‚РµРЅРёРµ РІРїРµСЂС‘Рґ
+
+      SetLength(rset.items, Length(rset.items)+1);
+      rd := @rset.items[Length(rset.items)-1];
+      FillChar(rd^, SizeOf(rd^), 0);
+
+      rd.text := spancopy(PChar(word),pc);
+      delete(word, 1, pc-PChar(word));
+
+      if rd.text<>'' then begin
+       //СЃРЅР°С‡Р°Р»Р° РїСЂРѕР±РµР»С‹
+        if (rd.text[1]=' ') or (rd.text[Length(rd.text)]=' ') then begin
+          rd.text := Trim(rd.text);
+          rd.flags := rd.flags + [krIgnoreInSearch];
+        end;
+
+       //С‚РµРїРµСЂСЊ Р·Р°РіР»Р°РІРЅС‹Рµ
+        if IsUppercaseLatin(rd.text[1]) then begin
+          rd.text := LowerCase(rd.text);
+          rd.flags := rd.flags + [krOnReading];
+        end;
       end;
 
-     //TODO: использовать lead, читать кол-во букв, продвигаться на один символ
+     //РІРѕР·РјРѕР¶РЅРѕ, С‡С‚Рѕ-С‚Рѕ РѕСЃС‚Р°Р»РѕСЃСЊ РІ word
+    end;
+  end;
 
-      delete(word, 1, pc-PChar(word));
-     //возможно, что-то осталось
+ //РљРѕРЅС‚СЂРѕР»СЊ
+  Check(lead='', 'РћСЃС‚Р°Р»РёСЃСЊ РЅРµСЂР°Р·РѕР±СЂР°РЅРЅС‹Рµ РїРѕР·РёС†РёРё С‡РёСЃР»Р° СЃРёРјРІРѕР»РѕРІ.')
+end;
+
+{
+Р¤РѕСЂРјР°С‚ СЃСЃС‹Р»РѕРє РЅР° РєР°РЅРґР·Рё: ^[С†РёС„СЂР°][РЅРѕРјРµСЂ]-''С‚РµРєСЃС‚''-[РЅРѕРјРµСЂ]=[РЅРѕРјРµСЂ СЃР»РѕРІР°]
+Р’СЃРµ С‡Р°СЃС‚Рё, РєСЂРѕРјРµ ^[С†РёС„СЂР°][РЅРѕРјРµСЂ] РѕРїС†РёРѕРЅР°Р»СЊРЅС‹.
+Р¦РёС„СЂР°:
+  0 = СЃРј.
+  1 = СЃСЂ.
+  2 = ?????
+  3 = СЂРµР¶Рµ
+  4 = РёРЅР°С‡Рµ
+  5 = С‡Р°С‰Рµ
+  6 = СЃРёРЅРѕРЅРёРј
+  7 = Р°РЅС‚РѕРЅРёРј
+  8 = РЅРµ РїСѓС‚Р°С‚СЊ СЃ
+  9 = СЂР°РЅРµРµ
+  РІСЃС‘ РѕСЃС‚Р°Р»СЊРЅРѕРµ = ??????
+^[С†РёС„СЂР°][РЅРѕРјРµСЂ]-[РЅРѕРјРµСЂ] === РЅРµСЃРєРѕР»СЊРєРѕ РєР°РЅРґР·Рё РїРѕРґСЂСЏРґ
+^[С†РёС„СЂР°][РЅРѕРјРµСЂ]-''[С‚РµРєСЃС‚]'' === РґРѕРї. С‚РµРєСЃС‚ С…РёСЂР°РіР°РЅРѕР№
+^<Р±Р»РѕРє>=[РЅРѕРјРµСЂ СЃР»РѕРІР°] === СЃРґРµР»Р°С‚СЊ РІРµСЃСЊ Р±Р»РѕРє СЃСЃС‹Р»РєРѕР№ РЅР° СѓРєР°Р·Р°РЅРЅРѕРµ СЃР»РѕРІРѕ
+^_[С†РёС„СЂР°]<Р±Р»РѕРє> === РїСЂРёСЃРѕРµРґРёРЅРёС‚СЊ СЃСЃС‹Р»РєСѓ Рє n-РјСѓ РІР°СЂРёР°РЅС‚Сѓ РїРµСЂРµРІРѕРґР° РёР· РЅРµСЃРєРѕР»СЊРєРёС…
+
+РќРµ СЃРґРµР»Р°РЅРѕ:
+  /  РїР°Р»РєР° РјРµР¶РґСѓ РєР°РЅРґР·Рё =(
+}
+function ParseCharLink(var pc: PChar): TCharLink;
+var i: integer;
+  ref: PCharLinkRef;
+  ps: PChar;
+begin
+  Check(pc^='^', 'Invalid start mark');
+  Inc(pc);
+
+  if pc^='_' then begin
+    Inc(pc);
+    Check((pc^>='0') and (pc^<='9'), 'Invalid tl-variant index');
+    Result.tlvar := Ord(pc^)-Ord('0');
+    Inc(pc);
+  end else
+    Result.tlvar := 0;
+
+  Check((pc^>='0') and (pc^<='9'), 'Invalid type');
+  Result._type := Ord(pc^)-Ord('0');
+
+  SetLength(Result.refs, 0);
+
+  repeat
+    Inc(pc);
+    SetLength(Result.refs, Length(Result.refs)+1);
+    ref := @Result.refs[Length(Result.refs)-1];
+    ref.text := '';
+    ref.charref := 0;
+    if pc^='''' then begin
+      Check((pc+1)^='''', 'ParseCharLink: invalid singular '' mark');
+      pc := pc+2;
+      ps := pc;
+      while (pc^<>#00) and (pc^<>'''') do
+        Inc(pc);
+      Check(pc^<>#00, 'ParseCharLink: invalid unclosed text element');
+      Check((pc+1)^='''', 'ParseCharLink: invalid singular '' mark');
+      ref.text := spancopy(ps,pc);
+      pc := pc+2;
+    end
+    else begin
+      for i := 1 to 4 do begin
+        Check((pc^>='0') and (pc^<='9'), 'ParseCharLink: invalid charref');
+        ref.charref := ref.charref * 10 + Ord(pc^)-Ord('0');
+        Inc(pc);
+      end;
+    end;
+  until pc^<>'-';
+
+ //РџРѕСЃР»РµРґРЅСЏСЏ С‡Р°СЃС‚СЊ
+  Result.wordref := 0;
+  if pc^='=' then begin
+    Inc(pc);
+    while (pc^>='0') and (pc^<='9') do begin
+      Inc(pc);
+      Result.wordref := Result.wordref * 10 + Ord(pc^)-Ord('0');
     end;
   end;
 end;
 
-{
-Формат ссылок на кандзи: ^[цифра][номер]-''текст''-[номер]=[номер слова]
-Все части, кроме ^[цифра][номер] опциональны.
-Цифра:
-  0 = см.
-  1 = ср.
-  2 = ?????
-  3 = реже
-  4 = иначе
-  5 = чаще
-  6 = синоним
-  7 = антоним
-  8 = не путать с
-  9 = ранее
-  всё остальное = ??????
-^[цифра][номер]-[номер] === несколько кандзи подряд
-^[цифра][номер]-''[текст]'' === доп. текст хираганой
-^<блок>=[номер слова] === сделать весь блок ссылкой на указанное слово
-^^: чаще хираганой (цифры не нужны)
-}
-procedure ParseCharLink(var pc: PChar; out rset: PKunReadingSet);
+{ Р¦РµРїРѕС‡РєР° РІРёРґР° РЅРѕРјРµСЂ''С‚РµРєСЃС‚''[РЅРѕРјРµСЂ]РЅРѕРјРµСЂ }
+function ParseAdditionalKanjiChain(var pc: PChar): TCharLinkRefChain;
+var ref: PCharLinkRef;
+  ps: PChar;
 begin
- //TODO
+  SetLength(Result, 0);
+  while pc^<>#00 do begin
+    SetLength(Result, Length(Result)+1);
+    ref := @Result[Length(Result)-1];
+
+    ref.charref := 0;
+    ref.text := '';
+    ref.brackets := false;
+
+    if pc^='''' then begin
+      Inc(pc);
+      Check(pc^='''');
+      Inc(pc);
+      ps := pc;
+      while (pc^<>#00) and (pc^<>'''') do
+        Inc(pc);
+      Check(pc^<>#00);
+      ref.text := spancopy(ps,pc);
+      Check(pc^='''');
+      Inc(pc);
+      Check(pc^='''');
+      Inc(pc);
+    end else begin
+      if pc^='[' then begin
+        ref.brackets := true;
+        Inc(pc);
+      end;
+
+      ps := pc;
+      while (pc^>='0') and (pc^<='9') do
+        Inc(pc);
+      Check(pc>ps);
+
+      ref.charref := StrToInt(spancopy(ps,pc));
+      if ref.brackets then begin
+        Check(pc^=']');
+        Inc(pc);
+      end;
+    end;
+  end;
 end;
 
 
 {
-Поле: Kanji.KunYomi, блок CompoundReadings.
-Формат:
+РџРѕР»Рµ: Kanji.KunYomi, Р±Р»РѕРє CompoundReadings.
+Р¤РѕСЂРјР°С‚:
   AISO_AISOX/AISO2,ASIO2X_AISO2Y-AISO2Z/AISO3
-  => aiso, реже aisox;
-     aiso2, aiso2x, реже aiso2y, aiso2z;
+  => aiso, СЂРµР¶Рµ aisox;
+     aiso2, aiso2x, СЂРµР¶Рµ aiso2y, aiso2z;
      aiso3
   U,HA,HANE
-Разделители:
-  /   следующий набор
-  ,   следующее чтение
-  _   следующее редкое чтение
-  -   ничего не значит, обычный символ
+Р Р°Р·РґРµР»РёС‚РµР»Рё:
+  /   СЃР»РµРґСѓСЋС‰РёР№ РЅР°Р±РѕСЂ
+  ,   СЃР»РµРґСѓСЋС‰РµРµ С‡С‚РµРЅРёРµ
+  _   СЃР»РµРґСѓСЋС‰РµРµ СЂРµРґРєРѕРµ С‡С‚РµРЅРёРµ
+  -   РЅРёС‡РµРіРѕ РЅРµ Р·РЅР°С‡РёС‚, РѕР±С‹С‡РЅС‹Р№ СЃРёРјРІРѕР»
 }
 function ParseKanjiCompoundReadings(inp: string): TCompoundReadings;
 var ps, pc: PChar;
@@ -774,30 +1030,30 @@ end;
 
 
 {
-Поле: Kanji.KunYomi, блок NameReadings.
-Формат: [в именах]|[также]|[реже]-[скрыто]
-Любые блоки могут отсутствовать, но появляются последовательно:
-  [в именах]||[реже]
-Исключение: || в начале - то же, что |           (#4)
-Исключение: -[скрыто] обрывает цепочку.
-  [в именах]-[скрыто]|[всё равно скрыто]
-  [в именах]-[скрыто]-[скрыто]
-Формат блока: $чтение$чтение$
-В мягком режиме:
-  - деление запятой $чтение,чтение$ (яркси это терпит)
-  - отсутствие $рамок$
+РџРѕР»Рµ: Kanji.KunYomi, Р±Р»РѕРє NameReadings.
+Р¤РѕСЂРјР°С‚: [РІ РёРјРµРЅР°С…]|[С‚Р°РєР¶Рµ]|[СЂРµР¶Рµ]-[СЃРєСЂС‹С‚Рѕ]
+Р›СЋР±С‹Рµ Р±Р»РѕРєРё РјРѕРіСѓС‚ РѕС‚СЃСѓС‚СЃС‚РІРѕРІР°С‚СЊ, РЅРѕ РїРѕСЏРІР»СЏСЋС‚СЃСЏ РїРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅРѕ:
+  [РІ РёРјРµРЅР°С…]||[СЂРµР¶Рµ]
+РСЃРєР»СЋС‡РµРЅРёРµ: || РІ РЅР°С‡Р°Р»Рµ - С‚Рѕ Р¶Рµ, С‡С‚Рѕ |           (#4)
+РСЃРєР»СЋС‡РµРЅРёРµ: -[СЃРєСЂС‹С‚Рѕ] РѕР±СЂС‹РІР°РµС‚ С†РµРїРѕС‡РєСѓ.
+  [РІ РёРјРµРЅР°С…]-[СЃРєСЂС‹С‚Рѕ]|[РІСЃС‘ СЂР°РІРЅРѕ СЃРєСЂС‹С‚Рѕ]
+  [РІ РёРјРµРЅР°С…]-[СЃРєСЂС‹С‚Рѕ]-[СЃРєСЂС‹С‚Рѕ]
+Р¤РѕСЂРјР°С‚ Р±Р»РѕРєР°: $С‡С‚РµРЅРёРµ$С‡С‚РµРЅРёРµ$
+Р’ РјСЏРіРєРѕРј СЂРµР¶РёРјРµ:
+  - РґРµР»РµРЅРёРµ Р·Р°РїСЏС‚РѕР№ $С‡С‚РµРЅРёРµ,С‡С‚РµРЅРёРµ$ (СЏСЂРєСЃРё СЌС‚Рѕ С‚РµСЂРїРёС‚)
+  - РѕС‚СЃСѓС‚СЃС‚РІРёРµ $СЂР°РјРѕРє$
 }
 function ParseKanjiNameReadings(const inp: string): TNameReadings;
 var blockType: TNameReadingType;
   pc, ps: PChar;
-  readingSetOpen: boolean; //видели $ после прошлого | или -
+  readingSetOpen: boolean; //РІРёРґРµР»Рё $ РїРѕСЃР»Рµ РїСЂРѕС€Р»РѕРіРѕ | РёР»Рё -
 
- //ps должен стоять на начальном символе $, pc на конечном.
+ //ps РґРѕР»Р¶РµРЅ СЃС‚РѕСЏС‚СЊ РЅР° РЅР°С‡Р°Р»СЊРЅРѕРј СЃРёРјРІРѕР»Рµ $, pc РЅР° РєРѕРЅРµС‡РЅРѕРј.
   procedure CommitReading;
   begin
     if ps>=pc then exit;
     if (ps+1=pc) and (ps^=' ') then
-      exit; //Яркси любит такие пустые пробельные позиции, но по сути не нужны
+      exit; //РЇСЂРєСЃРё Р»СЋР±РёС‚ С‚Р°РєРёРµ РїСѓСЃС‚С‹Рµ РїСЂРѕР±РµР»СЊРЅС‹Рµ РїРѕР·РёС†РёРё, РЅРѕ РїРѕ СЃСѓС‚Рё РЅРµ РЅСѓР¶РЅС‹
     SetLength(Result, Length(Result)+1);
     Result[Length(Result)-1]._type := blockType;
     Result[Length(Result)-1].text := spancopy(ps,pc);
@@ -810,7 +1066,7 @@ begin
   blockType := ntCommon;
   readingSetOpen := false;
   pc := PChar(inp);
-  if pc^='|' then Inc(pc); // иногда лишний | в начале, см. формат
+  if pc^='|' then Inc(pc); // РёРЅРѕРіРґР° Р»РёС€РЅРёР№ | РІ РЅР°С‡Р°Р»Рµ, СЃРј. С„РѕСЂРјР°С‚
   ps := pc;
   while pc^<>#00 do begin
     if pc^='|' then begin
@@ -830,7 +1086,7 @@ begin
       readingSetOpen := false;
     end else
 
-   //note: могут быть и как часть текста: $asd$-bsd$  $asd-$bsd$
+   //note: РјРѕРіСѓС‚ Р±С‹С‚СЊ Рё РєР°Рє С‡Р°СЃС‚СЊ С‚РµРєСЃС‚Р°: $asd$-bsd$  $asd-$bsd$
     if (pc^='-') and ((pc+1)^='$') and (ps>=pc) then begin
      {$IFDEF STRICT}
       if ps<pc then
@@ -844,7 +1100,7 @@ begin
     end else
 
     if pc^='$' then begin
-      CommitReading; //если это переключатель
+      CommitReading; //РµСЃР»Рё СЌС‚Рѕ РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ
       readingSetOpen := true;
       ps := pc+1;
     end else
@@ -889,29 +1145,29 @@ end;
 
 
 {
-Поле: Kanji.Compounds. Работает в сочетании с KunYomi и Russian.
-Формат: 1:48667,N:8502@,N:2280,N:2279,N:55637,[блок]:[слово][флаги]
-Специальный блок N означает "В именах".
-Флаги:
- @   по соответствующему чтению (обычно не входящему в общий список) данный
-     иероглиф может читаться только в одиночку и никогда в сочетаниях с другими
-     знаками (отметить значение флажком 1)
- ^   нестандартное чтение (отметить треугольничком)
- *   нестандартное значение (отметить ромбиком)
- &   нестандартное чтение и значение (отметить и ромбиком, и треугольничком,
-     а также отступить немного после предыдущего слова)
- #   с виду никак не влияет, может сочетаться с другими
-Фигурные скобки (в комментарии заменил на квадратные) означают одно из нескольких
-заранее известных сообщений для конкретных кандзи:
+РџРѕР»Рµ: Kanji.Compounds. Р Р°Р±РѕС‚Р°РµС‚ РІ СЃРѕС‡РµС‚Р°РЅРёРё СЃ KunYomi Рё Russian.
+Р¤РѕСЂРјР°С‚: 1:48667,N:8502@,N:2280,N:2279,N:55637,[Р±Р»РѕРє]:[СЃР»РѕРІРѕ][С„Р»Р°РіРё]
+РЎРїРµС†РёР°Р»СЊРЅС‹Р№ Р±Р»РѕРє N РѕР·РЅР°С‡Р°РµС‚ "Р’ РёРјРµРЅР°С…".
+Р¤Р»Р°РіРё:
+ @   РїРѕ СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓСЋС‰РµРјСѓ С‡С‚РµРЅРёСЋ (РѕР±С‹С‡РЅРѕ РЅРµ РІС…РѕРґСЏС‰РµРјСѓ РІ РѕР±С‰РёР№ СЃРїРёСЃРѕРє) РґР°РЅРЅС‹Р№
+     РёРµСЂРѕРіР»РёС„ РјРѕР¶РµС‚ С‡РёС‚Р°С‚СЊСЃСЏ С‚РѕР»СЊРєРѕ РІ РѕРґРёРЅРѕС‡РєСѓ Рё РЅРёРєРѕРіРґР° РІ СЃРѕС‡РµС‚Р°РЅРёСЏС… СЃ РґСЂСѓРіРёРјРё
+     Р·РЅР°РєР°РјРё (РѕС‚РјРµС‚РёС‚СЊ Р·РЅР°С‡РµРЅРёРµ С„Р»Р°Р¶РєРѕРј 1)
+ ^   РЅРµСЃС‚Р°РЅРґР°СЂС‚РЅРѕРµ С‡С‚РµРЅРёРµ (РѕС‚РјРµС‚РёС‚СЊ С‚СЂРµСѓРіРѕР»СЊРЅРёС‡РєРѕРј)
+ *   РЅРµСЃС‚Р°РЅРґР°СЂС‚РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ (РѕС‚РјРµС‚РёС‚СЊ СЂРѕРјР±РёРєРѕРј)
+ &   РЅРµСЃС‚Р°РЅРґР°СЂС‚РЅРѕРµ С‡С‚РµРЅРёРµ Рё Р·РЅР°С‡РµРЅРёРµ (РѕС‚РјРµС‚РёС‚СЊ Рё СЂРѕРјР±РёРєРѕРј, Рё С‚СЂРµСѓРіРѕР»СЊРЅРёС‡РєРѕРј,
+     Р° С‚Р°РєР¶Рµ РѕС‚СЃС‚СѓРїРёС‚СЊ РЅРµРјРЅРѕРіРѕ РїРѕСЃР»Рµ РїСЂРµРґС‹РґСѓС‰РµРіРѕ СЃР»РѕРІР°)
+ #   СЃ РІРёРґСѓ РЅРёРєР°Рє РЅРµ РІР»РёСЏРµС‚, РјРѕР¶РµС‚ СЃРѕС‡РµС‚Р°С‚СЊСЃСЏ СЃ РґСЂСѓРіРёРјРё
+Р¤РёРіСѓСЂРЅС‹Рµ СЃРєРѕР±РєРё (РІ РєРѕРјРјРµРЅС‚Р°СЂРёРё Р·Р°РјРµРЅРёР» РЅР° РєРІР°РґСЂР°С‚РЅС‹Рµ) РѕР·РЅР°С‡Р°СЋС‚ РѕРґРЅРѕ РёР· РЅРµСЃРєРѕР»СЊРєРёС…
+Р·Р°СЂР°РЅРµРµ РёР·РІРµСЃС‚РЅС‹С… СЃРѕРѕР±С‰РµРЅРёР№ РґР»СЏ РєРѕРЅРєСЂРµС‚РЅС‹С… РєР°РЅРґР·Рё:
   1:6590,1:6579,1:[27]
-Cохраняем в msgref, wordref при этом пуст.
-# Решётка в начале списка означает, что список длинный и его нужно показывать
-свёрнуто (#54,#67).
+CРѕС…СЂР°РЅСЏРµРј РІ msgref, wordref РїСЂРё СЌС‚РѕРј РїСѓСЃС‚.
+# Р РµС€С‘С‚РєР° РІ РЅР°С‡Р°Р»Рµ СЃРїРёСЃРєР° РѕР·РЅР°С‡Р°РµС‚, С‡С‚Рѕ СЃРїРёСЃРѕРє РґР»РёРЅРЅС‹Р№ Рё РµРіРѕ РЅСѓР¶РЅРѕ РїРѕРєР°Р·С‹РІР°С‚СЊ
+СЃРІС‘СЂРЅСѓС‚Рѕ (#54,#67).
 
-Выбросы:
-1. В ограниченном числе случаев встречается _!мусор_мусор_1:нормальная,2:статья.
-2. Встречается и _какое-то_число_1:нормальная,2:статья.
-3. Иногда: "=мусор мусор" вместо статьи (впрочем, статья пустая).
+Р’С‹Р±СЂРѕСЃС‹:
+1. Р’ РѕРіСЂР°РЅРёС‡РµРЅРЅРѕРј С‡РёСЃР»Рµ СЃР»СѓС‡Р°РµРІ РІСЃС‚СЂРµС‡Р°РµС‚СЃСЏ _!РјСѓСЃРѕСЂ_РјСѓСЃРѕСЂ_1:РЅРѕСЂРјР°Р»СЊРЅР°СЏ,2:СЃС‚Р°С‚СЊСЏ.
+2. Р’СЃС‚СЂРµС‡Р°РµС‚СЃСЏ Рё _РєР°РєРѕРµ-С‚Рѕ_С‡РёСЃР»Рѕ_1:РЅРѕСЂРјР°Р»СЊРЅР°СЏ,2:СЃС‚Р°С‚СЊСЏ.
+3. РРЅРѕРіРґР°: "=РјСѓСЃРѕСЂ РјСѓСЃРѕСЂ" РІРјРµСЃС‚Рѕ СЃС‚Р°С‚СЊРё (РІРїСЂРѕС‡РµРј, СЃС‚Р°С‚СЊСЏ РїСѓСЃС‚Р°СЏ).
 }
 function ParseKanjiCompounds(inp: string): TCompoundEntries;
 var parts: TStringArray;
@@ -919,16 +1175,16 @@ var parts: TStringArray;
   block_id: string;
   ch: char;
 begin
- //Есть ровно ограниченное число случаев, когда по какой-то причине копия KunYomi
- //вываливается в Compounds. Все они начинаются с _ и мусор заканчивается _
+ //Р•СЃС‚СЊ СЂРѕРІРЅРѕ РѕРіСЂР°РЅРёС‡РµРЅРЅРѕРµ С‡РёСЃР»Рѕ СЃР»СѓС‡Р°РµРІ, РєРѕРіРґР° РїРѕ РєР°РєРѕР№-С‚Рѕ РїСЂРёС‡РёРЅРµ РєРѕРїРёСЏ KunYomi
+ //РІС‹РІР°Р»РёРІР°РµС‚СЃСЏ РІ Compounds. Р’СЃРµ РѕРЅРё РЅР°С‡РёРЅР°СЋС‚СЃСЏ СЃ _ Рё РјСѓСЃРѕСЂ Р·Р°РєР°РЅС‡РёРІР°РµС‚СЃСЏ _
   if (Length(inp)>0) and (inp[1]='_') then begin
     Complain('ParseKanjiCompounds', 'KunYomi leak', inp);
-    parts := Split(inp, '_'); //боже помоги
+    parts := Split(inp, '_'); //Р±РѕР¶Рµ РїРѕРјРѕРіРё
     if Length(parts)>0 then
       inp := parts[Length(parts)-1];
   end;
 
- //Изредка вместо всей статьи фигня вида "=мусор мусор"
+ //РР·СЂРµРґРєР° РІРјРµСЃС‚Рѕ РІСЃРµР№ СЃС‚Р°С‚СЊРё С„РёРіРЅСЏ РІРёРґР° "=РјСѓСЃРѕСЂ РјСѓСЃРѕСЂ"
   if (Length(inp)>0) and (inp[1]='=') then begin
     Complain('ParseKanjiCompounds', '= operator leak', inp);
     inp := '';
@@ -936,10 +1192,10 @@ begin
 
   parts := Split(inp, ',');
   SetLength(Result, Length(parts));
-  if Length(parts)<=0 then exit; //меньше проверок
+  if Length(parts)<=0 then exit; //РјРµРЅСЊС€Рµ РїСЂРѕРІРµСЂРѕРє
 
- //Решётка в начале списка означает, что список длинный и его нужно показывать
- //сжато. Игнорируем.
+ //Р РµС€С‘С‚РєР° РІ РЅР°С‡Р°Р»Рµ СЃРїРёСЃРєР° РѕР·РЅР°С‡Р°РµС‚, С‡С‚Рѕ СЃРїРёСЃРѕРє РґР»РёРЅРЅС‹Р№ Рё РµРіРѕ РЅСѓР¶РЅРѕ РїРѕРєР°Р·С‹РІР°С‚СЊ
+ //СЃР¶Р°С‚Рѕ. РРіРЅРѕСЂРёСЂСѓРµРј.
   if (Length(parts[0])>0) and (parts[0][1]='#') then
     delete(parts[0],1,1);
 
@@ -947,7 +1203,7 @@ begin
     block_id := trypop(parts[i], ':');
     if block_id='' then
       raise Exception.Create('ParseKanjiCompounds: no block_id separator.');
-   //Блок может быть и двухциферным, 10+
+   //Р‘Р»РѕРє РјРѕР¶РµС‚ Р±С‹С‚СЊ Рё РґРІСѓС…С†РёС„РµСЂРЅС‹Рј, 10+
     if block_id='N' then
       Result[i].block := BLOCK_NAMES
     else

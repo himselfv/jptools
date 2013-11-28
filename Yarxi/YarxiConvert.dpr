@@ -10,8 +10,7 @@ uses
   ConsoleToolbox,
   JWBIO,
   FastArray,
-  Yarxi in 'Yarxi.pas',
-  YarxiFmt;
+  Yarxi, YarxiFmt;
 
 type
   TYarxiConvert = class(TCommandLineApp)
