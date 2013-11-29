@@ -336,7 +336,7 @@ function FileWriter(const AFilename: string): TStreamEncoder; inline; //->Unicod
 function GetLineCount(AText: TStreamDecoder): integer;
 
 implementation
-uses Windows, JWBConvertTbl;
+uses {$IFDEF MSWINDOWS}Windows,{$ENDIF} JWBConvertTbl;
 
 { Various helpers }
 
