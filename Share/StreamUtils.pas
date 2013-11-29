@@ -177,9 +177,10 @@ implementation
 
 type
  //IntPtr is missing in older versions of Delphi and it's easier to simply redeclare it
- {$IF Defined(CPUX64)}
+ //FPC and Delphi use a lot of different define
+ {$IF Defined(CPU64) or Defined(CPUX64) or Defined(CPUX86_64)}
   IntPtr = int64;
- {$ELSEIF Defined(CPUX86) OR Defined(CPU386)}
+ {$ELSEIF Defined(CPU32) or Defined(CPUX86) or Defined(CPU386) or Defined(CPUI386) or Defined(I386) }
   IntPtr = integer;
  {$ELSE}
   {$MESSAGE Error 'Cannot declare IntPtr for this target platform'}
