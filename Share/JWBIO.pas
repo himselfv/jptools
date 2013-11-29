@@ -36,23 +36,21 @@ How to use:
 interface
 uses SysUtils, Classes, StreamUtils;
 
+{$IF Defined(FPC)}
+//На некоторых компиляторах нет TBytes или некоторых функций, связанных с ним
+{$DEFINE OWNBYTES}
 type
- {$IF Defined(FPC)}
-  //На некоторых компиляторах нет TBytes или некоторых функций, связанных с ним
-  {$DEFINE OWNBYTES}
- {$IFEND}
-
- {$IFDEF OWNBYTES}
   TBytes = array of byte;
-  TBytesHelper = record helper for TBytes
-    class function Create(): TBytes; overload; static; inline;
-    class function Create(b1: byte): TBytes; overload; static; inline;
-    class function Create(b1,b2: byte): TBytes; overload; static; inline;
-    class function Create(b1,b2,b3: byte): TBytes; overload; static; inline;
-    class function Create(b1,b2,b3,b4: byte): TBytes; overload; static; inline;
-  end;
- {$ENDIF}
+{$IFEND}
 
+function Bytes(): TBytes; overload; inline;
+function Bytes(b1: byte): TBytes; overload; inline;
+function Bytes(b1,b2: byte): TBytes; overload; inline;
+function Bytes(b1,b2,b3: byte): TBytes; overload; inline;
+function Bytes(b1,b2,b3,b4: byte): TBytes; overload; inline;
+
+
+type
   {
   TEncoding design dogmas.
 
@@ -369,25 +367,25 @@ begin
 end;
 
 {$IFDEF OWNBYTES}
-class function TBytesHelper.Create(): TBytes;
+function Bytes(): TBytes;
 begin
   SetLength(Result, 0);
 end;
 
-class function TBytesHelper.Create(b1: byte): TBytes;
+function Bytes(b1: byte): TBytes;
 begin
   SetLength(Result, 1);
   Result[0] := b1;
 end;
 
-class function TBytesHelper.Create(b1,b2: byte): TBytes;
+function Bytes(b1,b2: byte): TBytes;
 begin
   SetLength(Result, 2);
   Result[0] := b1;
   Result[1] := b2;
 end;
 
-class function TBytesHelper.Create(b1,b2,b3: byte): TBytes;
+function Bytes(b1,b2,b3: byte): TBytes;
 begin
   SetLength(Result, 3);
   Result[0] := b1;
@@ -395,13 +393,38 @@ begin
   Result[2] := b3;
 end;
 
-class function TBytesHelper.Create(b1,b2,b3,b4: byte): TBytes;
+function Bytes(b1,b2,b3,b4: byte): TBytes;
 begin
   SetLength(Result, 4);
   Result[0] := b1;
   Result[1] := b2;
   Result[2] := b3;
   Result[3] := b4;
+end;
+{$ELSE}
+function Bytes(): TBytes;
+begin
+  Result := TBytes.Create();
+end;
+
+function Bytes(b1: byte): TBytes;
+begin
+  Result := TBytes.Create(b1);
+end;
+
+function Bytes(b1,b2: byte): TBytes;
+begin
+  Result := TBytes.Create(b1,b2);
+end;
+
+function Bytes(b1,b2,b3: byte): TBytes;
+begin
+  Result := TBytes.Create(b1,b2,b3);
+end;
+
+function Bytes(b1,b2,b3,b4: byte): TBytes;
+begin
+  Result := TBytes.Create(b1,b2,b3,b4);
 end;
 {$ENDIF}
 
@@ -414,7 +437,7 @@ end;
 
 class function TEncoding.GetBom: TBytes;
 begin
-  Result := TBytes.Create();
+  Result := Bytes();
 end;
 
 { Reads out any of the BOMs supported by this encoding and returns true,
@@ -958,7 +981,7 @@ end;
 
 class function TUTF8Encoding.GetBOM: TBytes;
 begin
-  Result := TBytes.Create($EF, $BB, $BF);
+  Result := Bytes($EF, $BB, $BF);
 end;
 
 function TUTF8Encoding.Read(AStream: TStream; MaxChars: integer): string;
@@ -1102,7 +1125,7 @@ end;
 
 class function TUTF16LEEncoding.GetBOM: TBytes;
 begin
-  Result := TBytes.Create($FF, $FE);
+  Result := Bytes($FF, $FE);
 end;
 
 function TUTF16LEEncoding.Read(AStream: TStream; MaxChars: integer): string;
@@ -1122,7 +1145,7 @@ end;
 
 class function TUTF16BEEncoding.GetBOM: TBytes;
 begin
-  Result := TBytes.Create($FE, $FF);
+  Result := Bytes($FE, $FF);
 end;
 
 function TUTF16BEEncoding.Read(AStream: TStream; MaxChars: integer): string;
@@ -1487,22 +1510,22 @@ end;
 constructor TJISEncoding.Create;
 begin
   inherited;
-  StartMark := TBytes.Create(JIS_ESC, ord('B'), ord('$'));
-  EndMark := TBytes.Create(JIS_ESC, ord('('), ord('J'));
+  StartMark := Bytes(JIS_ESC, ord('B'), ord('$'));
+  EndMark := Bytes(JIS_ESC, ord('('), ord('J'));
 end;
 
 constructor TOldJISEncoding.Create;
 begin
   inherited;
-  StartMark := TBytes.Create(JIS_ESC, ord('@'), ord('$'));
-  EndMark := TBytes.Create(JIS_ESC, ord('('), ord('J'));
+  StartMark := Bytes(JIS_ESC, ord('@'), ord('$'));
+  EndMark := Bytes(JIS_ESC, ord('('), ord('J'));
 end;
 
 constructor TNECJISEncoding.Create;
 begin
   inherited;
-  StartMark := TBytes.Create(JIS_ESC, ord('K'));
-  EndMark := TBytes.Create(JIS_ESC, ord('H'));
+  StartMark := Bytes(JIS_ESC, ord('K'));
+  EndMark := Bytes(JIS_ESC, ord('H'));
 end;
 
 function TGBEncoding.Read(AStream: TStream; MaxChars: integer): string;
