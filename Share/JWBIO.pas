@@ -34,7 +34,7 @@ How to use:
 }
 
 interface
-uses SysUtils, Classes, StreamUtils;
+uses SysUtils, Classes, StreamUtils{$IFDEF FPC}, iostream{$ENDIF};
 
 {$IF Defined(FPC)}
 //На некоторых компиляторах нет TBytes или некоторых функций, связанных с ним
@@ -1966,7 +1966,11 @@ end;
 
 function AnsiFileReader(const AFilename: string): TStreamDecoder;
 begin
+ {$IFDEF MSWINDOWS}
   Result := OpenTextFile(AFilename, TAcpEncoding);
+ {$ELSE}
+  Result := OpenTextFile(AFilename, TAnsiEncoding);
+ {$ENDIF}
 end;
 
 function UnicodeFileReader(const AFilename: string): TStreamDecoder;
@@ -1975,9 +1979,20 @@ begin
 end;
 
 function ConsoleReader(AEncoding: TEncoding = nil): TStreamDecoder;
-var AInputHandle: THandle;
+var AStream: TStream;
+ {$IFDEF MSWINDOWS}
+  AInputHandle: THandle;
+ {$ENDIF}
 begin
+ {$IFDEF MSWINDOWS}
   AInputHandle := GetStdHandle(STD_INPUT_HANDLE);
+  AStream := THandleStream.Create(AInputHandle);
+ {$ELSE IFDEF FPC}
+  AStream := TIOStream.Create(iosInput);
+ {$ELSE}
+  raise Exception.Create('Console reader not supported on this platform/compiler.');
+ {$ENDIF}
+
   if AEncoding=nil then begin
   {$IFDEF MSWINDOWS}
   { If our outputs are redirected, we *really* do not know what to expect, so we
@@ -1994,7 +2009,7 @@ begin
   end;
 
   Result := TStreamDecoder.Open(
-    THandleStream.Create(AInputHandle),
+    AStream,
     AEncoding,
     {OwnsStream=}true
   );
@@ -2025,9 +2040,20 @@ begin
 end;
 
 function ConsoleWriter(AEncoding: TEncoding): TStreamEncoder;
-var AOutputHandle: THandle;
+var AStream: TStream;
+ {$IFDEF MSWINDOWS}
+  AOutputHandle: THandle;
+ {$ENDIF}
 begin
+ {$IFDEF MSWINDOWS}
   AOutputHandle := GetStdHandle(STD_OUTPUT_HANDLE);
+  AStream := THandleStream.Create(AOutputHandle);
+ {$ELSE IFDEF FPC}
+  AStream := TIOStream.Create(iosOutput);
+ {$ELSE}
+  raise Exception.Create('Console writer not supported on this platform/compiler.');
+ {$ENDIF}
+
   if AEncoding=nil then begin
   {$IFDEF MSWINDOWS}
   { If our outputs are redirected, we *really* do not know which codepage to
@@ -2044,7 +2070,7 @@ begin
   end;
 
   Result := TStreamEncoder.Open(
-    THandleStream.Create(AOutputHandle),
+    AStream,
     AEncoding,
     {OwnsStream=}true
   );
