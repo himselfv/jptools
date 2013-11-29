@@ -37,7 +37,21 @@ interface
 uses SysUtils, Classes, StreamUtils;
 
 type
+ {$IF Defined(FPC)}
+  //На некоторых компиляторах нет TBytes или некоторых функций, связанных с ним
+  {$DEFINE OWNBYTES}
+ {$IFEND}
+
+ {$IFDEF OWNBYTES}
   TBytes = array of byte;
+  TBytesHelper = record helper for TBytes
+    class function Create(): TBytes; overload; static; inline;
+    class function Create(b1: byte): TBytes; overload; static; inline;
+    class function Create(b1,b2: byte): TBytes; overload; static; inline;
+    class function Create(b1,b2,b3: byte): TBytes; overload; static; inline;
+    class function Create(b1,b2,b3,b4: byte): TBytes; overload; static; inline;
+  end;
+ {$ENDIF}
 
   {
   TEncoding design dogmas.
@@ -354,6 +368,42 @@ begin
   dunno which is faster }
 end;
 
+{$IFDEF OWNBYTES}
+class function TBytesHelper.Create(): TBytes;
+begin
+  SetLength(Result, 0);
+end;
+
+class function TBytesHelper.Create(b1: byte): TBytes;
+begin
+  SetLength(Result, 1);
+  Result[0] := b1;
+end;
+
+class function TBytesHelper.Create(b1,b2: byte): TBytes;
+begin
+  SetLength(Result, 2);
+  Result[0] := b1;
+  Result[1] := b2;
+end;
+
+class function TBytesHelper.Create(b1,b2,b3: byte): TBytes;
+begin
+  SetLength(Result, 3);
+  Result[0] := b1;
+  Result[1] := b2;
+  Result[2] := b3;
+end;
+
+class function TBytesHelper.Create(b1,b2,b3,b4: byte): TBytes;
+begin
+  SetLength(Result, 4);
+  Result[0] := b1;
+  Result[1] := b2;
+  Result[2] := b3;
+  Result[3] := b4;
+end;
+{$ENDIF}
 
 { Encoding }
 
