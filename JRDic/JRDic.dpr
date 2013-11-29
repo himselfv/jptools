@@ -19,7 +19,7 @@
 {$ENDIF}
 
 uses
- {$IFDEF FPC}cwstring,{$ENDIF} //Enables FreePascal string assignment-conversion
+ {$IFDEF UNIX}cwstring,{$ENDIF} //Enables FreePascal string assignment-conversion
   SysUtils,
   Classes,
   Variants,

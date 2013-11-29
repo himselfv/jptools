@@ -37,6 +37,8 @@ interface
 uses SysUtils, Classes, StreamUtils;
 
 type
+  TBytes = array of byte;
+
   {
   TEncoding design dogmas.
 
