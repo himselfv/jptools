@@ -7,7 +7,7 @@ Some comments are in Russian, deal with it *puts on glasses*.
 }
 
 interface
-uses SysUtils, Classes, Windows;
+uses SysUtils, Classes{$IFDEF DCC}, Windows{$ENDIF};
 
 type
   EStreamException = class(Exception);
@@ -61,7 +61,7 @@ type
     function UpdateChunk: integer;
     procedure SetChunkSize(AValue: integer);
     procedure ResetBuf;
-    function ReallocBuf(size: integer): boolean;
+    function ReallocBuf(ASize: integer): boolean;
     procedure FreeBuf;
   public
     property ChunkSize: integer read FChunkSize write SetChunkSize;
@@ -80,9 +80,9 @@ type
   public
     function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
     function Read(var Buffer; Count: Longint): Longint; override;
-    function ReadBuf(buf: pbyte; len: integer): integer; inline;
+    function ReadBuf(ABuf: pbyte; ALen: integer): integer; inline;
     function Write(const Buffer; Count: Longint): Longint; override;
-    function Peek(var Buffer; Size: integer): integer;
+    function Peek(var Buffer; ASize: integer): integer;
     function PeekByte(out b: byte): boolean;
   end;
 
@@ -123,7 +123,7 @@ type
     function Seek(const Offset: Int64; Origin: TSeekOrigin): Int64; override;
     function Read(var Buffer; Count: Longint): Longint; override;
     function Write(const Buffer; Count: Longint): Longint; override;
-    function WriteBuf(buf: PByte; len: integer): integer; inline;
+    function WriteBuf(ABuf: PByte; ALen: integer): integer; inline;
     procedure Flush;
 
   end;
@@ -177,9 +177,9 @@ implementation
 
 type
  //IntPtr is missing in older versions of Delphi and it's easier to simply redeclare it
- {$IF Defined(WIN64)}
+ {$IF Defined(CPUX64)}
   IntPtr = int64;
- {$ELSEIF Defined(WIN32)}
+ {$ELSEIF Defined(CPUX86) OR Defined(CPU386)}
   IntPtr = integer;
  {$ELSE}
   {$MESSAGE Error 'Cannot declare IntPtr for this target platform'}
@@ -294,15 +294,15 @@ begin
   ptr := buf;
 end;
 
-function TStreamReader.ReallocBuf(size: integer): boolean;
+function TStreamReader.ReallocBuf(ASize: integer): boolean;
 begin
  //We can't decrease buffer size cause there's still data inside.
-  if adv + rem > size then begin
+  if adv + rem > ASize then begin
     Result := false;
     exit;
   end;
 
-  ReallocMem(buf, Size);
+  ReallocMem(buf, ASize);
   ptr := pointer(IntPtr(buf) + adv);
   Result := true;
 end;
@@ -431,9 +431,9 @@ begin
   Inc(FBytesRead, Result);
 end;
 
-function TStreamReader.ReadBuf(buf: pbyte; len: integer): integer;
+function TStreamReader.ReadBuf(ABuf: pbyte; ALen: integer): integer;
 begin
-  Result := Read(buf^, len);
+  Result := Read(ABuf^, ALen);
 end;
 
 function TStreamReader.Write(const Buffer; Count: Longint): Longint;
@@ -442,12 +442,12 @@ begin
 end;
 
 //Won't Peek for more than CacheSize
-function TStreamReader.Peek(var Buffer; Size: integer): integer;
+function TStreamReader.Peek(var Buffer; ASize: integer): integer;
 begin
  //If the data is in cache, it's simple
-  if size <= rem then begin
-    Move(ptr^, Buffer, Size);
-    Result := size;
+  if ASize <= rem then begin
+    Move(ptr^, Buffer, ASize);
+    Result := ASize;
     exit;
   end;
 
@@ -456,9 +456,9 @@ begin
     UpdateChunk;
 
  //If the complete data fit, return it
-  if size <= rem then begin
-    Move(ptr^, Buffer, Size);
-    Result := Size;
+  if ASize <= rem then begin
+    Move(ptr^, Buffer, ASize);
+    Result := ASize;
     exit;
   end;
 
@@ -669,9 +669,9 @@ begin
   Inc(FBytesWritten, Result);
 end;
 
-function TStreamWriter.WriteBuf(buf: PByte; len: integer): integer;
+function TStreamWriter.WriteBuf(ABuf: PByte; ALen: integer): integer;
 begin
-  Result := Write(buf^, len);
+  Result := Write(ABuf^, ALen);
 end;
 
 
