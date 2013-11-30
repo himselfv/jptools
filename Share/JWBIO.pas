@@ -866,9 +866,12 @@ end;
 
 procedure TAsciiEncoding.Write(AStream: TStream; const AData: UnicodeString);
 var i: integer;
+  ch: AnsiChar;
 begin
-  for i := 1 to Length(AData) do
-    AStream.Write(AnsiChar(AData[i]), 1);
+  for i := 1 to Length(AData) do begin
+    ch := AnsiChar(AData[i]);
+    AStream.Write(ch, 1);
+  end;
 end;
 
 {$IFDEF MSWINDOWS}
@@ -2054,7 +2057,7 @@ begin
   AOutputHandle := GetStdHandle(STD_OUTPUT_HANDLE);
   AStream := THandleStream.Create(AOutputHandle);
  {$ELSE}
- {$IFDEF IFDEF FPC}
+ {$IFDEF FPC}
   AStream := TIOStream.Create(iosOutput);
  {$ELSE}
   raise Exception.Create('Console writer not supported on this platform/compiler.');
