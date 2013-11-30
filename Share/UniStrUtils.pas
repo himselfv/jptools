@@ -52,6 +52,7 @@
 
 interface
 uses SysUtils, {$IFDEF MSWINDOWS}Windows,{$ENDIF} StrUtils, WideStrUtils;
+{ If you lack WideStrUtils, find/write a reimplementation. }
 
 {
 String type optimizations.
@@ -184,6 +185,12 @@ function AnsiSameText(const S1, S2: AnsiString): Boolean; inline;
 {$ENDIF}
 
 
+{ Unicode versions of WideStrUtils functions. }
+
+function UStrPCopy(Dest: PUniChar; const Source: UnicodeString): PUniChar; inline;
+function UStrPLCopy(Dest: PUniChar; const Source: UnicodeString; MaxLen: Cardinal): PUniChar; inline;
+
+
 (*
 These are present in SysUtils/StrUtils/WideStrUtils
   function WideUpperCase(const S: WideString): WideString;
@@ -192,9 +199,6 @@ These are present in SysUtils/StrUtils/WideStrUtils
 
 But we have unicode versions (always optimal):
 *)
-
-function UStrPCopy(Dest: PUniChar; const Source: UnicodeString): PUniChar; inline;
-function UStrPLCopy(Dest: PUniChar; const Source: UnicodeString; MaxLen: Cardinal): PUniChar; inline;
 
 function UniLastChar(const S: UnicodeString): PUniChar; inline;
 function UniQuotedStr(const S: UnicodeString; Quote: UniChar): UnicodeString; inline;
@@ -437,6 +441,7 @@ procedure HexToBin(const s: AnsiString; p: pbyte; size: integer);
 
 
 { Codepage utils }
+{$IFDEF MSWINDOWS}
 //Превращает один символ в Wide/Ansi
 function ToWideChar(c: AnsiChar; cp: cardinal): WideChar;
 function ToChar(c: WideChar; cp: cardinal): AnsiChar;
@@ -455,6 +460,7 @@ function Convert(const s: AnsiString; cpIn, cpOut: cardinal): AnsiString;
 //Меняет кодировку Ansi-строки с системной на консольную и наоборот
 function WinToOEM(const s: AnsiString): AnsiString; inline;
 function OEMToWin(const s: AnsiString): AnsiString; inline;
+{$ENDIF}
 
 
 type
@@ -577,6 +583,7 @@ begin
 end;
 
 function AnsiUpperCase(const S: AnsiString): AnsiString;
+{$IFDEF MSWINDOWS}
 var
   Len: Integer;
 begin
@@ -585,8 +592,15 @@ begin
   if Len > 0 then
     CharUpperBuffA(PAnsiChar(Result), Len);
 end;
+{$ELSE}
+begin
+ //No other way
+  Result := AnsiString(UpperCase(string(S)));
+end;
+{$ENDIF}
 
 function AnsiLowerCase(const S: AnsiString): AnsiString;
+{$IFDEF MSWINDOWS}
 var
   Len: Integer;
 begin
@@ -595,12 +609,23 @@ begin
   if Len > 0 then
     CharLowerBuffA(PAnsiChar(Result), Len);
 end;
+{$ELSE}
+begin
+  Result := AnsiString(LowerCase(string(S)));
+end;
+{$ENDIF}
 
 function AnsiCompareStr(const S1, S2: AnsiString): Integer;
+{$IFDEF MSWINDOWS}
 begin
   Result := CompareStringA(LOCALE_USER_DEFAULT, 0, PAnsiChar(S1), Length(S1),
       PAnsiChar(S2), Length(S2)) - CSTR_EQUAL;
 end;
+{$ELSE}
+begin
+  Result := CompareStr(string(S1), string(S2));
+end;
+{$ENDIF}
 
 function AnsiSameStr(const S1, S2: AnsiString): Boolean;
 begin
@@ -608,10 +633,16 @@ begin
 end;
 
 function AnsiCompareText(const S1, S2: AnsiString): Integer;
+{$IFDEF MSWINDOWS}
 begin
   Result := CompareStringA(LOCALE_USER_DEFAULT, NORM_IGNORECASE, PAnsiChar(S1),
     Length(S1), PAnsiChar(S2), Length(S2)) - CSTR_EQUAL;
 end;
+{$ELSE}
+begin
+  Result := AnsiCompareText(string(S1), string(S2));
+end;
+{$ENDIF}
 
 function AnsiSameText(const S1, S2: AnsiString): Boolean;
 begin
@@ -626,13 +657,11 @@ end;
 
 function UStrPCopy(Dest: PUniChar; const Source: UnicodeString): PUniChar;
 begin
- {Copied from WideStrUtils}
-  Result := WStrLCopy(Dest, PWideChar(Source), Length(Source));
+  Result := WStrPLCopy(Dest, PWideChar(Source), Length(Source));
 end;
 
 function UStrPLCopy(Dest: PUniChar; const Source: UnicodeString; MaxLen: Cardinal): PUniChar;
 begin
- {Copied from WideStrUtils}
   Result := WStrLCopy(Dest, PWideChar(Source), MaxLen);
 end;
 
@@ -2327,6 +2356,7 @@ end;
 ////////////////////////////////////////////////////////////////////////////////
 ///  Codepage utils
 
+{$IFDEF MSWINDOWS}
 function ToWideChar(c: AnsiChar; cp: cardinal): WideChar;
 begin
   if MultiByteToWideChar(cp, 0, @c, 1, @Result, 2) = 0 then
@@ -2397,6 +2427,7 @@ function OEMToWin(const s: AnsiString): AnsiString;
 begin
   Result := Convert(s, CP_OEMCP, CP_ACP);
 end;
+{$ENDIF}
 
 
 ////////////////////////////////////////////////////////////////////////////////
