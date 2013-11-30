@@ -103,11 +103,11 @@ type
 type
  { UnicodeString is the best Unicode type available on the platform. On newer
   compilers it's supported native, on older links to WideString. }
- {$IF Declared(DCC) and (CompilerVersion >= 21)}
+ {$IF Defined(DCC) and (CompilerVersion >= 21)}
   UniString = UnicodeString;
   PUniString = PUnicodeString;
  {$ELSE}
- {$IF Declared(FPC)}
+ {$IF Defined(FPC)}
   UniString = UnicodeString;
   PUniString = PUnicodeString;
  {$ELSE}
@@ -140,7 +140,7 @@ type
   PWideStringArray = ^TWideStringArray;
   PUniStringArray = ^TUniStringArray;
 
- {$IF Declared(DCC) and (CompilerVersion < 21)}
+ {$IF Defined(DCC) and (CompilerVersion < 21)}
  //Not declared in older versions
   UCS2Char = WideChar;
   PUCS2Char = PWideChar;

@@ -2,7 +2,7 @@
 {$APPTYPE CONSOLE}
 
 uses
-  SysUtils, Classes, Windows, ConsoleToolbox, UniStrUtils, StreamUtils, JWBIO;
+  SysUtils, Classes, ConsoleToolbox, UniStrUtils, StreamUtils, JWBIO;
 
 type
   TMiscTxt = class(TCommandLineApp)
