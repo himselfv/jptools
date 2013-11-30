@@ -1968,7 +1968,7 @@ begin
  {$IFDEF MSWINDOWS}
   Result := OpenTextFile(AFilename, TAcpEncoding);
  {$ELSE}
-  Result := OpenTextFile(AFilename, TAnsiEncoding);
+  Result := OpenTextFile(AFilename, TAsciiEncoding);
  {$ENDIF}
 end;
 
@@ -1986,10 +1986,12 @@ begin
  {$IFDEF MSWINDOWS}
   AInputHandle := GetStdHandle(STD_INPUT_HANDLE);
   AStream := THandleStream.Create(AInputHandle);
- {$ELSE IFDEF FPC}
+ {$ELSE}
+ {$IFDEF FPC}
   AStream := TIOStream.Create(iosInput);
  {$ELSE}
   raise Exception.Create('Console reader not supported on this platform/compiler.');
+ {$ENDIF}
  {$ENDIF}
 
   if AEncoding=nil then begin
@@ -2030,7 +2032,11 @@ end;
 
 function AnsiFileWriter(const AFilename: TFilename): TStreamEncoder;
 begin
+ {$IFDEF MSWINDOWS}
   Result := CreateTextFile(AFilename, TAcpEncoding);
+ {$ELSE}
+  Result := CreateTextFile(AFilename, TAsciiEncoding);
+ {$ENDIF}
 end;
 
 function UnicodeFileWriter(const AFilename: TFilename): TStreamEncoder;
@@ -2047,10 +2053,12 @@ begin
  {$IFDEF MSWINDOWS}
   AOutputHandle := GetStdHandle(STD_OUTPUT_HANDLE);
   AStream := THandleStream.Create(AOutputHandle);
- {$ELSE IFDEF FPC}
+ {$ELSE}
+ {$IFDEF IFDEF FPC}
   AStream := TIOStream.Create(iosOutput);
  {$ELSE}
   raise Exception.Create('Console writer not supported on this platform/compiler.');
+ {$ENDIF}
  {$ENDIF}
 
   if AEncoding=nil then begin
