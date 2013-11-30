@@ -106,7 +106,8 @@ type
  {$IF Declared(DCC) and (CompilerVersion >= 21)}
   UniString = UnicodeString;
   PUniString = PUnicodeString;
- {$ELSE IF Declared(FPC)}
+ {$ELSE}
+ {$IF Declared(FPC)}
   UniString = UnicodeString;
   PUniString = PUnicodeString;
  {$ELSE}
@@ -114,6 +115,7 @@ type
   PUnicodeString = PWideString;
   UniString = UnicodeString;
   PUniString = PUnicodeString;
+ {$IFEND}
  {$IFEND}
 
  { FPC declares char as AnsiChar even on Unicode, so if you need cross-platform
