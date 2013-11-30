@@ -34,7 +34,7 @@ How to use:
 }
 
 interface
-uses SysUtils, Classes, StreamUtils{$IFDEF FPC}, iostream{$ENDIF};
+uses SysUtils, Classes, UniStrUtils, StreamUtils{$IFDEF FPC}, iostream{$ENDIF};
 
 {$IF Defined(FPC)}
 //На некоторых компиляторах нет TBytes или некоторых функций, связанных с ним
@@ -61,7 +61,7 @@ type
     TUTF8Encoding
     TUTF16LEEncoding
   Some functions accept or return encoding classes instead of instances:
-    function GuessEncoding(const AFilename: string): CEncoding;
+    function GuessEncoding(const AFilename: TFilename): CEncoding;
   If you want to use parametrized encodings this way, inherit and parametrize:
     TWin1251Encoding = class(TMultibyteEncoding);
 
@@ -84,7 +84,7 @@ type
   remainder until next time.
 
   This is clumsy in Delphi. We have classes to handle stream reading/writing:
-    DecodeBytes(AFrom: TStream; AMaxChars: integer): string;
+    DecodeBytes(AFrom: TStream; AMaxChars: integer): UnicodeString;
   Principially it's the same, but TStream encapsulates the concept of "remaining
   bytes" in the buffer.
 
@@ -140,20 +140,20 @@ type
     function Analyze(AStream: TStream): TEncodingLikelihood; virtual;
    { Implement *at least one* of Read/ReadChar.
     MaxChars is given in 2 byte positions. Surrogate pairs count as separate chars. }
-    function Read(AStream: TStream; MaxChars: integer): string; virtual;
+    function Read(AStream: TStream; MaxChars: integer): UnicodeString; virtual;
     function ReadChar(AStream: TStream; out AChar: WideChar): boolean; virtual;
    { Implement *at least one* of Write/WriteChar.
     Encoding descendants do not check the number of bytes written. If you care,
     wrap TStream and raise exceptions. }
-    procedure Write(AStream: TStream; const AData: string); virtual;
+    procedure Write(AStream: TStream; const AData: UnicodeString); virtual;
     procedure WriteChar(AStream: TStream; AChar: WideChar); virtual;
   end;
   CEncoding = class of TEncoding;
 
  { Simple encodings }
   TAsciiEncoding = class(TEncoding)
-    function Read(AStream: TStream; MaxChars: integer): string; override;
-    procedure Write(AStream: TStream; const AData: string); override;
+    function Read(AStream: TStream; MaxChars: integer): UnicodeString; override;
+    procedure Write(AStream: TStream; const AData: UnicodeString); override;
   end;
 
  {$IFDEF MSWINDOWS}
@@ -166,8 +166,8 @@ type
     FIllegalChar: char;
   public
     constructor Create(const ACodepage: integer); reintroduce; overload;
-    function Read(AStream: TStream; MaxChars: integer): string; override;
-    procedure Write(AStream: TStream; const AData: string); override;
+    function Read(AStream: TStream; MaxChars: integer): UnicodeString; override;
+    procedure Write(AStream: TStream; const AData: UnicodeString); override;
   end;
   TAcpEncoding = class(TMultibyteEncoding)
     constructor Create; override;
@@ -176,32 +176,32 @@ type
 
   TUTF8Encoding = class(TEncoding)
     class function GetBom: TBytes; override;
-    function Read(AStream: TStream; MaxChars: integer): string; override;
-    procedure Write(AStream: TStream; const AData: string); override;
+    function Read(AStream: TStream; MaxChars: integer): UnicodeString; override;
+    procedure Write(AStream: TStream; const AData: UnicodeString); override;
   end;
 
   TUTF16LEEncoding = class(TEncoding)
     class function GetBom: TBytes; override;
-    function Read(AStream: TStream; MaxChars: integer): string; override;
-    procedure Write(AStream: TStream; const AData: string); override;
+    function Read(AStream: TStream; MaxChars: integer): UnicodeString; override;
+    procedure Write(AStream: TStream; const AData: UnicodeString); override;
   end;
   TUTF16Encoding = TUTF16LEEncoding;
   TUnicodeEncoding = TUTF16LEEncoding;
 
   TUTF16BEEncoding = class(TEncoding)
     class function GetBom: TBytes; override;
-    function Read(AStream: TStream; MaxChars: integer): string; override;
-    procedure Write(AStream: TStream; const AData: string); override;
+    function Read(AStream: TStream; MaxChars: integer): UnicodeString; override;
+    procedure Write(AStream: TStream; const AData: UnicodeString); override;
   end;
 
   TEUCEncoding = class(TEncoding)
-    function Read(AStream: TStream; MaxChars: integer): string; override;
-    procedure Write(AStream: TStream; const AData: string); override;
+    function Read(AStream: TStream; MaxChars: integer): UnicodeString; override;
+    procedure Write(AStream: TStream; const AData: UnicodeString); override;
   end;
 
   TSJISEncoding = class(TEncoding)
-    function Read(AStream: TStream; MaxChars: integer): string; override;
-    procedure Write(AStream: TStream; const AData: string); override;
+    function Read(AStream: TStream; MaxChars: integer): UnicodeString; override;
+    procedure Write(AStream: TStream; const AData: UnicodeString); override;
   end;
 
  { New-JIS, Old-JIS and NEC-JIS differ only by Start and End markers.
@@ -214,8 +214,8 @@ type
     procedure _fputstart(AStream: TStream);
     procedure _fputend(AStream: TStream);
   public
-    function Read(AStream: TStream; MaxChars: integer): string; override;
-    procedure Write(AStream: TStream; const AData: string); override;
+    function Read(AStream: TStream; MaxChars: integer): UnicodeString; override;
+    procedure Write(AStream: TStream; const AData: UnicodeString); override;
   end;
   TJISEncoding = class(TBaseJISEncoding)
     constructor Create; override;
@@ -228,13 +228,13 @@ type
   end;
 
   TGBEncoding = class(TEncoding)
-    function Read(AStream: TStream; MaxChars: integer): string; override;
-    procedure Write(AStream: TStream; const AData: string); override;
+    function Read(AStream: TStream; MaxChars: integer): UnicodeString; override;
+    procedure Write(AStream: TStream; const AData: UnicodeString); override;
   end;
 
   TBIG5Encoding = class(TEncoding)
-    function Read(AStream: TStream; MaxChars: integer): string; override;
-    procedure Write(AStream: TStream; const AData: string); override;
+    function Read(AStream: TStream; MaxChars: integer): UnicodeString; override;
+    procedure Write(AStream: TStream; const AData: UnicodeString); override;
   end;
 
 
@@ -258,7 +258,7 @@ type
   TStreamDecoder = class
   protected
     FByteBuf: TStreamBuf;
-    FBuffer: string;
+    FBuffer: UnicodeString;
     FBufferPos: integer;
     FStream: TStream;
     FOwnsStream: boolean;
@@ -268,7 +268,7 @@ type
   public
     constructor Open(AStream: TStream; AEncoding: TEncoding;
       AOwnsStream: boolean = false); overload; virtual;
-    constructor Open(const AFilename: string; AEncoding: TEncoding); overload;
+    constructor Open(const AFilename: TFilename; AEncoding: TEncoding); overload;
     destructor Destroy; override;
     procedure DetachStream; //clears whatever caches the instance may have for the Stream
    { Since this may require backward seek, try not to TrySkipBom for sources where
@@ -290,7 +290,7 @@ type
 
   TStreamEncoder = class
   protected
-    FBuffer: string;
+    FBuffer: UnicodeString;
     FBufferPos: integer;
     FStream: TStream;
     FOwnsStream: boolean;
@@ -300,8 +300,8 @@ type
   public
     constructor Open(AStream: TStream; AEncoding: TEncoding;
       AOwnsStream: boolean = false);
-    constructor CreateNew(const AFilename: string; AEncoding: TEncoding);
-    constructor Append(const AFilename: string; AEncoding: TEncoding);
+    constructor CreateNew(const AFilename: TFilename; AEncoding: TEncoding);
+    constructor Append(const AFilename: TFilename; AEncoding: TEncoding);
     destructor Destroy; override;
     procedure Flush; //clears whatever caches instance may have for the stream
     procedure WriteBom;
@@ -317,34 +317,33 @@ type
 
 function Conv_DetectType(AStream: TStream): CEncoding; overload;
 function Conv_DetectType(AStream: TStream; out AEncoding: CEncoding): boolean; overload;
-function Conv_DetectType(const AFilename: string): CEncoding; overload;
-function Conv_DetectType(const AFilename: string; out AEncoding: CEncoding): boolean; overload;
+function Conv_DetectType(const AFilename: TFilename): CEncoding; overload;
+function Conv_DetectType(const AFilename: TFilename; out AEncoding: CEncoding): boolean; overload;
 
 function OpenStream(const AStream: TStream; AOwnsStream: boolean; AEncoding: CEncoding = nil): TStreamDecoder;
 function WriteToStream(const AStream: TStream; AOwnsStream: boolean; AEncoding: CEncoding): TStreamEncoder;
-function OpenTextFile(const AFilename: string; AEncoding: CEncoding = nil): TStreamDecoder; inline;
-function CreateTextFile(const AFilename: string; AEncoding: CEncoding): TStreamEncoder;
-function AppendToTextFile(const AFilename: string; AEncoding: CEncoding = nil): TStreamEncoder;
+function OpenTextFile(const AFilename: TFilename; AEncoding: CEncoding = nil): TStreamDecoder; inline;
+function CreateTextFile(const AFilename: TFilename; AEncoding: CEncoding): TStreamEncoder;
+function AppendToTextFile(const AFilename: TFilename; AEncoding: CEncoding = nil): TStreamEncoder;
 
 //Finds a class by it's name. Good to store encoding selection in a permanent way.
 function FindEncoding(const AClassName: string): CEncoding;
 
 //Compares binary data in files
 function CompareStreams(const AStream1, AStream2: TStream): boolean;
-function CompareFiles(const AFilename1, AFilename2: string): boolean;
+function CompareFiles(const AFilename1, AFilename2: TFilename): boolean;
 
 { Compatibility functions }
-function AnsiFileReader(const AFilename: string): TStreamDecoder;
-function UnicodeFileReader(const AFilename: string): TStreamDecoder;
+function AnsiFileReader(const AFilename: TFilename): TStreamDecoder;
+function UnicodeFileReader(const AFilename: TFilename): TStreamDecoder;
 function ConsoleReader(AEncoding: TEncoding = nil): TStreamDecoder;
 function UnicodeStreamReader(AStream: TStream; AOwnsStream: boolean = false): TStreamDecoder;
-function FileReader(const AFilename: string): TStreamDecoder; inline; //->Unicode on Unicode, ->Ansi on Ansi
-function AnsiFileWriter(const AFilename: string): TStreamEncoder;
-function UnicodeFileWriter(const AFilename: string): TStreamEncoder;
+function FileReader(const AFilename: TFilename): TStreamDecoder; inline; //->Unicode on Unicode, ->Ansi on Ansi
+function AnsiFileWriter(const AFilename: TFilename): TStreamEncoder;
+function UnicodeFileWriter(const AFilename: TFilename): TStreamEncoder;
 function ConsoleWriter(AEncoding: TEncoding = nil): TStreamEncoder;
-function ConsoleUTF8Writer(): TStreamEncoder;
 function UnicodeStreamWriter(AStream: TStream; AOwnsStream: boolean = false): TStreamEncoder;
-function FileWriter(const AFilename: string): TStreamEncoder; inline; //->Unicode on Unicode, ->Ansi on Ansi
+function FileWriter(const AFilename: TFilename): TStreamEncoder; inline; //->Unicode on Unicode, ->Ansi on Ansi
 
 { Misc useful functions }
 function GetLineCount(AText: TStreamDecoder): integer;
@@ -485,7 +484,7 @@ begin
     Result := elUnlikely;
 end;
 
-function TEncoding.Read(AStream: TStream; MaxChars: integer): string;
+function TEncoding.Read(AStream: TStream; MaxChars: integer): UnicodeString;
 var pos: integer;
 begin
   SetLength(Result, MaxChars);
@@ -500,14 +499,14 @@ begin
 end;
 
 function TEncoding.ReadChar(AStream: TStream; out AChar: WideChar): boolean;
-var s: string;
+var s: UnicodeString;
 begin
   s := Read(AStream, 1);
   Result := Length(s)>=1;
   if Result then AChar := s[1];
 end;
 
-procedure TEncoding.Write(AStream: TStream; const AData: string);
+procedure TEncoding.Write(AStream: TStream; const AData: UnicodeString);
 var i: integer;
 begin
   for i := 1 to Length(AData) do
@@ -594,7 +593,7 @@ begin
   Self.TrySkipBom;
 end;
 
-constructor TStreamDecoder.Open(const AFilename: string; AEncoding: TEncoding);
+constructor TStreamDecoder.Open(const AFilename: TFilename; AEncoding: TEncoding);
 var fs: TFileStream;
 begin
   fs := TFileStream.Create(AFilename, fmOpenRead);
@@ -615,7 +614,7 @@ end;
 { Reads more data and convert more characters. }
 procedure TStreamDecoder.ConvertMoreChars;
 var new_sz: integer;
-  new_chunk: string;
+  new_chunk: UnicodeString;
   bytes_read: integer;
   bytes_rem: integer;
 begin
@@ -753,14 +752,14 @@ begin
   FBufferPos := 0;
 end;
 
-constructor TStreamEncoder.CreateNew(const AFilename: string; AEncoding: TEncoding);
+constructor TStreamEncoder.CreateNew(const AFilename: TFilename; AEncoding: TEncoding);
 var fs: TFileStream;
 begin
   fs := TFileStream.Create(AFilename, fmCreate);
   Self.Open(fs,AEncoding,{OwnsStream=}true);
 end;
 
-constructor TStreamEncoder.Append(const AFilename: string; AEncoding: TEncoding);
+constructor TStreamEncoder.Append(const AFilename: TFilename; AEncoding: TEncoding);
 var fs: TFileStream;
 begin
   fs := TFileStream.Create(AFilename, fmCreate);
@@ -850,7 +849,7 @@ end;
 
 { Simple encodings }
 
-function TAsciiEncoding.Read(AStream: TStream; MaxChars: integer): string;
+function TAsciiEncoding.Read(AStream: TStream; MaxChars: integer): UnicodeString;
 var pos: integer;
   ac: AnsiChar;
 begin
@@ -865,7 +864,7 @@ begin
     SetLength(Result, pos-1);
 end;
 
-procedure TAsciiEncoding.Write(AStream: TStream; const AData: string);
+procedure TAsciiEncoding.Write(AStream: TStream; const AData: UnicodeString);
 var i: integer;
 begin
   for i := 1 to Length(AData) do
@@ -908,7 +907,7 @@ end;
  while at the same 8 bytes. No way around this. We cannot test for
  ERROR_NO_UNICODE_TRANSLATION because incomplete sequences result in the same. }
 
-function TMultibyteEncoding.Read(AStream: TStream; MaxChars: integer): string;
+function TMultibyteEncoding.Read(AStream: TStream; MaxChars: integer): UnicodeString;
 var i, pos, conv: integer;
   inp: array[0..7] of AnsiChar;
   outp: array[0..1] of WideChar;
@@ -960,7 +959,7 @@ begin
     SetLength(Result, pos-1);
 end;
 
-procedure TMultibyteEncoding.Write(AStream: TStream; const AData: string);
+procedure TMultibyteEncoding.Write(AStream: TStream; const AData: UnicodeString);
 var buf: AnsiString;
   written: integer;
 begin
@@ -984,7 +983,7 @@ begin
   Result := Bytes($EF, $BB, $BF);
 end;
 
-function TUTF8Encoding.Read(AStream: TStream; MaxChars: integer): string;
+function TUTF8Encoding.Read(AStream: TStream; MaxChars: integer): UnicodeString;
 var b: array[0..5] of byte;
  { Thought of making it packed record ( b0,b1,b2,b3,b4,b5: byte; ) for speed,
   but the assembly is identical. }
@@ -1097,7 +1096,7 @@ begin
     SetLength(Result, Length(Result)-MaxChars);
 end;
 
-procedure TUTF8Encoding.Write(AStream: TStream; const AData: string);
+procedure TUTF8Encoding.Write(AStream: TStream; const AData: UnicodeString);
 var i: integer;
   w: integer;
 begin
@@ -1128,7 +1127,7 @@ begin
   Result := Bytes($FF, $FE);
 end;
 
-function TUTF16LEEncoding.Read(AStream: TStream; MaxChars: integer): string;
+function TUTF16LEEncoding.Read(AStream: TStream; MaxChars: integer): UnicodeString;
 var read_sz: integer;
 begin
   SetLength(Result, MaxChars);
@@ -1137,7 +1136,7 @@ begin
     SetLength(Result, read_sz div SizeOf(WideChar));
 end;
 
-procedure TUTF16LEEncoding.Write(AStream: TStream; const AData: string);
+procedure TUTF16LEEncoding.Write(AStream: TStream; const AData: UnicodeString);
 begin
   if AData<>'' then
     AStream.Write(AData[1], Length(AData)*SizeOf(WideChar));
@@ -1148,7 +1147,7 @@ begin
   Result := Bytes($FE, $FF);
 end;
 
-function TUTF16BEEncoding.Read(AStream: TStream; MaxChars: integer): string;
+function TUTF16BEEncoding.Read(AStream: TStream; MaxChars: integer): UnicodeString;
 var read_sz: integer;
   i: integer;
 begin
@@ -1160,7 +1159,7 @@ begin
     Result[i] := WideChar(_swapw(Word(Result[i])));
 end;
 
-procedure TUTF16BEEncoding.Write(AStream: TStream; const AData: string);
+procedure TUTF16BEEncoding.Write(AStream: TStream; const AData: UnicodeString);
 var i: integer;
 begin
   for i := 1 to Length(AData) do
@@ -1347,7 +1346,7 @@ begin
   end;
 end;
 
-function TEUCEncoding.Read(AStream: TStream; MaxChars: integer): string;
+function TEUCEncoding.Read(AStream: TStream; MaxChars: integer): UnicodeString;
 var b1, b2: byte;
   pos: integer;
 begin
@@ -1369,7 +1368,7 @@ begin
     SetLength(Result, pos-1);
 end;
 
-procedure TEUCEncoding.Write(AStream: TStream; const AData: string);
+procedure TEUCEncoding.Write(AStream: TStream; const AData: UnicodeString);
 var i: integer;
   w: word;
 begin
@@ -1390,7 +1389,7 @@ begin
   end;
 end;
 
-function TSJISEncoding.Read(AStream: TStream; MaxChars: integer): string;
+function TSJISEncoding.Read(AStream: TStream; MaxChars: integer): UnicodeString;
 var b1, b2: byte;
   pos: integer;
 begin
@@ -1415,7 +1414,7 @@ begin
     SetLength(Result, pos-1);
 end;
 
-procedure TSJISEncoding.Write(AStream: TStream; const AData: string);
+procedure TSJISEncoding.Write(AStream: TStream; const AData: UnicodeString);
 var i: integer;
   w: word;
 begin
@@ -1430,7 +1429,7 @@ begin
   end;
 end;
 
-function TBaseJISEncoding.Read(AStream: TStream; MaxChars: integer): string;
+function TBaseJISEncoding.Read(AStream: TStream; MaxChars: integer): UnicodeString;
 var b1, b2: byte;
   inp_intwobyte: boolean;
   pos: integer;
@@ -1467,7 +1466,7 @@ begin
     SetLength(Result, pos-1);
 end;
 
-procedure TBaseJISEncoding.Write(AStream: TStream; const AData: string);
+procedure TBaseJISEncoding.Write(AStream: TStream; const AData: UnicodeString);
 var i: integer;
   w: word;
 begin
@@ -1528,7 +1527,7 @@ begin
   EndMark := Bytes(JIS_ESC, ord('H'));
 end;
 
-function TGBEncoding.Read(AStream: TStream; MaxChars: integer): string;
+function TGBEncoding.Read(AStream: TStream; MaxChars: integer): UnicodeString;
 var b1, b2: byte;
   pos: integer;
 begin
@@ -1554,7 +1553,7 @@ begin
     SetLength(Result, pos-1);
 end;
 
-procedure TGBEncoding.Write(AStream: TStream; const AData: string);
+procedure TGBEncoding.Write(AStream: TStream; const AData: UnicodeString);
 var i,j: integer;
   w: word;
 begin
@@ -1579,7 +1578,7 @@ begin
   end;
 end;
 
-function TBIG5Encoding.Read(AStream: TStream; MaxChars: integer): string;
+function TBIG5Encoding.Read(AStream: TStream; MaxChars: integer): UnicodeString;
 var b1, b2: byte;
   pos: integer;
 begin
@@ -1608,7 +1607,7 @@ begin
     SetLength(Result, pos-1);
 end;
 
-procedure TBIG5Encoding.Write(AStream: TStream; const AData: string);
+procedure TBIG5Encoding.Write(AStream: TStream; const AData: UnicodeString);
 var i, j: integer;
   w: word;
 begin
@@ -1774,7 +1773,7 @@ begin
     AEncoding:=TSJISEncoding;
 end;
 
-function Conv_DetectType(const AFilename: string): CEncoding;
+function Conv_DetectType(const AFilename: TFilename): CEncoding;
 var fsr: TStreamReader;
 begin
   fsr := TStreamReader.Create(
@@ -1786,7 +1785,7 @@ begin
   end;
 end;
 
-function Conv_DetectType(const AFilename: string; out AEncoding: CEncoding): boolean;
+function Conv_DetectType(const AFilename: TFilename; out AEncoding: CEncoding): boolean;
 var fsr: TStreamReader;
 begin
   fsr := TStreamReader.Create(
@@ -1826,7 +1825,7 @@ begin
   end;
 end;
 
-function OpenTextFile(const AFilename: string; AEncoding: CEncoding = nil): TStreamDecoder;
+function OpenTextFile(const AFilename: TFilename; AEncoding: CEncoding = nil): TStreamDecoder;
 begin
   Result := OpenStream(
     TFileStream.Create(AFilename, fmOpenRead or fmShareDenyNone),
@@ -1835,7 +1834,7 @@ begin
   );
 end;
 
-function CreateTextFile(const AFilename: string; AEncoding: CEncoding): TStreamEncoder;
+function CreateTextFile(const AFilename: TFilename; AEncoding: CEncoding): TStreamEncoder;
 var fsr: TStreamWriter;
 begin
   fsr := TStreamWriter.Create(
@@ -1850,7 +1849,7 @@ begin
   end;
 end;
 
-function AppendToTextFile(const AFilename: string; AEncoding: CEncoding = nil): TStreamEncoder;
+function AppendToTextFile(const AFilename: TFilename; AEncoding: CEncoding = nil): TStreamEncoder;
 var fsr: TStreamWriter;
 begin
   fsr := TStreamWriter.Create(
@@ -1940,7 +1939,7 @@ begin
   end;
 end;
 
-function CompareFiles(const AFilename1, AFilename2: string): boolean;
+function CompareFiles(const AFilename1, AFilename2: TFilename): boolean;
 var f1, f2: TStream;
 begin
   f1 := nil;
@@ -1964,7 +1963,7 @@ end;
 
 { Compatibility functions }
 
-function AnsiFileReader(const AFilename: string): TStreamDecoder;
+function AnsiFileReader(const AFilename: TFilename): TStreamDecoder;
 begin
  {$IFDEF MSWINDOWS}
   Result := OpenTextFile(AFilename, TAcpEncoding);
@@ -1973,7 +1972,7 @@ begin
  {$ENDIF}
 end;
 
-function UnicodeFileReader(const AFilename: string): TStreamDecoder;
+function UnicodeFileReader(const AFilename: TFilename): TStreamDecoder;
 begin
   Result := OpenTextFile(AFilename, TUnicodeEncoding);
 end;
@@ -2020,7 +2019,7 @@ begin
   Result := TStreamDecoder.Open(AStream, TUnicodeEncoding.Create, AOwnsStream);
 end;
 
-function FileReader(const AFilename: string): TStreamDecoder;
+function FileReader(const AFilename: TFilename): TStreamDecoder;
 begin
  {$IFDEF UNICODE}
   Result := UnicodeFileReader(AFilename);
@@ -2029,12 +2028,12 @@ begin
  {$ENDIF}
 end;
 
-function AnsiFileWriter(const AFilename: string): TStreamEncoder;
+function AnsiFileWriter(const AFilename: TFilename): TStreamEncoder;
 begin
   Result := CreateTextFile(AFilename, TAcpEncoding);
 end;
 
-function UnicodeFileWriter(const AFilename: string): TStreamEncoder;
+function UnicodeFileWriter(const AFilename: TFilename): TStreamEncoder;
 begin
   Result := CreateTextFile(AFilename, TUnicodeEncoding);
 end;
@@ -2076,17 +2075,12 @@ begin
   );
 end;
 
-function ConsoleUTF8Writer(): TStreamEncoder;
-begin
-  Result := ConsoleWriter(TUTF8Encoding.Create);
-end;
-
 function UnicodeStreamWriter(AStream: TStream; AOwnsStream: boolean = false): TStreamEncoder;
 begin
   Result := TStreamEncoder.Open(AStream, TUnicodeEncoding.Create, AOwnsStream);
 end;
 
-function FileWriter(const AFilename: string): TStreamEncoder;
+function FileWriter(const AFilename: TFilename): TStreamEncoder;
 begin
  {$IFDEF UNICODE}
   Result := UnicodeFileWriter(AFilename);
@@ -2101,7 +2095,7 @@ end;
  Avoid counting lines beforehand where possible, prefer just parsing for however
  much lines there is. }
 function GetLineCount(AText: TStreamDecoder): integer;
-var ln: string;
+var ln: UnicodeString;
 begin
   Result := 0;
   while AText.ReadLn(ln) do

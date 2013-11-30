@@ -1,103 +1,111 @@
 ﻿unit UniStrUtils;
 {$WEAKPACKAGEUNIT ON}
+{ Solves a host of cross-platform/compiler char problems by introducing stable
+ char/string types:
+   Ansi*         1-byte char, any encoding multibyte-string
+   Uni*          Best Unicode option available on platform
+
+ Unicode strings can be implemented as:
+   WideChar + UnicodeString on modern Delphi
+   WideChar + WideString on older Delphi
+   WideChar + string (UnicodeString) on FPC
+   AnsiChar + AnsiString where Unicode is not available at all
+
+ It's possible to write your own unit which redefines Uni* types and functions,
+ e.g. by encoding unicode in AnsiStrings, and include it after this one.
+
+ All functions are available in the following versions:
+   Function: string-type agnostic (uses String type of your compiler)
+   AnsiFunction (FunctionA): takes AnsiString
+   UniFunction (FunctionU): takes UniString
+   WideFunction (FunctionW): takes WideString specifically
+
+ Redeclares standard functions to match their names (some Ansi*-functions were
+ in fact Unicode in Delphi for compability) and adds missing ones:
+   Agnostic ones if they were forgotten (declared as Ansi* instead)
+   True Ansi*, if Delphi had agnostic ones under this name instead.
+   True Wide*, if standard libraries lack these.
+   And optimal Uni*.
+
+ Uses standard Delphi naming/parameter passing patterns where applicable.
+
+ Relies on conditionals to test:
+   UNICODE                      string===UnicodeString
+   DCC + CompilerVersion>=21    UnicodeString is avaialable in principle (maybe not as default string)
+
+ TLDR: If you need *, use *:
+    1-byte char                     AnsiChar
+    UTF16 char                      WideChar (or UTF16Char, which is the same)
+    Unicode char (platform best)    UniChar
+    Platform default char           char
+
+    1/multibyte encoded string      AnsiString
+    UTF16 string (platform best)    UTF16String
+    Windows OLE compatible string   WideString
+    Unicode string (platform best)  UniString (or UnicodeString, as redeclared here)
+    Platform default string         string
+
+ The more cross-platform coverage you're planning to have, the more you should
+ rely only on functions from this module (as they'll be available and adjusted
+ on every platform).
+}
 
 interface
 uses SysUtils, Windows, StrUtils, WideStrUtils;
 
-(*
- В библиотеке используется тип UnicodeString/UniString.
- На старых компиляторах
-   UnicodeString = WideString
- На новых он поддерживается сразу.
-   UnicodeString = UnicodeString (и == string, если включено UNICODE)
+{
+String type optimizations.
+Please read if you're adding functions here.
 
- Все функции существуют в следующих версиях:
-   Function: агностическая функция (для типа string)
-   AnsiFunction (FunctionA): версия для AnsiString
-   WideFunction (FunctionW): версия для WideString
-   UniFunction (FunctionU): версия для UnicodeString (оптимальная)
-
- Библиотека старается наверстать все упущения Delphi, и добавляет недостающие
- функции:
-   Агностические, если в Дельфи они забыты (объявлены, как AnsiFunction).
-   Подлинные Ansi, если в Дельфи под этим именем агностическая.
-   Подлинные Wide, если таких нет в стандартных библиотеках.
-   И оптимальные Uni.
-
- В виде исключения, если подлинных Wide в дельфи нет, они иногда объявляются
- здесь сразу для UnicodeString.
-
- Таким образом, UniFunction/WideFunction даёт вам поддержку юникода в наилучшем
- возможном виде, а простая Function работает со строками, которые приняты
- по умолчанию на платформе компиляции.
-
- Следует помнить, что WideChar == UnicodeChar, и PWideChar в любом случае
- ничуть не отличается от PUnicodeChar. Поэтому функции, которые работают
- с PWideChar, не требуют изменений.
-
- Используются проверки:
-   IFDEF UNICODE: для проверки типа string (Ansi или Unicode)
-   IF CompilerVersion>=21: для проверки доступности новых типов и функций
-
- Например:
-   IFDEF UNICODE          => string == UnicodeString       (по умолчанию включен юникод)
-   IF CompilerVersion>=21 => UniString == UnicodeString    (юникод ДОСТУПЕН В ПРИНЦИПЕ)
-*)
-
-(*
-Об оптимизации работы со строками.
-Обязательно прочтите, если добавляете функции в библиотеку.
-
-I. Приведение к PWideChar
+I. Casting to PWideChar
 ==============================
-@s[1] вызывает UniqueStringU
-PWideChar(s) вызывает WCharFromUStr
+@s[1] calls UniqueStringU
+PWideChar(s) calls WCharFromUStr
 
-Поэтому если нужно просто получить указатель, делайте:
+If you just need to get a pointer, do:
   PWideChar(pointer(s))+offset*SizeOf(WideChar)
 
-Это самый быстрый способ (в несколько раз быстрее, никаких вызовов).
+Shortcuts (if your platform supports inline):
+  PWC(s), PWC(s,3), etc.
 
 II. Length
 =============
-Зачем-то вызывает UniqueStringU.
-Если нужно просто проверить на непустоту, используйте:
+Calls UniqueStringU for some reason.
+If you just want to test for non-emptiness, this is faster:
   pointer(s) <> nil
 
 III. Const string
 =====================
-Везде, где входной параметр функции - строка, массив или структура, его надо
-объявлять с модификатором const. Это делает вызов функции в несколько раз быстрее.
-Если внутри функции вы его всё-таки меняете, создайте доп. переменную.
+Everywhere where input parameter is a string, array of record, strive to declare
+it as "const". This makes function call several times faster.
 
 III. String Format Checking
 ==============================
-Во всех Unicode-Enabled Delphi по умолчанию включено "String Format Checking".
-Эта опция делает все операции со строками в несколько раз медленней, отключает
-оптимизацию const string и скрывает дикие ошибки. См.:
+In all Unicode-enabled Delphi "String Format Checking" is on by default.
+This makes all string operations several times slower, disables const string
+optimization and hides horrible errors. See:
   http://www.micro-isv.asia/2008/10/needless-string-checks-with-ensureunicodestring/
-Её надо отключать везде и всегда.
-*)
-
-const
-  BOM_UTF16BE: AnsiString = #254#255; //FE FF
-  BOM_UTF16LE: AnsiString = #255#254; //FF FE
- //должны быть ansi, иначе получится два юникод-символа
+It must be disabled everywhere, first thing you do.
+}
 
 type
  //IntPtr is missing in older versions of Delphi and it's easier to simply redeclare it
- {$IF Defined(WIN64)}
+ //FPC and Delphi use a lot of different define
+ {$IF Defined(CPU64) or Defined(CPUX64) or Defined(CPUX86_64)}
   IntPtr = int64;
- {$ELSEIF Defined(WIN32)}
+ {$ELSEIF Defined(CPU32) or Defined(CPUX86) or Defined(CPU386) or Defined(CPUI386) or Defined(I386) }
   IntPtr = integer;
  {$ELSE}
   {$MESSAGE Error 'Cannot declare IntPtr for this target platform'}
  {$IFEND}
 
 type
- //UnicodeString - это наилучший доступный на платформе Unicode-тип.
- //На новых компиляторах он поддерживается нативно, на старых это WideString.
- {$IF CompilerVersion >= 21}
+ { UnicodeString is the best Unicode type available on the platform. On newer
+  compilers it's supported native, on older links to WideString. }
+ {$IF Declared(DCC) and (CompilerVersion >= 21)}
+  UniString = UnicodeString;
+  PUniString = PUnicodeString;
+ {$ELSE IF Declared(FPC)}
   UniString = UnicodeString;
   PUniString = PUnicodeString;
  {$ELSE}
@@ -107,36 +115,30 @@ type
   PUniString = PUnicodeString;
  {$IFEND}
 
+ { FPC declares char as AnsiChar even on Unicode, so if you need cross-platform
+  chars, use UniChar. }
   UniChar = WideChar;
   PUniChar = PWideChar;
 
   TAnsiStringArray = array of AnsiString;
   TUniStringArray = array of UniString;
+  TWideStringArray = array of WideString;
   TFilenameArray = array of TFilename;
-  TStringArrayA = TAnsiStringArray;
-  TStringArrayU = TUniStringArray;
- {$IFDEF UNICODE}
   TUnicodeStringArray = TUniStringArray;
+ {$IFDEF UNICODE}
   TStringArray = TUniStringArray;
  {$ELSE}
   TStringArray = TAnsiStringArray;
  {$ENDIF}
 
- //С Wide мы не очень хорошо поступили:
- //возможно, кому-то хочется массив именно WideString.
-  TWideStringArray = TUniStringArray;
-
- //Указатели
+ //Pointers
   PStringArray = ^TStringArray;
   PAnsiStringArray = ^TAnsiStringArray;
   PWideStringArray = ^TWideStringArray;
   PUniStringArray = ^TUniStringArray;
 
- //Обратная совместимость
-  TStringArrayW = TWideStringArray;
-
- {$IF CompilerVersion < 21}
- //В старых версиях не объявлены, а ими удобно пользоваться
+ {$IF Declared(DCC) and (CompilerVersion < 21)}
+ //Not declared in older versions
   UCS2Char = WideChar;
   PUCS2Char = PWideChar;
   UCS4Char = type LongWord;
@@ -147,11 +149,10 @@ type
 
   UCS4String = array of UCS4Char;
 
- //На старом компиляторе преобразований кодировки для AnsiString не выполняется,
- //и она безопасна для UTF8 и RawByte как есть (в новых нужно указать флаги)
+ { Older compilers do not auto-convert AnsiString encodings on assigments so
+  it's safe to store UTF8 and RawByte in it }
   UTF8String = AnsiString;
   PUTF8String = ^UTF8String;
-
   RawByteString = AnsiString;
   PRawByteString = ^RawByteString;
  {$IFEND}
@@ -159,16 +160,12 @@ type
 
 {$IFDEF UNICODE}
 (*
-  В юникод-версиях Дельфи некоторые Ansi-функции объявлены как UnicodeString.
-  Например,
-    UpperCase - принимает string и работает только с ASCII
-    AnsiUpperCase - принимает string и работает со всеми строками
-  То есть, Ansi фактически Uni.
+ In Unicode Delphi versions some Ansi functions are declared as Unicode for
+ compability. E.g.:
+   UpperCase - takes string and works only with ASCII
+   AnsiUpperCase - takes string and understands unicode
 
-  Само по себе это не страшно (главное помнить не использовать UpperCase),
-  но при компиляции Ansi-кода возникают дурацкие варнинги.
-
-  Так что здесь представлены "честные" функции для Ansi-строк.
+ These are "fair versions" of those functions:
 *)
 
 function AnsiPos(const Substr, S: AnsiString): Integer;
