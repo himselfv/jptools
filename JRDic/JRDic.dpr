@@ -346,6 +346,7 @@ begin
   wri_2 := TEdict2Writer.Create(OutputFile+'.edict2');
   wri_1 := TEdict1Writer.Create(OutputFile+'.edict1');
 
+  art.Reset;
   LastId := -1;
   TotalLines := 0;
 

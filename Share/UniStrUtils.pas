@@ -51,7 +51,7 @@
 }
 
 interface
-uses SysUtils, Windows, StrUtils, WideStrUtils;
+uses SysUtils, {$IFDEF MSWINDOWS}Windows,{$ENDIF} StrUtils, WideStrUtils;
 
 {
 String type optimizations.
