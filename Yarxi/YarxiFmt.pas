@@ -26,6 +26,8 @@ function IsUpperCaseLatin(const ch: char): boolean; inline;
 { Функции посылают сюда жалобы на жизнь. В дальнейшем надо сделать нормальный
  сборщик жалоб, как в WarodaiConvert. }
 
+procedure PushComplainContext(const AData: string);
+procedure PopComplainContext;
 procedure Complain(const msg: string); overload;
 procedure Complain(const msg, data: string); overload;
 
@@ -94,13 +96,12 @@ type
    //Одно из двух:
     charref: integer;
     text: string;
-    brackets: boolean; //в обычных ссылках не присутствуют, только в additional_kanji
   end;
   PCharLinkRef = ^TCharLinkRef;
   TCharLinkRefChain = array of TCharLinkRef;
   TCharLink = record
     _type: byte;
-    tlvar: integer; //номер варианта перевода, к к-му приписана ссылка. Обычно ноль
+    tlvars: array[0..1] of byte; //номер варианта перевода, к к-му приписана ссылка. Обычно ноль
     refs: TCharLinkRefChain;
     wordref: integer; //весь набор целиком ссылается на слово. Обычно ноль
   end;
@@ -312,21 +313,49 @@ begin
 end;
 
 
-{ Проверки }
-
-
-
-
 { Сборщик жалоб }
+
+var
+  ComplainContext: string;
+ //добавляется ко всем жалобам. Внешние функции могут записывать сюда
+ //номер и/или содержание текущей записи
+
+procedure PushComplainContext(const AData: string);
+begin
+  if ComplainContext<>'' then
+    ComplainContext:=ComplainContext+#09+AData
+  else
+    ComplainContext:=AData;
+end;
+
+procedure PopComplainContext;
+var i, j: integer;
+begin
+  i := 0;
+  repeat
+    j := i;
+    i := pos(#09,ComplainContext,j+1);
+  until i<=0;
+  if j=0 then //nothing found
+    ComplainContext := ''
+  else
+    ComplainContext := Copy(ComplainContext,1,j-1);
+end;
 
 procedure Complain(const msg: string);
 begin
-  Warning(msg);
+  if ComplainContext<>'' then
+    Warning(#13#10'  '+repl(ComplainContext,#09,#13#10'  ')+#13#10'  '+msg)
+  else
+    Warning(msg);
 end;
 
 procedure Complain(const msg, data: string);
 begin
-  Warning(msg+#13#10'  '+data);
+  if ComplainContext<>'' then
+    Warning(#13#10'  '+repl(ComplainContext,#09,#13#10'  ')+#13#10'  '+data)
+  else
+    Warning(msg+#13#10'  '+data);
 end;
 
 
@@ -391,39 +420,44 @@ var tmp: string;
   i_pos: integer;
   i, i_start: integer;
 begin
-  Result.Clear;
-  tmp := inp;
+  PushComplainContext(inp);
+  try
+    Result.Clear;
+    tmp := inp;
 
- //Альтернативы нафиг
-  i_pos := pos('*#*',tmp);
-  if i_pos>0 then
-    delete(tmp,i_pos,MaxInt);
+   //Альтернативы нафиг
+    i_pos := pos('*#*',tmp);
+    if i_pos>0 then
+      delete(tmp,i_pos,MaxInt);
 
- //Сложные случаи сводим к простым
-  tmp := repl(tmp, '*_*', '*');
-  tmp := repl(tmp, '**', '*');
+   //Сложные случаи сводим к простым
+    tmp := repl(tmp, '*_*', '*');
+    tmp := repl(tmp, '**', '*');
 
- //Звёздочки в конце
-  while (Length(tmp)>0) and (tmp[Length(tmp)]='*') do
-    SetLength(tmp, Length(tmp)-1);
+   //Звёздочки в конце
+    while (Length(tmp)>0) and (tmp[Length(tmp)]='*') do
+      SetLength(tmp, Length(tmp)-1);
 
-  if tmp='' then exit;
+    if tmp='' then exit;
 
-  i := 1;
-  i_start := 1;
-  while i<=Length(tmp) do begin
-    if tmp[i]='*' then begin
-      if (i_start<i)
-      and (tmp[i_start]<>'!') then //это было ударение - нафиг
-        Result.Add(KillQuotes(copy(tmp, i_start, i-i_start)));
-      i_start := i+1;
+    i := 1;
+    i_start := 1;
+    while i<=Length(tmp) do begin
+      if tmp[i]='*' then begin
+        if (i_start<i)
+        and (tmp[i_start]<>'!') then //это было ударение - нафиг
+          Result.Add(KillQuotes(copy(tmp, i_start, i-i_start)));
+        i_start := i+1;
+      end;
+      Inc(i);
     end;
-    Inc(i);
-  end;
 
-  if (i>i_start)
-  and (tmp[i_start]<>'!') then
-    Result.Add(KillQuotes(copy(tmp, i_start, i-i_start)))
+    if (i>i_start)
+    and (tmp[i_start]<>'!') then
+      Result.Add(KillQuotes(copy(tmp, i_start, i-i_start)))
+  finally
+    PopComplainContext;
+  end;
 end;
 
 
@@ -456,30 +490,35 @@ var i_beg, i_pos, cnt: integer;
   end;
 
 begin
-  if (inp='') or (inp='-') then begin
-    SetLength(Result, 0);
-    exit;
-  end;
-
- //Считаем число ;,
-  cnt := 0;
-  for i_pos := 1 to Length(inp) do
-    if (inp[i_pos]=';') or (inp[i_pos]=',') then
-      Inc(cnt);
-  SetLength(Result, cnt+1);
-
-  cnt := 0;
-  i_beg := 1;
-  i_pos := 1;
-  while i_pos<=Length(inp) do begin
-    if (inp[i_pos]=';') or (inp[i_pos]=',') then begin
-      PostWord;
-      i_beg := i_pos+1;
-      Inc(cnt);
+  PushComplainContext(inp);
+  try
+    if (inp='') or (inp='-') then begin
+      SetLength(Result, 0);
+      exit;
     end;
-    Inc(i_pos);
+
+   //Считаем число ;,
+    cnt := 0;
+    for i_pos := 1 to Length(inp) do
+      if (inp[i_pos]=';') or (inp[i_pos]=',') then
+        Inc(cnt);
+    SetLength(Result, cnt+1);
+
+    cnt := 0;
+    i_beg := 1;
+    i_pos := 1;
+    while i_pos<=Length(inp) do begin
+      if (inp[i_pos]=';') or (inp[i_pos]=',') then begin
+        PostWord;
+        i_beg := i_pos+1;
+        Inc(cnt);
+      end;
+      Inc(i_pos);
+    end;
+    PostWord;
+  finally
+    PopComplainContext;
   end;
-  PostWord;
 end;
 
 {
@@ -495,30 +534,35 @@ function ParseKanjiKunYomi(inp: string): TKanjiReadings;
 var block: string;
   i: integer;
 begin
-  Result.show_kuns := 0;
-  Result.show_tango := 0;
+  PushComplainContext(inp);
+  try
+    Result.show_kuns := 0;
+    Result.show_tango := 0;
 
- { Вынимаем из начала строки флаги вида !2!, !2?. Несколько флагов подряд мы
-  пока не встречали и не поддерживаем. }
-  if (Length(inp)>0) and (inp[1]='!') then begin
-    i := 2;
-    while (i<=Length(inp)) and (inp[i]<>'!') and (inp[i]<>'?') do
-      Inc(i);
-    if i>Length(inp) then
-      raise Exception.Create('ParseKanjiKunYomi: Unterminated leading flag.');
-    if inp[i]='!' then
-      Result.show_kuns := StrToInt(copy(inp,2,i-2))
-    else
-      Result.show_tango := StrToInt(copy(inp,2,i-2));
-    delete(inp, 1, i);
+   { Вынимаем из начала строки флаги вида !2!, !2?. Несколько флагов подряд мы
+    пока не встречали и не поддерживаем. }
+    if (Length(inp)>0) and (inp[1]='!') then begin
+      i := 2;
+      while (i<=Length(inp)) and (inp[i]<>'!') and (inp[i]<>'?') do
+        Inc(i);
+      if i>Length(inp) then
+        raise Exception.Create('ParseKanjiKunYomi: Unterminated leading flag.');
+      if inp[i]='!' then
+        Result.show_kuns := StrToInt(copy(inp,2,i-2))
+      else
+        Result.show_tango := StrToInt(copy(inp,2,i-2));
+      delete(inp, 1, i);
+    end;
+
+    block := pop(inp, '|');
+    Result.kun := ParseKanjiKunReadings(block);
+    block := pop(inp, '|');
+    Result.compound := ParseKanjiCompoundReadings(block);
+   //Остальное - имена
+    Result.name := ParseKanjiNameReadings(inp);
+  finally
+    PopComplainContext;
   end;
-
-  block := pop(inp, '|');
-  Result.kun := ParseKanjiKunReadings(block);
-  block := pop(inp, '|');
-  Result.compound := ParseKanjiCompoundReadings(block);
- //Остальное - имена
-  Result.name := ParseKanjiNameReadings(inp);
 end;
 
 function DumpKanjiKunYomi(const AReadings: TKanjiReadings): string;
@@ -534,6 +578,7 @@ end;
 Набор цифр определяет, сколько букв покрывает кандзи в соотв. чтении:
   AWAre*AWAreppoi*KANAshii
 0 означает "покрывает всё слово".
+^ означает "10 + следующая цифра" (т.к. просто 10 читалось бы как позиции 1 и 0)
 
 Дальше, разделённые *, идут наборы вариантов чтения кунёми. Обычно в наборе одно
 чтение, если несколько - разделяются "*/*":
@@ -547,7 +592,7 @@ end;
                Относится именно к набору, т.к. покрытие относится к набору, а для
                скрытых чтений нет покрытия
 *=*чтение      разновидность предыдущего чтения, не показывать
-чтение*-n*     вставить тире в n-ю позицию чтения. Непонятно, зачем нужно.
+чтение*-n*     вставить тире в n-ю позицию чтения. Непонятно, зачем нужно. Иногда без пробела.
 набор*!!*      транскрипция помещается ПОД словом, кол-во транскрипций может быть
                больше одной (#1196)
 набор*!R*      то же, что !!, но только для русского словаря
@@ -566,6 +611,8 @@ end;
   [1084]       кандзи в скобках
   ''кана''     кана
                От стандартного чтения по-прежнему добавляется хвост после всего.
+набор*VI*
+набор*VT*      неизвестно что, с виду не влияет
 
 После каждого флага тоже ставится *, последняя * не ставится (однако ставится
 закрывающая для набора, если требуется).
@@ -613,6 +660,15 @@ begin
       SetLength(rd.ipos, Length(rd.ipos)+1);
       rd.ipos[Length(rd.ipos)-1] := StrToInt(word);
       word := '';
+    end else
+
+    if word[1]='V' then begin
+     //Непонятные флаги: VI, VT. Просто удаляем
+      delete(word,1,1);
+      Check(word<>'');
+      Check((word[1]='I')or(word[1]='T'));
+      delete(word,1,1);
+      Check(word='');
     end else
 
     if word[1]='-' then begin
@@ -717,7 +773,8 @@ begin
 
     begin
       pc := PChar(word);
-      while IsLatin(pc^) or (pc^='-') or (pc^=' ') do
+      while IsLatin(pc^) or (pc^=':'){долгота в транскрипциях}
+      or (pc^='-') or (pc^=' ') do
         Inc(pc);
 
      //Мы обязаны хоть что-то прочесть, т.к. все флаги мы уже исключили
@@ -737,8 +794,16 @@ begin
         end else begin
          //Съедаем одну позицию из lead
           Check(lead<>'', 'No char coverage data for another reading block');
+         //Расширенная позиция: ^7 == 17
+          if lead[1]='^' then begin
+            rset.main_chars := 10;
+            delete(lead,1,1);
+            Check(lead<>'', 'Incomplete char coverage ^expansion');
+          end else
+            rset.main_chars := 0;
+         //Остаток позиции
           Check((lead[1]>='0') and (lead[1]<='9'), 'Invalid char coverage position: '+lead[1]+' (digit expected)');
-          rset.main_chars := Ord(lead[1])-Ord('0');
+          rset.main_chars := rset.main_chars + Ord(lead[1])-Ord('0');
           delete(lead,1,1);
         end;
 
@@ -778,7 +843,8 @@ begin
   end;
 
  //Контроль
-  Check(lead='', 'Остались неразобранные позиции числа символов.')
+  if lead<>'' then
+    Complain('Остались неразобранные позиции числа символов.')
 end;
 
 {
@@ -800,9 +866,10 @@ end;
 ^[цифра][номер]-''[текст]'' === доп. текст хираганой
 ^<блок>=[номер слова] === сделать весь блок ссылкой на указанное слово
 ^_[цифра]<блок> === присоединить ссылку к n-му варианту перевода из нескольких
+^::[2 цифры]<блок> === присоединить ссылку к n-му и m-му вариантам перевода
 
 Не сделано:
-  /  палка между кандзи =(
+  /  палка между кандзи (1172/8654)
 }
 function ParseCharLink(var pc: PChar): TCharLink;
 var i: integer;
@@ -815,10 +882,25 @@ begin
   if pc^='_' then begin
     Inc(pc);
     Check((pc^>='0') and (pc^<='9'), 'Invalid tl-variant index');
-    Result.tlvar := Ord(pc^)-Ord('0');
+    Result.tlvars[0] := Ord(pc^)-Ord('0');
     Inc(pc);
   end else
-    Result.tlvar := 0;
+  if pc^=':' then begin
+    Inc(pc);
+    Check(pc^=':');
+    Inc(pc);
+    Check((pc^>='0') and (pc^<='9'), 'Invalid tl-variant index');
+    Result.tlvars[0] := Ord(pc^)-Ord('0');
+    Inc(pc);
+    Check((pc^>='0') and (pc^<='9'), 'Invalid tl-variant index');
+    Result.tlvars[1] := Ord(pc^)-Ord('0');
+    Inc(pc);
+  end else
+  begin
+    Result.tlvars[0] := 0;
+    Result.tlvars[0] := 1;
+  end;
+
 
   Check((pc^>='0') and (pc^<='9'), 'Invalid type');
   Result._type := Ord(pc^)-Ord('0');
@@ -841,15 +923,21 @@ begin
       Check((pc+1)^='''', 'invalid singular '' mark');
       ref.text := spancopy(ps,pc);
       pc := pc+2;
-    end
-    else begin
+    end else
+   //Допустимые символы
+    if (pc^='/') then begin
+      ref.text := pc;
+      Inc(pc);
+    end else
+   //Число
+    begin
       for i := 1 to 4 do begin
         Check((pc^>='0') and (pc^<='9'), 'invalid charref');
         ref.charref := ref.charref * 10 + Ord(pc^)-Ord('0');
         Inc(pc);
       end;
     end;
-  until pc^<>'-';
+  until (pc^<>'-') and (pc^<>'/'); //что может идти следом в рамках того же ^-блока
 
  //Последняя часть
   Result.wordref := 0;
@@ -874,7 +962,6 @@ begin
 
     ref.charref := 0;
     ref.text := '';
-    ref.brackets := false;
 
     if pc^='''' then begin
       Inc(pc);
@@ -889,22 +976,18 @@ begin
       Inc(pc);
       Check(pc^='''');
       Inc(pc);
-    end else begin
-      if pc^='[' then begin
-        ref.brackets := true;
-        Inc(pc);
-      end;
-
+    end else
+   //Допустимые символы
+    if (pc^='[') or (pc^=']') then begin
+      ref.text := pc^;
+      Inc(pc);
+    end else
+   //Число (номер кандзи)
+    begin
       ps := pc;
       while (pc^>='0') and (pc^<='9') do
         Inc(pc);
       Check(pc>ps);
-
-      ref.charref := StrToInt(spancopy(ps,pc));
-      if ref.brackets then begin
-        Check(pc^=']');
-        Inc(pc);
-      end;
     end;
   end;
 end;

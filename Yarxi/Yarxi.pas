@@ -111,22 +111,27 @@ function TYarxiDB.ParseKanji(const Rec: variant): TKanjiRecord;
 var i: integer;
 begin
   Result.Nomer := rec.Nomer;
-  Result.Kanji := WideChar(word(rec.Uncd));
-  Result.RawRusNick := DecodeRussian(rec.RusNick);
-  Result.RusNicks := ParseKanjiRusNick(Result.RawRusNick);
-  if Result.RusNicks.Length>0 then
-    Result.RusNick := Result.RusNicks[0]
-  else
-    Result.RusNick := '';
-  Result.OnYomi := ParseOnYomi(rec.OnYomi);
- //ѕреобразуем после сплита, т.к. может затронуть разметочные символы типа тире
-  for i := 0 to Length(Result.OnYomi)-1 do
-    Result.OnYomi[i].kana := KanaTran.RomajiToKana(Result.OnYomi[i].kana, []);
-  Result.RawKunYomi := rec.KunYomi;
-  Result.KunYomi := ParseKanjiKunYomi(Result.RawKunYomi);
-  Result.Russian := DecodeRussian(rec.Russian);
-  Result.RawCompounds := rec.Compounds;
-  Result.Compounds := ParseKanjiCompounds(Result.RawCompounds);
+  PushComplainContext('#'+IntToStr(Result.Nomer));
+  try
+    Result.Kanji := WideChar(word(rec.Uncd));
+    Result.RawRusNick := DecodeRussian(rec.RusNick);
+    Result.RusNicks := ParseKanjiRusNick(Result.RawRusNick);
+    if Result.RusNicks.Length>0 then
+      Result.RusNick := Result.RusNicks[0]
+    else
+      Result.RusNick := '';
+    Result.OnYomi := ParseOnYomi(rec.OnYomi);
+   //ѕреобразуем после сплита, т.к. может затронуть разметочные символы типа тире
+    for i := 0 to Length(Result.OnYomi)-1 do
+      Result.OnYomi[i].kana := KanaTran.RomajiToKana(Result.OnYomi[i].kana, []);
+    Result.RawKunYomi := rec.KunYomi;
+    Result.KunYomi := ParseKanjiKunYomi(Result.RawKunYomi);
+    Result.Russian := DecodeRussian(rec.Russian);
+    Result.RawCompounds := rec.Compounds;
+    Result.Compounds := ParseKanjiCompounds(Result.RawCompounds);
+  finally
+    PopComplainContext;
+  end;
 end;
 
 function TYarxiDB.ParseTango(const Rec: variant): TTangoRecord;
