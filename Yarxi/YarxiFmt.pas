@@ -8,7 +8,7 @@
  Без этого парсер старается быть терпимым к ошибкам. }
 
 interface
-uses SysUtils, Classes, UniStrUtils, FastArray;
+uses SysUtils, Classes, UniStrUtils, FastArray, WcExceptions;
 
 { Полезные функции для работы со строками }
 
@@ -26,9 +26,8 @@ function IsUpperCaseLatin(const ch: char): boolean; inline;
 { Функции посылают сюда жалобы на жизнь. В дальнейшем надо сделать нормальный
  сборщик жалоб, как в WarodaiConvert. }
 
-procedure Complain(msg: string); overload;
-procedure Complain(source, msg: string); overload;
-procedure Complain(source, msg, data: string); overload;
+procedure Complain(const msg: string); overload;
+procedure Complain(const msg, data: string); overload;
 
 
 { Во всех полях используется "обезъяний русский":
@@ -315,29 +314,19 @@ end;
 
 { Проверки }
 
-procedure Check(ACondition: boolean; AErrorText: string = ''); inline;
-begin
-  if not ACondition then
-    raise Exception.Create(AErrorText);
-end;
+
 
 
 { Сборщик жалоб }
 
-procedure Complain(msg: string);
+procedure Complain(const msg: string);
 begin
-  writeln(ErrOutput, msg);
+  Warning(msg);
 end;
 
-procedure Complain(source, msg: string);
+procedure Complain(const msg, data: string);
 begin
-  writeln(ErrOutput, source+': '+msg);
-end;
-
-procedure Complain(source, msg, data: string);
-begin
-  writeln(ErrOutput, source+': '+msg);
-  writeln(ErrOutput, '  '+data);
+  Warning(msg+#13#10'  '+data);
 end;
 
 
@@ -843,19 +832,19 @@ begin
     ref.text := '';
     ref.charref := 0;
     if pc^='''' then begin
-      Check((pc+1)^='''', 'ParseCharLink: invalid singular '' mark');
+      Check((pc+1)^='''', 'invalid singular '' mark');
       pc := pc+2;
       ps := pc;
       while (pc^<>#00) and (pc^<>'''') do
         Inc(pc);
-      Check(pc^<>#00, 'ParseCharLink: invalid unclosed text element');
-      Check((pc+1)^='''', 'ParseCharLink: invalid singular '' mark');
+      Check(pc^<>#00, 'invalid unclosed text element');
+      Check((pc+1)^='''', 'invalid singular '' mark');
       ref.text := spancopy(ps,pc);
       pc := pc+2;
     end
     else begin
       for i := 1 to 4 do begin
-        Check((pc^>='0') and (pc^<='9'), 'ParseCharLink: invalid charref');
+        Check((pc^>='0') and (pc^<='9'), 'invalid charref');
         ref.charref := ref.charref * 10 + Ord(pc^)-Ord('0');
         Inc(pc);
       end;
@@ -1178,7 +1167,7 @@ begin
  //Есть ровно ограниченное число случаев, когда по какой-то причине копия KunYomi
  //вываливается в Compounds. Все они начинаются с _ и мусор заканчивается _
   if (Length(inp)>0) and (inp[1]='_') then begin
-    Complain('ParseKanjiCompounds', 'KunYomi leak', inp);
+    Complain('KunYomi leak', inp);
     parts := Split(inp, '_'); //боже помоги
     if Length(parts)>0 then
       inp := parts[Length(parts)-1];
@@ -1186,7 +1175,7 @@ begin
 
  //Изредка вместо всей статьи фигня вида "=мусор мусор"
   if (Length(inp)>0) and (inp[1]='=') then begin
-    Complain('ParseKanjiCompounds', '= operator leak', inp);
+    Complain('= operator leak', inp);
     inp := '';
   end;
 

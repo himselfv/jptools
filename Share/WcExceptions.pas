@@ -1,16 +1,22 @@
 unit WcExceptions;
+{ Exception/warning logging routines for complicated cases where you have lots
+ of parsing and lots of exceptions }
+
+{$DEFINE JCLDEBUG}
+{ Use JclDebug to add stack traces where appropriate. Requires detailed map file. }
+
+interface
+uses SysUtils, Generics.Defaults, Generics.Collections{$IFDEF JCLDEBUG}, JclDebug{$ENDIF};
+
 {
-Счётчик происходящих исключений для схем, где их много.
-Передавайте каждое в RegisterException, затем вызовите Print и получите:
+Raise exceptions, catch them and pass to RegisterExeception.
+At the end of the app call Print() to get:
 EThisException:
   Message 1              213
   Message 2              7
 EThatException
   Message 4              711
 }
-
-interface
-uses SysUtils, Generics.Defaults, Generics.Collections;
 
 type
   TExceptionStatRecord = record
@@ -31,11 +37,18 @@ type
   public
     procedure RegisterException(E: Exception);
     procedure PrintStats;
-
   end;
 
+{ Default instance, but you may create private ones if you need granularity }
 var
   ExceptionStats: TExceptionStats;
+
+{ Shortcut functions }
+
+procedure Warning(const msg: string); overload;
+procedure Check(ACondition: boolean; const AErrorText: string = ''); inline;
+procedure Die(const AErrorText: string = ''); overload; inline;
+procedure Die(const AErrorText: string; AArgs: array of const); overload;
 
 implementation
 
@@ -153,6 +166,39 @@ begin
   end;
   FinalizeLastType;
 end;
+
+
+{ Messages }
+
+procedure Warning(const msg: string);
+{$IFDEF JCLDEBUG}
+var info: TJclLocationInfo;
+begin
+  info := GetLocationInfo(Caller(1));
+  writeln(ErrOutput, info.ProcedureName+':'+IntToStr(info.LineNumber)+': '+msg)
+end;
+{$ELSE}
+begin
+  writeln(ErrOutput, +msg);
+end;
+{$ENDIF}
+
+procedure Check(ACondition: boolean; const AErrorText: string = '');
+begin
+  if not ACondition then
+    Die(AErrorText);
+end;
+
+procedure Die(const AErrorText: string = '');
+begin
+  raise Exception.Create(AErrorText);
+end;
+
+procedure Die(const AErrorText: string; AArgs: array of const);
+begin
+  raise Exception.CreateFmt(AErrorText, AArgs);
+end;
+
 
 initialization
   ExceptionStats := TExceptionStats.Create()

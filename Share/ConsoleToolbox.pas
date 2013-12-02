@@ -107,6 +107,18 @@ begin
   ShowUsage;
 end;
 
+procedure DumpException(E: Exception);
+begin
+  while E<>nil do begin
+    Writeln(ErrOutput, E.ClassName, ': ', E.Message);
+    if E.StackTrace<>'' then
+      Writeln(ErrOutput, E.StackTrace);
+    E := E.InnerException;
+    if E<>nil then
+      Writeln(''); //empty line
+  end;
+end;
+
 procedure RunApp(const AAppClass: CCommandLineApp);
 begin
   Application := AAppClass.Create;
@@ -118,7 +130,7 @@ begin
     on E: EBadUsage do
       Application.ShowUsage(E.Message);
     on E: Exception do
-      Writeln(E.ClassName, ': ', E.Message);
+      DumpException(E);
   end;
 end;
 
