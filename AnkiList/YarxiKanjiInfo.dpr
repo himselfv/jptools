@@ -104,10 +104,9 @@ begin
     ln := ch+#09
       +IntToStr(kj.Nomer)+#09
       +FastArray.Join(kj.RusNicks,', ')+#09
-      +MergeOnYomi(kj.OnYomi)+#09
+      +MergeOnYomi(kj.OnYomi)
      //Остальное пока хреново раскодируется
-      +kj.KunYomi+#09
-      +kj.Russian;
+     ;
 
     Output.WriteLn(ln);
   end;

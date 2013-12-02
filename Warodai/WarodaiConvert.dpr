@@ -18,6 +18,7 @@ uses
   JWBIO,
   iconv,
   EdictWriter,
+  FastArray,
   WcUtils,
   Warodai in 'Warodai.pas',
   WakanDic in 'WakanDic.pas',
@@ -167,7 +168,7 @@ begin
   Result := inp.NextArticle(ln);
   if not Result then exit;
 
-  err.Reset;
+  err.Clear;
 
   body_read := false;
   Inc(stats.artcnt);

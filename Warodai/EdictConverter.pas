@@ -1,8 +1,8 @@
 ﻿unit EdictConverter;
 
 interface
-uses Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, EdictWriter, WcUtils,
-  PerlRegEx, PerlRegExUtils;
+uses Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, EdictWriter,
+  FastArray, WcUtils, PerlRegEx, PerlRegExUtils;
 
 {
 Собираем несколько версий статьи, по числу разных шаблонов.
@@ -31,7 +31,7 @@ type
   end;
   PTemplateMgr = ^TTemplateMgr;
 
-  TExampleList = TList<string>;
+  TExampleList = TArray<string>;
   PExampleList = ^TExampleList;
 
 //Пока что возвращаем один article -- позже нужно заполнять TemplateMgr
@@ -79,11 +79,11 @@ end;
 
 { Возвращает список всех объявленных в заголовке статьи кандзи.
 KanaIfNone: если у каны нет ни одной записи кандзи, добавить её саму как запись кандзи. }
-function GetUniqueKanji(hdr: PEntryHeader; KanaIfNone: boolean): TList<string>;
+function GetUniqueKanji(hdr: PEntryHeader; KanaIfNone: boolean): TArray<string>;
 var i, j: integer;
 begin
   Result.Comparison := CompareStr;
-  Result.Reset;
+  Result.Clear;
   for i := 0 to hdr.words_used - 1 do
     if hdr.words[i].s_kanji_used<=0 then begin
       if KanaIfNone then
@@ -110,12 +110,12 @@ type
   TWordFlagSet = array[0..MaxWords-1] of boolean;
 
 { Заполняет массив флагов, выставляя true, если все доступные записи поддерживаются соотв. словом }
-function GetAllKanjiUsed(hdr: PEntryHeader; const AllKanji: TList<string>): TWordFlagSet;
+function GetAllKanjiUsed(hdr: PEntryHeader; const AllKanji: TArray<string>): TWordFlagSet;
 var i, j: integer;
 begin
   for i := 0 to hdr.words_used - 1 do begin
     Result[i] := true; //for starters
-    for j := 0 to AllKanji.Count - 1 do
+    for j := 0 to AllKanji.Length - 1 do
       if FindKanjiForWord(@hdr.words[i], AllKanji.items[j])<0 then begin
         Result[i] := false;
         break;
@@ -126,7 +126,7 @@ end;
 
 
 var
-  AllKanji: TList<string>;
+  AllKanji: TArray<string>;
   AllKanjiUsed: TWordFlagSet;
 
 procedure ProcessBlock(const body_common, group_common: string; bl: PEntryBlock;
@@ -161,15 +161,15 @@ begin
     art := @ver.art;
     art.ref := hdr.s_ref+'-'+IntToStr(v);
 
-    for i := 0 to AllKanji.Count - 1 do
-      for ti := 0 to ver.tvars.Count-1 do begin
+    for i := 0 to AllKanji.Length - 1 do
+      for ti := 0 to ver.tvars.Length-1 do begin
         pkj := art.AddKanji;
         pkj.k := ApplyTemplate(ver.tvars.items[ti], AllKanji.items[i]);
        //TODO: markers, POP
       end;
 
     for i := 0 to hdr.words_used - 1 do
-      for ti := 0 to ver.tvars.Count-1 do begin
+      for ti := 0 to ver.tvars.Length-1 do begin
         pkn := art.AddKana;
         pkn.k := ApplyTemplate(ver.tvars.items[ti], hdr.words[i].s_reading);
         pkn.AllKanji := AllKanjiUsed[i];

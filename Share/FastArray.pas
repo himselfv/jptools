@@ -24,6 +24,7 @@ type
     FItemCount: integer;
     FComparison: TComparison<T>;
     procedure Clear; inline;
+    procedure Reset; inline; //same as Clear
     function GetItem(const AIndex: integer): T; inline;
     procedure SetItem(const AIndex: integer; const AItem: T); inline;
     function GetPointer(const AIndex: integer): PT; inline;
@@ -39,6 +40,7 @@ type
     function GetPreallocatedLength: integer; inline;
     property Comparison: TComparison<T> read FComparison write FComparison;
     property Length: integer read FItemCount write SetLength;
+    property Count: integer read FItemCount write SetLength; //same
     property PreallocatedLength: integer read GetPreallocatedLength;
     property Items[const AIndex: integer]: T read GetItem write SetItem; default;
     property P[const AIndex: integer]: PT read GetPointer write SetPointer;
@@ -51,6 +53,11 @@ implementation
 procedure TArray<T>.Clear;
 begin
   FItemCount := 0;
+end;
+
+procedure TArray<T>.Reset;
+begin
+  Clear;
 end;
 
 function TArray<T>.GetItem(const AIndex: integer): T;

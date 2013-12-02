@@ -8,7 +8,7 @@
 }
 
 interface
-uses Warodai, WcUtils;
+uses Warodai, FastArray, WcUtils;
 {$INCLUDE 'Warodai.inc'}
 
 { Возвращает номер символа подстановки в шаблоне или 0 }
@@ -61,7 +61,7 @@ procedure SplitTemplate(const t: string; out t_p: TTemplateList);
 ближе к одному шаблону, чем к разным.
 }
 type
-  TTemplateVariants = TList<string>;
+  TTemplateVariants = TArray<string>;
   PTemplateVariants = ^TTemplateVariants;
 
 procedure GenerateTemplateVariants(const templ: string; tvars: PTemplateVariants);
@@ -266,7 +266,7 @@ end;
 procedure GenerateTemplateVariants(const templ: string; tvars: PTemplateVariants);
 var po, pc: integer;
 begin
-  tvars^.Reset;
+  tvars^.Clear;
   po := pos('[', templ);
   if po<=0 then begin
     tvars^.Add(templ);

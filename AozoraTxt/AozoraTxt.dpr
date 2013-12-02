@@ -3,7 +3,7 @@
 
 
 uses
-  SysUtils, Classes, Windows, ConsoleToolbox, UniStrUtils, StreamUtils,
+  SysUtils, Classes, Windows, ConsoleToolbox, UniStrUtils, StreamUtils, JWBIO,
   AozoraParser;
 
 type
@@ -77,12 +77,12 @@ end;
 procedure TAozoraTxt.Run_Strip(InputFile, OutputFile: string);
 var p: TAozoraStripParser;
   outp: TStream;
-  Bom: AnsiString;
+  Bom: TBytes;
 begin
   p := TAozoraStripParser.Create;
   if OutputFile<>'' then begin
     outp := TFileStream.Create(OutputFile, fmCreate);
-    Bom := BOM_UTF16LE;
+    Bom := TUTF16Encoding.GetBom;
     outp.Write(Bom[1], Length(Bom));
   end else
     outp := THandleStream.Create(GetStdHandle(STD_OUTPUT_HANDLE));

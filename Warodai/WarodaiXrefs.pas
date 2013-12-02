@@ -10,7 +10,7 @@
 }
 
 interface
-uses Warodai, WcUtils, EdictWriter, PerlRegEx, PerlRegExUtils;
+uses Warodai, FastArray, WcUtils, EdictWriter, PerlRegEx, PerlRegExUtils;
 {$INCLUDE 'Warodai.inc'}
 
 procedure EatXrefs(var ln: string; sn: PEdictSenseEntry);
@@ -25,7 +25,7 @@ procedure AssertNoHrefsLeft(const ln: UTF8String);
 }
 
 var
-  AllHrefTypes: TList<string>;
+  AllHrefTypes: TArray<string>;
   xrefStats: record
     HrefExpr: integer;
     SimpleHref: integer;
@@ -415,7 +415,7 @@ initialization
 
   preHrefExpr := Regex(pHrefExpr);
   preSimpleHref := Regex(pSimpleHref);
-  AllHrefTypes.Reset;
+  AllHrefTypes.Clear;
   AllHrefTypes.Comparison := UniCompareStr;
   FillChar(xrefStats, SizeOf(xrefStats), 0);
 

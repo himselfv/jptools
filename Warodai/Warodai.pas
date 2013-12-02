@@ -1,7 +1,7 @@
 ﻿unit Warodai;
 
 interface
-uses SysUtils, UniStrUtils, StreamUtils, WcUtils, JWBIO;
+uses SysUtils, UniStrUtils, StreamUtils, FastArray, WcUtils, JWBIO;
 {$INCLUDE 'Warodai.inc'}
 
 var
@@ -105,7 +105,7 @@ function EvalChars(const s: string): integer;
 }
 
 var
-  err: TList<string>;
+  err: TArray<string>;
 
 procedure DumpMsg(const msg: string); overload;
 procedure DumpMsg(const msg, line: string); overload;
