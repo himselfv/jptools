@@ -111,6 +111,9 @@ function TYarxiDB.ParseKanji(const Rec: variant): TKanjiRecord;
 var i: integer;
 begin
   Result.Nomer := rec.Nomer;
+  if (Result.Nomer=216) or (Result.Nomer=219) then //некоторые кандзи просто в полной беде
+    exit; //откройте базу, полюбуйтесь на них
+
   PushComplainContext('#'+IntToStr(Result.Nomer));
   try
     Result.Kanji := WideChar(word(rec.Uncd));

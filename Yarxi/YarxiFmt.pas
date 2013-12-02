@@ -12,16 +12,28 @@ uses SysUtils, Classes, UniStrUtils, FastArray, WcExceptions;
 
 { Полезные функции для работы со строками }
 
-function pop(var s: string; const sep: char): string;
-function trypop(var s: string; const sep: char): string;
-function repl(const s: string; const AFrom, ATo: string): string; inline;
 function spancopy(ps, pe: PChar): string;
+function pop(var s: string; const sep: char): string; overload;
+function pop(var pc: PChar; const sep: char): string; overload;
+function trypop(var s: string; const sep: char): string; overload;
+function trypop(var pc: PChar; const sep: char): string; overload;
+
+function leq(pc: PChar; const match: string): boolean;
+function eat(var pc: PChar; const match: string): boolean; overload;
+function eat(var pc: PChar; const matches: array of string): integer; overload;
+
+function repl(const s: string; const AFrom, ATo: string): string; inline;
 function Split(const s: string; const sep: char): TStringArray; inline;
 function Unquote(const s: string; op, ed: char): string;
 function TryUnquote(var s: string; op, ed: char): boolean;
 
 function IsLatin(const ch: char): boolean; inline;
 function IsUpperCaseLatin(const ch: char): boolean; inline;
+function IsNumeric(const ch: char): boolean; inline;
+
+function EatNumber(var pc: PChar): integer;// inline;
+function EatLatin(var pc: PChar): string;// inline;
+
 
 { Функции посылают сюда жалобы на жизнь. В дальнейшем надо сделать нормальный
  сборщик жалоб, как в WarodaiConvert. }
@@ -101,7 +113,11 @@ type
   TCharLinkRefChain = array of TCharLinkRef;
   TCharLink = record
     _type: byte;
-    tlvars: array[0..1] of byte; //номер варианта перевода, к к-му приписана ссылка. Обычно ноль
+    tlvars: array[0..1] of byte; //номер варианта перевода, к к-му приписана ссылка.
+     //0, 0 == к последнему (по умолчанию)
+     //любые 2 значения == эти значения
+     //255, 255 == ко всем
+     //255, 254 == слева от слов
     refs: TCharLinkRefChain;
     wordref: integer; //весь набор целиком ссылается на слово. Обычно ноль
   end;
@@ -113,18 +129,24 @@ type
   TKunReadingFlags = set of TKunReadingFlag;
   TKunReading = record
     text: string;
-    ipos: array of byte; //места, в к-х в транскрипции вместо й должно стоять и.
+    ipos: TArray<byte>; //места, в к-х в транскрипции вместо й должно стоять и.
     //В дальнейшем нужно скомбинировать эти поля в расширенную транскрипцию типа:
     //  jii'jii'
     //Чтобы парсер мог работать по фиксированным правилам (ii'->ии, ii->ий).
-    tpos: array of byte; //места, где надо вставить тире (не меняя индексации остального)
+    tpos: TArray<byte>; //места, где надо вставить тире (не меняя индексации остального)
     flags: TKunReadingFlags;
   end;
   PKunReading = ^TKunReading;
+  TAdditionalKanji = record
+    pos: integer; //точка вставки доп. цепочки кандзи, в кандзи!
+    chain: TCharLinkRefChain; //пока что такие же свойства, как в ссылках
+  end;
+  PAdditionalKanji = ^TAdditionalKanji;
   TKunReadingSetFlag = (
     ksHidden,                  //не показывать, но учитывать при поиске
     ksTranscriptionUnderWord,
     ksUsuallyInHiragana,
+    ksUsuallyInKatakana,
     ksWithKurikaeshi,
     ksUnchecked
   );
@@ -135,11 +157,12 @@ type
     main_chars: byte; //префикс + число символов, заменяемых кандзи
     optional_op: byte; //опциональный блок начинается после ...
     optional_ed: byte; //опциональный блок кончается после ...
-    refs: array of TCharLink;
+    refs: TArray<TCharLink>;
     flags: TKunReadingSetFlags;
     tail: string; //дополнительный хвост вида ~суру
-    additional_kanji_pos: integer; //точка вставки доп. цепочки кандзи, обычно 0
-    additional_kanji: TCharLinkRefChain; //пока что такие же свойства, как в ссылках
+    additional_kanji: TArray<TAdditionalKanji>;
+    usually_in_hira: TArray<integer>; //если даны метки для конкретных подпунктов
+    usually_in_kata: TArray<integer>;
   end;
   PKunReadingSet = ^TKunReadingSet;
   TKunReadings = array of TKunReadingSet;
@@ -238,6 +261,17 @@ uses StrUtils;
 
 { Полезные функции для работы со строками }
 
+{ Копирует набор символов с ps по pe не включительно }
+function spancopy(ps, pe: PChar): string;
+var i: integer;
+begin
+  SetLength(Result, (NativeUInt(pe)-NativeUInt(ps)) div SizeOf(char));
+  for i := 1 to Length(Result) do begin
+    Result[i] := ps^;
+    Inc(ps);
+  end;
+end;
+
 { Извлекает начало строки до разделителя; уничтожает разделитель. Если
  разделителя нет, извлекает остаток строки. }
 function pop(var s: string; const sep: char): string;
@@ -251,6 +285,16 @@ begin
     Result := copy(s, 1, i-1);
     delete(s, 1, i);
   end;
+end;
+
+function pop(var pc: PChar; const sep: char): string;
+var ps: PChar;
+begin
+  ps := pc;
+  while (pc^<>#00) and (pc^<>sep) do
+    Inc(pc);
+  Result := spancopy(ps, pc);
+  if pc^=sep then Inc(pc);
 end;
 
 { То же, но когда разделителя нет, ничего не возвращает и оставляет хвост, как
@@ -267,20 +311,61 @@ begin
   end;
 end;
 
+function trypop(var pc: PChar; const sep: char): string;
+var ps: PChar;
+begin
+  ps := pc;
+  while (pc^<>#00) and (pc^<>sep) do
+    Inc(pc);
+  if pc^=#00 then
+    pc := ps
+  else begin
+    Result := spancopy(ps, pc);
+    if pc^=sep then Inc(pc);
+  end;
+end;
+
+
+{ Tests that Pc matches Match at the starting point }
+function leq(pc: PChar; const match: string): boolean;
+var pm: PChar;
+begin
+  pm := PChar(match);
+  while pc^=pm^ do begin
+    Inc(pc);
+    Inc(pm);
+  end;
+  Result := (pm^=#00);
+end;
+
+{ Проверяет, что pc начинается с match, увеличивает pc на его длину. Возвращает
+ false, если совпадения нет. }
+function eat(var pc: PChar; const match: string): boolean;
+begin
+  Result := leq(pc, match);
+  if Result then
+    Inc(pc, Length(match));
+end;
+
+{ Проверяет, что pc начинается с какого-то из matches, увеличивает pc на его
+ длину. Возвращает номер варианта или -1, если совпадения нет.
+ Внимание: если варианты перекрывающиеся (напр. ABC, AB), начинайте с более
+ длинных. }
+function eat(var pc: PChar; const matches: array of string): integer;
+var i: integer;
+begin
+  Result := -1;
+  for i := 0 to Length(matches)-1 do
+    if eat(pc, matches[i]) then begin
+      Result := i;
+      break;
+    end;
+end;
+
+{ Заменяет подстроку в строке }
 function repl(const s: string; const AFrom, ATo: string): string;
 begin
   Result := UniReplaceStr(s, AFrom, ATo);
-end;
-
-{ Копирует набор символов с ps по pe не включительно }
-function spancopy(ps, pe: PChar): string;
-var i: integer;
-begin
-  SetLength(Result, (NativeUInt(pe)-NativeUInt(ps)) div SizeOf(char));
-  for i := 1 to Length(Result) do begin
-    Result[i] := ps^;
-    Inc(ps);
-  end;
 end;
 
 { Чуть более удобная обёртка для функции StrSplit }
@@ -302,6 +387,8 @@ begin
     s := copy(s,2,Length(s)-2);
 end;
 
+
+
 function IsLatin(const ch: char): boolean;
 begin
   Result := ((ch>='A') and (ch<='Z')) or ((ch>='a') and (ch<='z'));
@@ -311,6 +398,33 @@ function IsUpperCaseLatin(const ch: char): boolean;
 begin
   Result := (ch>='A') and (ch<='Z');
 end;
+
+function IsNumeric(const ch: char): boolean;
+begin
+  Result := (ch>='0') and (ch<='9');
+end;
+
+//Reads a positive number (only digits)
+function EatNumber(var pc: PChar): integer;
+var ps: PChar;
+begin
+  ps := pc;
+  while IsNumeric(pc^) do
+    Inc(pc);
+  Check(pc>ps);
+  Result := StrToInt(spancopy(ps,pc));
+end;
+
+function EatLatin(var pc: PChar): string;
+var ps: PChar;
+begin
+  ps := pc;
+  while IsLatin(pc^) do
+    Inc(pc);
+  Check(pc>ps);
+  Result := spancopy(ps,pc);
+end;
+
 
 
 { Сборщик жалоб }
@@ -600,8 +714,15 @@ end;
 набор*[3]5*    часть чтения с 4-й буквы по 5-ю опциональна (кв. скобки)
 набор*^^*      чаще хираганой (иногда слитно^^)
 набор*^!^*     то же, разместить текст под кандзи
+набор*^@*      чаще катаканой
 набор*^01129*  стандартная ссылка -- см. ParseCharLink (иногда слитно:
                *hiroi^50859* или *ateru*^12060^11250*)
+ К сожалению, существует некоторая проблема, следующие вещи все верны:
+   ^40000      ссылка на 0000
+   ^_240000    ссылка со 2-го пункта на 0000 (см. формат ссылок)
+   ^^          чаще хираганой
+   ^_2^^       чаще хираганой для 2-го пункта (#124)
+ Ну и как это, блин, разбирать?
 набор*+6*      добавить курикаэси (種々). Цифра переопределяет, сколько букв
                покрывают кандзи+кури вместе. Зачем - не знаю.
 набор*#хвост*  текстовый хвост к набору (~суру). Иногда пробел *#в конце *
@@ -613,6 +734,7 @@ end;
                От стандартного чтения по-прежнему добавляется хвост после всего.
 набор*VI*
 набор*VT*      неизвестно что, с виду не влияет
+набор*L1*      неизвестно, что
 
 После каждого флага тоже ставится *, последняя * не ставится (однако ставится
 закрывающая для набора, если требуется).
@@ -620,14 +742,17 @@ end;
 Для скрытых чтений информация о покрытии отсутствует (напр. #13):
 !2!041133* AKU *warui*ashi*ashikarazu*akutareru*^!^*akutare*^^*&*nikui*|AKU,WARU/O/-NIKUI
 }
+function match_targeted_kana_flag(pc: PChar): boolean; forward;
 function ParseKanjiKunReadings(inp: string): TKunReadings;
-var lead, word: string;
+var lead: string;
   rset: PKunReadingSet;
   rd: PKunReading;
-  pc: PChar;
+  ps, pc: PChar;
   flag_next_hidden: boolean;
   flag_next_unchecked: boolean;
   flag_slash: boolean;
+  req_sep: boolean; //require * or EOF as the next char
+  tmp_int: integer;
 begin
   FillChar(Result, SizeOf(Result), 0);
   if Length(inp)<=0 then exit;
@@ -635,150 +760,168 @@ begin
   flag_next_hidden := false;
   flag_next_unchecked := false;
   flag_slash := false;
+  req_sep := false;
 
   lead := pop(inp,'*');
-  inp := repl(inp, '**', '*%*'); //чтобы облегчить нам жизнь ниже
   rset := nil;
   rd := nil;
-  word := '';
-  while (inp<>'') or (word<>'') do begin
-    if word='' then
-      word := pop(inp,'*');
-    if Length(word)<=0 then continue;
+  pc := PChar(inp);
+  while pc^<>#00 do begin
 
-    if word[1]='!' then begin
-      Check(rset<>nil, 'mod "'+word+'": no open reading set');
-      Check((word='!!') or (word='!R') or (word='!R '), 'mod "'+word+'": Invalid !-sequence');
+    if req_sep then begin
+      Check(pc^='*', '* required and missing: '+pc);
+      req_sep := false
+    end;
+
+   //Двойная звёздочка
+    if eat(pc,'**') then begin
+      flag_next_unchecked := true;
+    end else
+
+   //Одиночная звёздочка
+    if pc^='*' then begin
+      Inc(pc);
+     //просто ничего не делаем
+    end else
+
+    if pc^='!' then begin
+      Check(eat(pc, ['!!','!R ', '!R', '!$'])>=0);
+      req_sep := true;
+      Check(rset<>nil, 'No open reading set');
       Check(not (ksTranscriptionUnderWord in rset.flags), 'Duplicate !-sequence' );
       rset.flags := rset.flags + [ksTranscriptionUnderWord];
-      word := '';
     end else
 
-    if word[1]='Q' then begin
-      Check(rd<>nil, 'mod "'+word+'": no open reading');
-      delete(word,1,1);
-      SetLength(rd.ipos, Length(rd.ipos)+1);
-      rd.ipos[Length(rd.ipos)-1] := StrToInt(word);
-      word := '';
+    if pc^='Q' then begin
+      Inc(pc);
+      Check(rd<>nil, 'No open reading');
+      rd.ipos.Add(EatNumber(pc));
+      req_sep := true;
     end else
 
-    if word[1]='V' then begin
-     //Непонятные флаги: VI, VT. Просто удаляем
-      delete(word,1,1);
-      Check(word<>'');
-      Check((word[1]='I')or(word[1]='T'));
-      delete(word,1,1);
-      Check(word='');
+    if pc^='V' then begin
+     //Непонятные флаги. Просто удаляем
+      Check(eat(pc, ['VI','VT','V2'])>=0);
+      req_sep := true;
     end else
 
-    if word[1]='-' then begin
-      Check(rd<>nil, 'mod "'+word+'": no open reading');
-      delete(word,1,1);
-      SetLength(rd.tpos, Length(rd.tpos)+1);
-      rd.tpos[Length(rd.tpos)-1] := StrToInt(word);
-      word := '';
+    if pc^='L' then begin
+     //Непонятные флаги
+      Check(eat(pc, ['L1'])>=0);
+      req_sep := true;
     end else
 
-    if word[1]='~' then begin
-      Check(rset<>nil, 'mod "'+word+'": no open reading set');
-      Check(rset.prefix_chars<=0,
-        'Duplicate prefix char declaration in a single reading set');
-      delete(word,1,1);
-      rset.prefix_chars := StrToInt(word);
-      word := '';
+    if pc^='-' then begin
+      Inc(pc);
+      Check(rd<>nil, 'No open reading');
+      rd.tpos.Add(EatNumber(pc));
+     //req_sep := true;  //#217
     end else
 
-    if word[1]='[' then begin
-      Check(rset<>nil, 'mod "'+word+'": no open reading set');
-      Check((rset.optional_op<=0) and (rset.optional_ed<=0),
-        'Duplicate optional_pos declaration in a single reading set');
-      delete(word,1,1);
-      rset.optional_op := StrToInt(trypop(word,']')); //должно присутствовать => ошибка, если вернёт пустую строку
-      if word<>'' then //что-то осталось
-        rset.optional_ed := StrToInt(word);
-      word := '';
+    if pc^='~' then begin
+      Inc(pc);
+      Check(rset<>nil, 'No open reading set');
+      Check(rset.prefix_chars<=0, 'Duplicate prefix char declaration');
+      rset.prefix_chars := EatNumber(pc);
+     //req_sep := true;  //Nope: #94
     end else
 
-    if (word[1]='&') or (word[1]='=') then begin
-      Check(not flag_next_hidden, 'mod "'+word+'": Duplicate flag_hidden.');
+    if pc^='[' then begin
+      Inc(pc);
+      Check(rset<>nil, 'No open reading set');
+      Check((rset.optional_op<=0) and (rset.optional_ed<=0), 'Duplicate optional_pos declaration');
+      rset.optional_op := StrToInt(trypop(pc,']')); //должно присутствовать => ошибка, если вернёт пустую строку
+      if IsNumeric(pc^) then //что-то осталось
+        rset.optional_ed := EatNumber(pc);
+      req_sep := true;
+    end else
+
+    if (pc^='&') or (pc^='=') then begin
+      Inc(pc);
+      Check(not flag_next_hidden, 'Duplicate flag_hidden.');
       flag_next_hidden := true;
-      delete(word,1,1);
-     //может слипаться с последующими
+     //req_sep := true;  //Nope, может слипаться с последующими
     end else
 
-    if word[1]='/' then begin
-      Check(word='/', 'Invalid /-sequence');
+    if pc^='/' then begin
+      Inc(pc);
       rd := nil;
       flag_slash := true;
-      word := '';
+      req_sep := true;
     end else
 
-    if ((word[1]='^') and (word[2]='^'))
-    or ((word[1]='^') and (word[2]='!') and (word[3]='^')) then begin
-      Check(rset<>nil, 'mod "'+word+'": no open reading set');
-      Check(not (ksUsuallyInHiragana in rset.flags),
-        'Duplicate ^^ flag for a reading set');
-      rset.flags := rset.flags + [ksUsuallyInHiragana];
-      if word[2]='!' then
-        delete(word,1,3)
-      else
-        delete(word,1,2);
-     //возможно, что-то осталось
+    if pc^='^' then begin
+      Check(rset<>nil, 'No open reading set');
+
+      if eat(pc,['^^','^!^'])>=0 then begin
+        Check(not (ksUsuallyInHiragana in rset.flags), 'Duplicate ^^ flag');
+        rset.flags := rset.flags + [ksUsuallyInHiragana];
+      end else
+
+      if eat(pc,'^@') then begin
+        Check(not (ksUsuallyInKatakana in rset.flags), 'Duplicate ^@ flag');
+        rset.flags := rset.flags + [ksUsuallyInKatakana];
+      end else
+
+     //К сожалению, придётся заниматься проституцией
+      if match_targeted_kana_flag(pc) then begin
+        Inc(pc,2); //^_
+        tmp_int := EatNumber(pc);
+        if eat(pc,['^^','^!^'])>=0 then begin
+          rset.usually_in_hira.Add(tmp_int);
+        end else
+        if eat(pc,'^@') then begin
+          rset.usually_in_kata.Add(tmp_int);
+        end else
+          Die('This is goddamn horrible.')
+      end else
+        rset.refs.Add(ParseCharLink(pc));
+
+     //req_sep := true;  //Nope, бывают цепочки
     end else
 
-    if word[1]='^' then begin
-      Check(rset<>nil, 'mod "'+word+'": no open reading set');
-      pc := PChar(word);
-      SetLength(rset.refs, Length(rset.refs)+1);
-      rset.refs[Length(rset.refs)-1] := ParseCharLink(pc);
-      delete(word, 1, pc-PChar(word));
-     //возможно, что-то осталось
+    if pc^='#' then begin
+      Inc(pc);
+      Check(rset<>nil, 'No open reading set');
+      ps := pc;
+      while IsLatin(pc^) or (pc^='[') or (pc^=']') {#340} do
+        Inc(pc);
+      Check(pc>ps);
+      rset.tail := spancopy(ps, pc);
+      while pc^=' ' do Inc(pc); //#34
+      req_sep := true;
     end else
 
-    if word[1]='#' then begin
-      Check(rset<>nil, 'mod "'+word+'": no open reading set');
-      rset.tail := word;
-      word := ''
-    end else
-
-    if word[1]='+' then begin
-      Check(rset<>nil, 'mod "'+word+'": no open reading set');
-      Check(not (ksWithKurikaeshi in rset.flags),
-        'Duplicate +kurikaeshi flag for a reading set');
-      delete(word,1,1);
-      rset.main_chars := StrToInt(word);
+    if pc^='+' then begin
+      Inc(pc);
+      Check(rset<>nil, 'No open reading set');
+      Check(not (ksWithKurikaeshi in rset.flags), 'Duplicate +kurikaeshi');
+      rset.main_chars := EatNumber(pc);
       rset.flags := rset.flags + [ksWithKurikaeshi];
-      word := '';
+      req_sep := true;
     end else
 
-    if word='%' then begin //наш специальный символ -- целиком
-      flag_next_unchecked := true;
-      word := '';
-    end else
-
-    if word[1]='$' then begin
-      Check(rset<>nil, 'mod "'+word+'": no open reading set');
-      Check(rset.additional_kanji_pos<=0, 'duplicate additional kanji');
-      pc := PChar(word);
-
+    if pc^='$' then begin
+      Check(rset<>nil, 'No open reading set');
       Inc(pc);
-      Check((pc^>='0') and (pc^<='9'), 'invalid additional_kanji_pos');
-      rset.additional_kanji_pos := Ord(pc^)-Ord('0');
-
-      Inc(pc);
-      rset.additional_kanji := ParseAdditionalKanjiChain(pc);
-      delete(word, 1, pc-PChar(word));
-     //возможно, что-то осталось
+      Check(IsNumeric(pc^), 'invalid additional_kanji_pos');
+      with rset.additional_kanji.AddNew^ do begin
+        pos := Ord(pc^)-Ord('0');
+        Inc(pc);
+        chain := ParseAdditionalKanjiChain(pc);
+      end;
+     //req_sep := true;  //Nope, бывают цепочки
     end else
 
+   //Просто транскрипция
     begin
-      pc := PChar(word);
-      while IsLatin(pc^) or (pc^=':'){долгота в транскрипциях}
+      ps := pc;
+      while IsLatin(pc^) or (pc^=':'){долгота в транскрипциях} or (pc^=''''){после буквы n}
       or (pc^='-') or (pc^=' ') do
         Inc(pc);
 
      //Мы обязаны хоть что-то прочесть, т.к. все флаги мы уже исключили
-      Check(pc>PChar(word), 'Cannot parse this part: '+pc);
+      Check(pc>ps, 'Cannot parse this part: '+pc);
 
       if not flag_slash then begin
         SetLength(Result, Length(Result)+1);
@@ -793,18 +936,22 @@ begin
           rset.main_chars := 0; //так делает сам яркси
         end else begin
          //Съедаем одну позицию из lead
-          Check(lead<>'', 'No char coverage data for another reading block');
-         //Расширенная позиция: ^7 == 17
-          if lead[1]='^' then begin
-            rset.main_chars := 10;
-            delete(lead,1,1);
-            Check(lead<>'', 'Incomplete char coverage ^expansion');
-          end else
+          if lead='' then begin
+            Complain('No char coverage data for another reading block');
             rset.main_chars := 0;
-         //Остаток позиции
-          Check((lead[1]>='0') and (lead[1]<='9'), 'Invalid char coverage position: '+lead[1]+' (digit expected)');
-          rset.main_chars := rset.main_chars + Ord(lead[1])-Ord('0');
-          delete(lead,1,1);
+          end else begin
+           //Расширенная позиция: ^7 == 17
+            if lead[1]='^' then begin
+              rset.main_chars := 10;
+              delete(lead,1,1);
+              Check(lead<>'', 'Incomplete char coverage ^expansion');
+            end else
+              rset.main_chars := 0;
+           //Остаток позиции
+            Check((lead[1]>='0') and (lead[1]<='9'), 'Invalid char coverage position: '+lead[1]+' (digit expected)');
+            rset.main_chars := rset.main_chars + Ord(lead[1])-Ord('0');
+            delete(lead,1,1);
+          end;
         end;
 
         if flag_next_unchecked then
@@ -821,9 +968,7 @@ begin
       rd := @rset.items[Length(rset.items)-1];
       FillChar(rd^, SizeOf(rd^), 0);
 
-      rd.text := spancopy(PChar(word),pc);
-      delete(word, 1, pc-PChar(word));
-
+      rd.text := spancopy(ps,pc);
       if rd.text<>'' then begin
        //сначала пробелы
         if (rd.text[1]=' ') or (rd.text[Length(rd.text)]=' ') then begin
@@ -838,13 +983,27 @@ begin
         end;
       end;
 
-     //возможно, что-то осталось в word
+     //req_sep := true;  //Nope, возможно, что-то осталось
     end;
   end;
 
  //Контроль
   if lead<>'' then
     Complain('Остались неразобранные позиции числа символов.')
+end;
+
+function match_targeted_kana_flag(pc: PChar): boolean;
+begin
+  Result := false;
+  if pc^<>'^' then exit;
+  Inc(pc);
+  if pc^<>'_' then exit;
+  Inc(pc);
+  if not IsNumeric(pc^) then exit;
+  while IsNumeric(pc^) do Inc(pc);
+  if pc^<>'^' then exit;
+  Inc(pc);
+  Result := (pc^='^') or (pc^='@');
 end;
 
 {
@@ -865,7 +1024,9 @@ end;
 ^[цифра][номер]-[номер] === несколько кандзи подряд
 ^[цифра][номер]-''[текст]'' === доп. текст хираганой
 ^<блок>=[номер слова] === сделать весь блок ссылкой на указанное слово
+По умолчанию ссылка присоединяется к последнему варианту перевода
 ^_[цифра]<блок> === присоединить ссылку к n-му варианту перевода из нескольких
+^:<блок> === присоединить ссылку ко всем вариантам перевода
 ^::[2 цифры]<блок> === присоединить ссылку к n-му и m-му вариантам перевода
 
 Не сделано:
@@ -887,20 +1048,28 @@ begin
   end else
   if pc^=':' then begin
     Inc(pc);
-    Check(pc^=':');
+    if pc^=':' then begin
+      Inc(pc);
+      Check((pc^>='0') and (pc^<='9'), 'Invalid tl-variant index');
+      Result.tlvars[0] := Ord(pc^)-Ord('0');
+      Inc(pc);
+      Check((pc^>='0') and (pc^<='9'), 'Invalid tl-variant index');
+      Result.tlvars[1] := Ord(pc^)-Ord('0');
+      Inc(pc);
+    end else begin
+      Result.tlvars[0] := byte(-1);
+      Result.tlvars[1] := byte(-1);
+    end;
+  end else
+  if pc^='!' then begin //#356
     Inc(pc);
-    Check((pc^>='0') and (pc^<='9'), 'Invalid tl-variant index');
-    Result.tlvars[0] := Ord(pc^)-Ord('0');
-    Inc(pc);
-    Check((pc^>='0') and (pc^<='9'), 'Invalid tl-variant index');
-    Result.tlvars[1] := Ord(pc^)-Ord('0');
-    Inc(pc);
+    Result.tlvars[0] := byte(-1);
+    Result.tlvars[1] := byte(-2);
   end else
   begin
     Result.tlvars[0] := 0;
     Result.tlvars[0] := 1;
   end;
-
 
   Check((pc^>='0') and (pc^<='9'), 'Invalid type');
   Result._type := Ord(pc^)-Ord('0');
@@ -983,12 +1152,10 @@ begin
       Inc(pc);
     end else
    //Число (номер кандзи)
-    begin
-      ps := pc;
-      while (pc^>='0') and (pc^<='9') do
-        Inc(pc);
-      Check(pc>ps);
-    end;
+    if IsNumeric(pc^) then begin
+      ref.charref := EatNumber(pc); //надеюсь, два подряд не бывает..
+    end else
+      break; //неизвестный символ => выходим
   end;
 end;
 
