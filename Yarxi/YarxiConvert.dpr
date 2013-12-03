@@ -16,6 +16,7 @@ type
   TYarxiConvert = class(TCommandLineApp)
   protected
     Command: string;
+    Field: string;
     Yarxi: TYarxiDB;
     Output: TStreamEncoder;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
@@ -23,15 +24,15 @@ type
   public
     procedure ShowUsage; override;
     procedure Run; override;
-    procedure RunKanji;
+    procedure RunKanji(const field: string);
     procedure RunTango;
   end;
 
 procedure TYarxiConvert.ShowUsage;
 begin
-  writeln('Usage: '+ProgramName+' <command>');
+  writeln('Usage: '+ProgramName+' <command> <field>');
   writeln('Supported commands:');
-  writeln('  kanji = print kanji table');
+  writeln('  kanji = print kanji table fields');
   writeln('  tango = print tango table');
 end;
 
@@ -42,7 +43,11 @@ end;
 
 function TYarxiConvert.HandleParam(const s: string; var i: integer): boolean;
 begin
-  Command := s;
+  if Command='' then
+    Command := s
+  else
+  if Command='kanji' then
+    Field := s;
   Result := true;
 end;
 
@@ -57,7 +62,7 @@ begin
   Output := ConsoleWriter();
 
   if Command='kanji' then
-    RunKanji
+    RunKanji(Field)
   else
   if (Command='words') or (Command='tango') then
     RunTango
@@ -68,20 +73,42 @@ begin
   FreeAndNil(Yarxi);
 end;
 
-procedure TYarxiConvert.RunKanji;
+procedure TYarxiConvert.RunKanji(const field: string);
 var k: TKanjiRecord;
 begin
   writeln(ErrOutput, IntToStr(Yarxi.KanjiCount)+' kanji in DB.');
   for k in Yarxi.Kanji do
-    Output.WriteLn(
-      FastArray.Join(k.RusNicks, '/') + #09
-        + k.JoinOns + #09 + Yarxi.KanaTran.RomajiToKana('K'+k.JoinOns(' '), []) + #09
-        + k.RawKunYomi + #09
-        + DumpKanjiKunYomi(k.KunYomi) + #09
-//        + Yarxi.KanaTran.RomajiToKana('H'+k.KunYomi, []) + #09
-        + k.RawRussian + #09
-        + DumpKanjiCompounds(k.Compounds)
-    );
+    if field='rawrusnick' then
+      Output.WriteLn(k.RawKunYomi)
+    else
+    if field='rusnick' then
+      Output.WriteLn(FastArray.Join(k.RusNicks, '/'))
+    else
+    if field='ons' then
+      Output.WriteLn(k.JoinOns)
+    else
+    if field='kanaons' then
+      Output.WriteLn(Yarxi.KanaTran.RomajiToKana('K'+k.JoinOns(' '), []))
+    else
+    if field='rawkunyomi' then
+      Output.WriteLn(k.RawKunYomi)
+    else
+    if field='kunyomi' then
+      Output.WriteLn(DumpKanjiKunYomi(k.KunYomi))
+    else
+    if field='rawrussian' then
+      Output.WriteLn(k.RawRussian)
+    else
+{    if field='russian' then
+      Output.WriteLn(DumpKanjiRussian(k.Russian))
+    else}
+    if field='rawcompounds' then
+      Output.WriteLn(k.RawCompounds)
+    else
+    if field='compounds' then
+      Output.WriteLn(DumpKanjiCompounds(k.Compounds))
+    else
+      raise Exception.Create('Unknown field');
 end;
 
 procedure TYarxiConvert.RunTango;
