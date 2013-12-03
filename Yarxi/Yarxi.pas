@@ -24,7 +24,8 @@ type
     OnYomi: TOnYomiEntries;
     KunYomi: TKanjiReadings;
     RawKunYomi: string;
-    Russian: string;
+    RawRussian: string;
+    Russian: TRussianMeanings;
     Compounds: TCompoundEntries;
     RawCompounds: string;
     function JoinOns(const sep: string=' '): string;
@@ -111,7 +112,9 @@ function TYarxiDB.ParseKanji(const Rec: variant): TKanjiRecord;
 var i: integer;
 begin
   Result.Nomer := rec.Nomer;
-  if (Result.Nomer=216) or (Result.Nomer=219) then //некоторые кандзи просто в полной беде
+  if (Result.Nomer=216) or (Result.Nomer=219) or (Result.Nomer=1385)
+  or (Result.Nomer=1528) or (Result.Nomer=1617) or (Result.Nomer=2403)
+  or (Result.Nomer=2664) then //некоторые кандзи просто в полной беде
     exit; //откройте базу, полюбуйтесь на них
 
   PushComplainContext('#'+IntToStr(Result.Nomer));
@@ -129,7 +132,8 @@ begin
       Result.OnYomi[i].kana := KanaTran.RomajiToKana(Result.OnYomi[i].kana, []);
     Result.RawKunYomi := rec.KunYomi;
     Result.KunYomi := ParseKanjiKunYomi(Result.RawKunYomi);
-    Result.Russian := DecodeRussian(rec.Russian);
+    Result.RawRussian := repl(DecodeRussian(rec.Russian),'\','');
+    Result.Russian := ParseKanjiRussian(Result.RawRussian);
     Result.RawCompounds := rec.Compounds;
     Result.Compounds := ParseKanjiCompounds(Result.RawCompounds);
   finally

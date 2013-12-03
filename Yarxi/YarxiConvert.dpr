@@ -79,7 +79,7 @@ begin
         + k.RawKunYomi + #09
         + DumpKanjiKunYomi(k.KunYomi) + #09
 //        + Yarxi.KanaTran.RomajiToKana('H'+k.KunYomi, []) + #09
-        + k.Russian + #09
+        + k.RawRussian + #09
         + DumpKanjiCompounds(k.Compounds)
     );
 end;

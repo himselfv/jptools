@@ -38,10 +38,15 @@ function EatLatin(var pc: PChar): string;// inline;
 { Функции посылают сюда жалобы на жизнь. В дальнейшем надо сделать нормальный
  сборщик жалоб, как в WarodaiConvert. }
 
+var
+  ComplainContext: string;
+ //добавляется ко всем жалобам. Внешние функции могут записывать сюда
+ //номер и/или содержание текущей записи
+
 procedure PushComplainContext(const AData: string);
 procedure PopComplainContext;
-procedure Complain(const msg: string); overload;
-procedure Complain(const msg, data: string); overload;
+procedure Complain(const msg: string); inline; overload;
+procedure Complain(const msg, data: string); inline; overload;
 
 
 { Во всех полях используется "обезъяний русский":
@@ -85,8 +90,15 @@ function ParseKanjiRusNick(const inp: string): TRusNicks;
 {
 Поле Kanji.OnYomi:
 Формат: *kana*;*kana**;*kana*
-Если в конце две звёздочки, чтение малоупотребляемое.
-Строка пустая или стоит тире - кокудзи.
+Могут использоваться ";" и ",".
+Флаги:
+ *kana**   чтение малоупотребимое
+ -         кокудзи (в т.ч. как один из вариантов)
+Всё поле пустое => кокудзи.
+Встречается такое (сейчас не обрабатывается):
+  *cho:*(*ten**)*
+  *ryu:*(*ryo:**)*
+  -*do:*
 }
 type
   TOnYomiEntry = record
@@ -111,13 +123,20 @@ type
   end;
   PCharLinkRef = ^TCharLinkRef;
   TCharLinkRefChain = TArray<TCharLinkRef>;
+  TCharLinkPosition = (
+    lpDefault = 0, //по-моему, LastLine
+    lpFirstLine,
+    lpAllClauses,
+    lpOneClause,
+    lpFromTo,
+    lpNewline,
+    lpKanji
+  );
   TCharLink = record
-    _type: byte;
-    tlvars: array[0..1] of byte; //номер варианта перевода, к к-му приписана ссылка.
-     //0, 0 == к последнему (по умолчанию)
-     //любые 2 значения == эти значения
-     //255, 255 == ко всем
-     //255, 254 == слева от слов
+    _type: char;
+    pos: TCharLinkPosition;
+    posfrom: byte;
+    posto: byte;
     refs: TCharLinkRefChain;
     wordref: integer; //весь набор целиком ссылается на слово. Обычно ноль
   end;
@@ -148,12 +167,15 @@ type
     ed: byte; //кончается после ...; 0 = до конца транскрипции
   end;
   POptionalSpan = ^TOptionalSpan;
+  TUsuallyIn = (
+    uiNormal = 0,
+    uiHiragana,
+    uiKatakana,
+    uiKana
+  );
   TKunReadingSetFlag = (
     ksHidden,                  //не показывать, но учитывать при поиске
     ksTranscriptionUnderWord,
-    ksUsuallyInHiragana,
-    ksUsuallyInKatakana,
-    ksUsuallyInKana,
     ksWithKurikaeshi,
     ksUnchecked
   );
@@ -162,14 +184,14 @@ type
     items: array of TKunReading;
     prefix_chars: byte; //число символов префикса (до кандзи)
     main_chars: byte; //префикс + число символов, заменяемых кандзи
+    kuri_chars: byte; //число символов, указанных до основного курикаэси
     optional_spans: TArray<TOptionalSpan>; //опциональные блоки
     refs: TArray<TCharLink>;
     flags: TKunReadingSetFlags;
     latin_tail: string; //дополнительный хвост вида ~суру
     additional_kanji: TArray<TAdditionalKanji>;
-    usually_in_hira: TArray<integer>; //если даны метки для конкретных подпунктов
-    usually_in_kata: TArray<integer>;
-    usually_in_kana: TArray<integer>;
+    usually_in: TUsuallyIn;
+    tl_usually_in: TArray<TUsuallyIn>; //если даны метки для конкретных подпунктов
   end;
   PKunReadingSet = ^TKunReadingSet;
   TKunReadings = array of TKunReadingSet;
@@ -177,6 +199,32 @@ type
 function ParseKanjiKunReadings(inp: string): TKunReadings;
 function ParseCharLink(var pc: PChar): TCharLink;
 function ParseAdditionalKanjiChain(var pc: PChar): TCharLinkRefChain;
+
+{
+  Кандзи: Переводы.
+}
+type
+  TKunyomiMeaning = record
+  end;
+  TKunyomiMeanings = TArray<TKunyomiMeaning>;
+
+  TCompoundMeaning = record
+  end;
+  TCompoundMeanings = TArray<TCompoundMeaning>;
+
+  TRussianMeaningFlag = (
+    mfUnchecked
+  );
+  TRussianMeaningFlags = set of TRussianMeaningFlag;
+  TRussianMeanings = record
+    flags: TRussianMeaningFlags;
+    kunyomi: TKunyomiMeanings;
+    compound: TCompoundMeanings;
+  end;
+
+function ParseKanjiRussian(inp: string): TRussianMeanings;
+function ParseKanjiKunyomiMeanings(inp: string): TKunyomiMeanings;
+function ParseKanjiCompoundMeanings(inp: string): TCompoundMeanings;
 
 
 {
@@ -435,11 +483,6 @@ end;
 
 
 { Сборщик жалоб }
-
-var
-  ComplainContext: string;
- //добавляется ко всем жалобам. Внешние функции могут записывать сюда
- //номер и/или содержание текущей записи
 
 procedure PushComplainContext(const AData: string);
 begin
@@ -739,8 +782,14 @@ end;
 
 Отображение в кандзи:
 набор*+6*      добавить курикаэси (種々) перед хвостом каны. Число задаёт, после
-  какой буквы чтения вставить кури. Зачем оно - не знаю. Пока опыт показал, что
-  единственное нормально значение - ровно длина корня. Assert.
+  какой буквы чтения вставить кури. Если оно не равно длине корня, то весь хвост
+  отбрасывается:
+    4*abcdef     = 種ef
+    4*abcdef*+4* = 種々ef
+    4*abcdef*+6* = 種々
+  На это код братски закладывается, добавляя недостающий хвост как latin_tail.
+  Хочется взять и уверстать.
+
 *набор*$1[..]* вставить с указанной позиции кандзи-позиции (в итоговом тексте):
   [1084]       кандзи в скобках
   1084         кандзи по номеру
@@ -901,32 +950,35 @@ begin
       Check(rset<>nil, 'No open reading set');
 
       if eat(pc,['^^','^!^'])>=0 then begin
-        Check(not (ksUsuallyInHiragana in rset.flags), 'Duplicate ^^ flag');
-        rset.flags := rset.flags + [ksUsuallyInHiragana];
+        Check(rset.usually_in=uiNormal, 'Duplicate ^^ flag');
+        rset.usually_in := uiHiragana;
       end else
 
       if eat(pc,'^@') then begin
-        Check(not (ksUsuallyInKatakana in rset.flags), 'Duplicate ^@ flag');
-        rset.flags := rset.flags + [ksUsuallyInKatakana];
+        Check(rset.usually_in=uiNormal, 'Duplicate ^@ flag');
+        rset.usually_in := uiKatakana;
       end else
 
       if eat(pc,['^#','^!#'])>=0 then begin
-        Check(not (ksUsuallyInKana in rset.flags), 'Duplicate ^# flag');
-        rset.flags := rset.flags + [ksUsuallyInKana];
+        Check(rset.usually_in=uiNormal, 'Duplicate ^# flag');
+        rset.usually_in := uiKana;
       end else
 
      //К сожалению, придётся заниматься проституцией
       if match_targeted_kana_flag(pc) then begin
         Inc(pc,2); //^_
         tmp_int := EatNumber(pc);
+        if rset.tl_usually_in.Length<tmp_int then
+          rset.tl_usually_in.SetLength(tmp_int+1);
+        Check(rset.tl_usually_in[tmp_int] = uiNormal);
         if eat(pc,['^^','^!^'])>=0 then begin
-          rset.usually_in_hira.Add(tmp_int);
+          rset.tl_usually_in[tmp_int] := uiHiragana;
         end else
         if eat(pc,'^@') then begin
-          rset.usually_in_kata.Add(tmp_int);
+          rset.tl_usually_in[tmp_int] := uiKatakana;
         end else
         if eat(pc,'^#') then begin
-          rset.usually_in_kana.Add(tmp_int);
+          rset.tl_usually_in[tmp_int] := uiKana;
         end else
           Die('This is goddamn horrible.')
       end else
@@ -951,7 +1003,7 @@ begin
       Inc(pc);
       Check(rset<>nil, 'No open reading set');
       Check(not (ksWithKurikaeshi in rset.flags), 'Duplicate +kurikaeshi');
-      rset.main_chars := EatNumber(pc);
+      rset.kuri_chars := EatNumber(pc);
       rset.flags := rset.flags + [ksWithKurikaeshi];
       req_sep := true;
     end else
@@ -1091,11 +1143,11 @@ end;
   7 = антоним
   8 = не путать с
   9 = ранее
-  r = ранее так же ==> 11
-  t = теперь ==> 12
-  i = иногда так же ==> 13
-  z = как замена ==> 14
-  m = ошибочно вместо ==> 15
+  r = ранее так же
+  t = теперь
+  i = иногда так же
+  z = как замена
+  m = ошибочно вместо
   всё остальное = ??????
 ^[цифра][номер]-[номер] === несколько кандзи подряд
 ^[цифра][номер]-''[текст]'' === доп. текст хираганой
@@ -1105,12 +1157,11 @@ end;
 ^:<блок> === присоединить ссылку ко всем вариантам перевода
 ^::[2 цифры]<блок> === присоединить ссылку к n-му и m-му вариантам перевода
   /  палка между кандзи (1172/8654)
+^!<блок> === поставить ссылку слева от вариантов перевода (под словом)
+^- === присоединить ссылку к первой строчке перевода. Немного отличается от
+  ^_цифра, т.к. вариант перевода может быть всего один, нулевой, а строчек
+  несколько.
 ^+ === только для блоков 2+: начать с новой строки, а не продолжать старую.
-  Нампофиг.
-^- === присобачить к первой строчке перевода. Немного отличается от ^_цифра,
-  т.к. вариант перевода может быть всего один, нулевой, а строчек несколько.
-  Кошмар какой-то.
-  Ладно, пока тоже пофиг.
 Также бывает:
   ^4''текст''номер
 Тогда в чём смысл тире? Неизвестно, но без тире Яркси с длинными цепочками не
@@ -1123,61 +1174,44 @@ begin
   Check(pc^='^', 'Invalid start mark');
   Inc(pc);
 
-  if pc^='+' then
-    Inc(pc)
-  else
-  if pc^='-' then
+  if pc^='+' then begin
     Inc(pc);
-
-
+    Result.pos := lpNewline;
+  end else
+  if pc^='-' then begin
+    Inc(pc);
+    Result.pos := lpFirstLine;
+  end else
   if pc^='_' then begin
     Inc(pc);
     Check((pc^>='0') and (pc^<='9'), 'Invalid tl-variant index');
-    Result.tlvars[0] := Ord(pc^)-Ord('0');
+    Result.pos := lpOneClause;
+    Result.posfrom := Ord(pc^)-Ord('0');
     Inc(pc);
   end else
   if pc^=':' then begin
     Inc(pc);
     if pc^=':' then begin
+      Result.pos := lpFromTo;
       Inc(pc);
       Check((pc^>='0') and (pc^<='9'), 'Invalid tl-variant index');
-      Result.tlvars[0] := Ord(pc^)-Ord('0');
+      Result.posfrom := Ord(pc^)-Ord('0');
       Inc(pc);
       Check((pc^>='0') and (pc^<='9'), 'Invalid tl-variant index');
-      Result.tlvars[1] := Ord(pc^)-Ord('0');
+      Result.posto := Ord(pc^)-Ord('0');
       Inc(pc);
-    end else begin
-      Result.tlvars[0] := byte(-1);
-      Result.tlvars[1] := byte(-1);
-    end;
+    end else
+      Result.pos := lpAllClauses;
   end else
   if pc^='!' then begin //#356
     Inc(pc);
-    Result.tlvars[0] := byte(-1);
-    Result.tlvars[1] := byte(-2);
+    Result.pos := lpKanji;
   end else
-  begin
-    Result.tlvars[0] := 0;
-    Result.tlvars[0] := 1;
-  end;
+    Result.pos := lpDefault;
 
-  if (pc^>='0') and (pc^<='9') then
-    Result._type := Ord(pc^)-Ord('0')
-  else
-  if (pc^='r') then
-    Result._type := 11
-  else
-  if (pc^='t') then
-    Result._type := 12
-  else
-  if (pc^='i') then
-    Result._type := 13
-  else
-  if (pc^='z') then
-    Result._type := 14
-  else
-  if (pc^='m') then
-    Result._type := 15
+  if ((pc^>='0') and (pc^<='9')) or (pc^='r') or (pc^='t') or (pc^='i')
+  or (pc^='z') or (pc^='m') then
+    Result._type := pc^
   else
     Die('Invalid type: '+pc^);
   Inc(pc);
@@ -1291,6 +1325,39 @@ begin
       break; //неизвестный символ => выходим
   end;
 end;
+
+
+
+{
+Поле: Kanji.Russian.
+Формат: KunyomiMeanings|CompoundMeanings
+Перед вызовом конвертируйте русские буквы и удалите из строки все "\" (мусор).
+}
+function ParseKanjiRussian(inp: string): TRussianMeanings;
+begin
+  FillChar(Result, SizeOf(Result), 0);
+  if Length(inp)<=0 then exit;
+
+  if inp[1]='~' then begin
+    Result.flags := Result.flags + [mfUnchecked];
+    delete(inp,1,1);
+  end;
+
+  Result.kunyomi := ParseKanjiKunyomiMeanings(pop(inp,'|'));
+  Result.compound := ParseKanjiCompoundMeanings(inp);
+end;
+
+function ParseKanjiKunyomiMeanings(inp: string): TKunyomiMeanings;
+begin
+
+end;
+
+function ParseKanjiCompoundMeanings(inp: string): TCompoundMeanings;
+begin
+
+end;
+
+
 
 {
 Поле: Kanji.KunYomi, блок CompoundReadings.
