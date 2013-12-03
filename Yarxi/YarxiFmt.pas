@@ -143,11 +143,17 @@ type
     kuri: boolean; //в конце цепочки курикаэси
   end;
   PAdditionalKanji = ^TAdditionalKanji;
+  TOptionalSpan = record
+    op: byte; //начинается после ...
+    ed: byte; //кончается после ...; 0 = до конца транскрипции
+  end;
+  POptionalSpan = ^TOptionalSpan;
   TKunReadingSetFlag = (
     ksHidden,                  //не показывать, но учитывать при поиске
     ksTranscriptionUnderWord,
     ksUsuallyInHiragana,
     ksUsuallyInKatakana,
+    ksUsuallyInKana,
     ksWithKurikaeshi,
     ksUnchecked
   );
@@ -156,14 +162,14 @@ type
     items: array of TKunReading;
     prefix_chars: byte; //число символов префикса (до кандзи)
     main_chars: byte; //префикс + число символов, заменяемых кандзи
-    optional_op: byte; //опциональный блок начинается после ...
-    optional_ed: byte; //опциональный блок кончается после ...
+    optional_spans: TArray<TOptionalSpan>; //опциональные блоки
     refs: TArray<TCharLink>;
     flags: TKunReadingSetFlags;
-    tail: string; //дополнительный хвост вида ~суру
+    latin_tail: string; //дополнительный хвост вида ~суру
     additional_kanji: TArray<TAdditionalKanji>;
     usually_in_hira: TArray<integer>; //если даны метки для конкретных подпунктов
     usually_in_kata: TArray<integer>;
+    usually_in_kana: TArray<integer>;
   end;
   PKunReadingSet = ^TKunReadingSet;
   TKunReadings = array of TKunReadingSet;
@@ -720,6 +726,7 @@ end;
 набор*^^*      чаще хираганой (иногда слитно^^)
 набор*^!^*     то же, разместить текст под кандзи
 набор*^@*      чаще катаканой
+набор*^#*      чаще каной
 набор*^01129*  стандартная ссылка -- см. ParseCharLink (иногда слитно:
                *hiroi^50859* или *ateru*^12060^11250*)
  К сожалению, существует некоторая проблема, следующие вещи все верны:
@@ -727,6 +734,7 @@ end;
    ^_240000    ссылка со 2-го пункта на 0000 (см. формат ссылок)
    ^^          чаще хираганой
    ^_2^^       чаще хираганой для 2-го пункта (#124)
+   ^_2^#       чаще каной
  Ну и как это, блин, разбирать?
 
 Отображение в кандзи:
@@ -751,6 +759,7 @@ end;
 
 набор*~n*      n символов от начала чтения вынести перед кандзи (для гонорификов)
 набор*[3]5*    часть чтения с 4-й буквы по 5-ю опциональна (кв. скобки)
+набор*[4[6]6]8 две опциональных части, (4..6] и (6..8]
 
 Игнорируем:
 набор*VI*
@@ -832,10 +841,10 @@ begin
       req_sep := true;
     end else
 
-    if pc^='-' then begin
+   //также бывает нормальное тире: *-ni itatte wa. #1108
+    if (pc^='-') and IsNumeric((pc+1)^) then begin
       Inc(pc);
       Check(rd<>nil, 'No open reading');
-     //TODO: бывает нормальное тире: *-ni itatte wa. Что делать?
       rd.tpos.Add(EatNumber(pc));
      //req_sep := true;  //#217
     end else
@@ -851,10 +860,26 @@ begin
     if pc^='[' then begin
       Inc(pc);
       Check(rset<>nil, 'No open reading set');
-      Check((rset.optional_op<=0) and (rset.optional_ed<=0), 'Duplicate optional_pos declaration');
-      rset.optional_op := StrToInt(trypop(pc,']')); //должно присутствовать => ошибка, если вернёт пустую строку
-      if IsNumeric(pc^) then //что-то осталось
-        rset.optional_ed := EatNumber(pc);
+      Check(rset.optional_spans.Length=0, 'Duplicate optional_pos declaration');
+      with rset.optional_spans.AddNew^ do begin
+        op := EatNumber(pc);
+        if pc^='[' then begin
+          Inc(pc);
+         //доп. блок - такой же
+          with rset.optional_spans.AddNew^ do begin
+            op := EatNumber(pc);
+            Check(pc^=']');
+            Inc(pc);
+            ed := EatNumber(pc); //во внутр. блоке Яркси требует 2-й части, потребуем и мы
+          end;
+        end;
+        Check(pc^=']');
+        Inc(pc);
+        if IsNumeric(pc^) then //что-то осталось
+          ed := EatNumber(pc)
+        else
+          ed := 0;
+      end;
       req_sep := true;
     end else
 
@@ -885,6 +910,11 @@ begin
         rset.flags := rset.flags + [ksUsuallyInKatakana];
       end else
 
+      if eat(pc,['^#','^!#'])>=0 then begin
+        Check(not (ksUsuallyInKana in rset.flags), 'Duplicate ^# flag');
+        rset.flags := rset.flags + [ksUsuallyInKana];
+      end else
+
      //К сожалению, придётся заниматься проституцией
       if match_targeted_kana_flag(pc) then begin
         Inc(pc,2); //^_
@@ -894,6 +924,9 @@ begin
         end else
         if eat(pc,'^@') then begin
           rset.usually_in_kata.Add(tmp_int);
+        end else
+        if eat(pc,'^#') then begin
+          rset.usually_in_kana.Add(tmp_int);
         end else
           Die('This is goddamn horrible.')
       end else
@@ -909,7 +942,7 @@ begin
       while IsLatin(pc^) or (pc^='[') or (pc^=']') {#340} do
         Inc(pc);
       Check(pc>ps);
-      rset.tail := spancopy(ps, pc);
+      rset.latin_tail := spancopy(ps, pc);
       while pc^=' ' do Inc(pc); //#34
       req_sep := true;
     end else
@@ -1034,10 +1067,14 @@ begin
   if pc^<>'_' then exit;
   Inc(pc);
   if not IsNumeric(pc^) then exit;
-  while IsNumeric(pc^) do Inc(pc);
+  Inc(pc); //пока допускаем макс. одну цифру
+ { Более свободно:
+    while IsNumeric(pc^) do Inc(pc);
+  Однако так рискуем матчнуть ^_210000^1111. Сейчас не матчнем, т.к. у нас
+  дальше требуется ^, @ или #, но если это требование ослабнет... }
   if pc^<>'^' then exit;
   Inc(pc);
-  Result := (pc^='^') or (pc^='@');
+  Result := (pc^='^') or (pc^='@') or (pc^='#');
 end;
 
 {
@@ -1056,6 +1093,9 @@ end;
   9 = ранее
   r = ранее так же ==> 11
   t = теперь ==> 12
+  i = иногда так же ==> 13
+  z = как замена ==> 14
+  m = ошибочно вместо ==> 15
   всё остальное = ??????
 ^[цифра][номер]-[номер] === несколько кандзи подряд
 ^[цифра][номер]-''[текст]'' === доп. текст хираганой
@@ -1071,10 +1111,13 @@ end;
   т.к. вариант перевода может быть всего один, нулевой, а строчек несколько.
   Кошмар какой-то.
   Ладно, пока тоже пофиг.
+Также бывает:
+  ^4''текст''номер
+Тогда в чём смысл тире? Неизвестно, но без тире Яркси с длинными цепочками не
+справляется (>2 эл-тов).
 }
 function ParseCharLink(var pc: PChar): TCharLink;
 var i: integer;
-  ref: PCharLinkRef;
   ps: PChar;
 begin
   Check(pc^='^', 'Invalid start mark');
@@ -1127,14 +1170,20 @@ begin
   if (pc^='t') then
     Result._type := 12
   else
+  if (pc^='i') then
+    Result._type := 13
+  else
+  if (pc^='z') then
+    Result._type := 14
+  else
+  if (pc^='m') then
+    Result._type := 15
+  else
     Die('Invalid type: '+pc^);
+  Inc(pc);
 
   Result.refs.Clear;
-  repeat
-    Inc(pc);
-    ref := PCharLinkRef(Result.refs.AddNew);
-    ref.text := '';
-    ref.charref := 0;
+  while pc^<>#00 do begin
     if pc^='''' then begin
       Check((pc+1)^='''', 'invalid singular '' mark');
       pc := pc+2;
@@ -1143,23 +1192,41 @@ begin
         Inc(pc);
       Check(pc^<>#00, 'invalid unclosed text element');
       Check((pc+1)^='''', 'invalid singular '' mark');
-      ref.text := spancopy(ps,pc);
+      with Result.refs.AddNew^ do begin
+        charref := 0;
+        text := spancopy(ps,pc);
+      end;
       pc := pc+2;
     end else
-   //Допустимые символы
+   //Допустимые печатные символы
     if (pc^='/') then begin
-      ref.text := pc;
+      with Result.refs.AddNew^ do begin
+        charref := 0;
+        text := pc;
+      end;
+      Inc(pc);
+    end else
+   //Разделитель. Необязателен, но обычно присутствует. С длинными цепочками
+   //без разделителя Яркси не справляется.
+    if pc^='-' then begin
+     //просто пропускаем
       Inc(pc);
     end else
    //Число
-    begin
-      for i := 1 to 4 do begin
-        Check((pc^>='0') and (pc^<='9'), 'invalid charref');
-        ref.charref := ref.charref * 10 + Ord(pc^)-Ord('0');
-        Inc(pc);
+    if IsNumeric(pc^) then  begin
+      with Result.refs.AddNew^ do begin
+        text := '';
+        charref := 0;
+        for i := 1 to 4 do begin
+          Check((pc^>='0') and (pc^<='9'), 'invalid charref');
+          charref := charref * 10 + Ord(pc^)-Ord('0');
+          Inc(pc);
+        end;
       end;
-    end;
-  until (pc^<>'-') and (pc^<>'/'); //что может идти следом в рамках того же ^-блока
+    end else
+   //Что-то другое => конец цепочки
+      break;
+  end;
 
  //Последняя часть
   Result.wordref := 0;
