@@ -29,6 +29,7 @@ function TryUnquote(var s: string; op, ed: char): boolean;
 
 function IsLatin(const ch: char): boolean; inline;
 function IsUpperCaseLatin(const ch: char): boolean; inline;
+function IsCyrillic(const ch: char): boolean; inline;
 function IsNumeric(const ch: char): boolean; inline;
 
 function EatNumber(var pc: PChar): integer;// inline;
@@ -457,6 +458,12 @@ end;
 function IsNumeric(const ch: char): boolean;
 begin
   Result := (ch>='0') and (ch<='9');
+end;
+
+function IsCyrillic(const ch: char): boolean;
+begin
+  Result := ((ch>='А') and (ch<='Я')) or ((ch>='а') and (ch<='я'))
+    or (ch='Ё') or (ch='ё');
 end;
 
 //Reads a positive number (only digits)
@@ -1331,6 +1338,13 @@ end;
 {
 Поле: Kanji.Russian.
 Формат: KunyomiMeanings|CompoundMeanings
+~ в начале строчки === "черновой список значений"
+Общее:
+  #курсив#
+  | отделяет блок трактовок кун-ёми от блока описаний сочетаний
+  / разделяет значения в блоках
+  \ по-видимости, мусор, разделяющий значения, чтобы проще было делать поиск по
+    одному из них
 Перед вызовом конвертируйте русские буквы и удалите из строки все "\" (мусор).
 }
 function ParseKanjiRussian(inp: string): TRussianMeanings;
@@ -1347,9 +1361,31 @@ begin
   Result.compound := ParseKanjiCompoundMeanings(inp);
 end;
 
+{
+Поле: Kanji.Russian, блок KunyomiMeanings.
+Формат: значение,в разных,вариантах/значение/значение
+}
 function ParseKanjiKunyomiMeanings(inp: string): TKunyomiMeanings;
+var ps, pc: PChar;
 begin
+  Result.Clear;
+  if inp='' then exit;
 
+  pc := PChar(inp);
+  ps := pc;
+  while pc^<>#00 do begin
+
+   //Следующий перевод
+    if pc^='/' then begin
+
+    end else
+   //Просто буква из перевода
+    if IsLatin(pc^) or IsCyrillic(pc^) or (pc^='#') or (pc=',') then begin
+      Inc(pc);
+    end else
+      Die('Неизвестный элемент: '+pc^);
+
+  end;
 end;
 
 function ParseKanjiCompoundMeanings(inp: string): TCompoundMeanings;
