@@ -201,32 +201,6 @@ function ParseKanjiKunReadings(inp: string): TKunReadings;
 function ParseCharLink(var pc: PChar): TCharLink;
 function ParseAdditionalKanjiChain(var pc: PChar): TCharLinkRefChain;
 
-{
-  Кандзи: Переводы.
-}
-type
-  TKunyomiMeaning = record
-  end;
-  TKunyomiMeanings = TArray<TKunyomiMeaning>;
-
-  TCompoundMeaning = record
-  end;
-  TCompoundMeanings = TArray<TCompoundMeaning>;
-
-  TRussianMeaningFlag = (
-    mfUnchecked
-  );
-  TRussianMeaningFlags = set of TRussianMeaningFlag;
-  TRussianMeanings = record
-    flags: TRussianMeaningFlags;
-    kunyomi: TKunyomiMeanings;
-    compound: TCompoundMeanings;
-  end;
-
-function ParseKanjiRussian(inp: string): TRussianMeanings;
-function ParseKanjiKunyomiMeanings(inp: string): TKunyomiMeanings;
-function ParseKanjiCompoundMeanings(inp: string): TCompoundMeanings;
-
 
 {
   Кандзи: Чтения в сочетаниях.
@@ -287,6 +261,66 @@ type
 
 function ParseKanjiKunYomi(inp: string): TKanjiReadings;
 function DumpKanjiKunYomi(const AReadings: TKanjiReadings): string;
+
+
+{
+  Кандзи: Kanji.Russian.
+}
+type
+  TKunyomiKanjiLink = record
+    _type: char;
+    charref: integer;
+  end;
+
+  TKunyomiMeaningFlag = (
+    kfNominalMeaning
+  );
+  TKunyomiMeaningFlags = set of TKunyomiMeaningFlag;
+  TKunyomiMeaning = record
+    text: string;
+    flags: TKunyomiMeaningFlags;
+    links: TArray<TKunyomiKanjiLink>;
+  end;
+  TKunyomiMeanings = TArray<TKunyomiMeaning>;
+
+  TCompoundMeaning = record
+  end;
+  TCompoundMeanings = TArray<TCompoundMeaning>;
+
+  TRelatedKanjiPos = (
+    rpBigGray,            //большое серое справа
+    rpUnderKanji,         //прямо под кандзи
+    rpUnderNickname       //прямо под именем кандзи
+  );
+  TRelatedKanjiLink = record
+    pos: TRelatedKanjiPos;
+    _type: char;
+    charref: integer;
+  end;
+
+  TFeldmanKonradFlag = (
+    fkNone,
+    fkMissing,
+    fkDeprecated,
+    fkOriginal,
+    fkSimplified
+  );
+
+  TRussianMeaningFlag = (
+    mfUnchecked
+  );
+  TRussianMeaningFlags = set of TRussianMeaningFlag;
+  TRussianMeanings = record
+    flags: TRussianMeaningFlags;
+    kunyomi: TKunyomiMeanings;
+    compound: TCompoundMeanings;
+    related_kanji: TArray<TRelatedKanjiLink>;
+    fk_flag: TFeldmanKonradFlag;
+  end;
+
+function ParseKanjiRussian(inp: string): TRussianMeanings;
+function ParseKanjiKunyomiMeanings(inp: string): TKunyomiMeanings;
+function ParseKanjiCompoundMeanings(inp: string): TCompoundMeanings;
 
 
 {
@@ -1334,67 +1368,6 @@ begin
 end;
 
 
-
-{
-Поле: Kanji.Russian.
-Формат: KunyomiMeanings|CompoundMeanings
-~ в начале строчки === "черновой список значений"
-Общее:
-  #курсив#
-  | отделяет блок трактовок кун-ёми от блока описаний сочетаний
-  / разделяет значения в блоках
-  \ по-видимости, мусор, разделяющий значения, чтобы проще было делать поиск по
-    одному из них
-Перед вызовом конвертируйте русские буквы и удалите из строки все "\" (мусор).
-}
-function ParseKanjiRussian(inp: string): TRussianMeanings;
-begin
-  FillChar(Result, SizeOf(Result), 0);
-  if Length(inp)<=0 then exit;
-
-  if inp[1]='~' then begin
-    Result.flags := Result.flags + [mfUnchecked];
-    delete(inp,1,1);
-  end;
-
-  Result.kunyomi := ParseKanjiKunyomiMeanings(pop(inp,'|'));
-  Result.compound := ParseKanjiCompoundMeanings(inp);
-end;
-
-{
-Поле: Kanji.Russian, блок KunyomiMeanings.
-Формат: значение,в разных,вариантах/значение/значение
-}
-function ParseKanjiKunyomiMeanings(inp: string): TKunyomiMeanings;
-var ps, pc: PChar;
-begin
-  Result.Clear;
-  if inp='' then exit;
-
-  pc := PChar(inp);
-  ps := pc;
-  while pc^<>#00 do begin
-
-   //Следующий перевод
-    if pc^='/' then begin
-
-    end else
-   //Просто буква из перевода
-    if IsLatin(pc^) or IsCyrillic(pc^) or (pc^='#') or (pc=',') then begin
-      Inc(pc);
-    end else
-      Die('Неизвестный элемент: '+pc^);
-
-  end;
-end;
-
-function ParseKanjiCompoundMeanings(inp: string): TCompoundMeanings;
-begin
-
-end;
-
-
-
 {
 Поле: Kanji.KunYomi, блок CompoundReadings.
 Формат:
@@ -1615,6 +1588,235 @@ begin
     raise Exception.Create('DumpKanjiNameReading: Unexpected name reading type');
   end;
   Result := Result + AReading.text;
+end;
+
+
+{
+Поле: Kanji.Russian.
+Формат: <префиксы>KunyomiMeanings|CompoundMeanings
+Перед вызовом конвертируйте русские буквы и удалите из строки все "\" (мусор).
+
+Общее:
+    #курсив#
+    | отделяет блок трактовок кун-ёми от блока описаний сочетаний
+    / разделяет значения в блоках
+    \ по-видимости, мусор, разделяющий значения, чтобы проще было делать поиск по
+      одному из них
+
+Префиксы:
+ ~    Отсутствует в словаре Фельдман-Конрад
+ ~~   В словаре Фельдман-Конрад представлен устаревшей формой
+ ~~~  В словаре Фельдман-Конрад представлен оригинальной формой
+ ~~~~ В словаре Фельдман-Конрад представлен упрощённой формой
+
+ *[цифра][номер] - большая теневая ссылка справа
+   0  устаревшая форма:
+   1  оригинальная форма:
+   2  упрощённая форма:
+   3  вариантная форма:
+   4  редкая форма:
+   5  в документах:
+   6  синоним и омоним:
+   7  ошибочная форма:
+
+ $[цифра][номер] - маленькая ссылка возле знака
+   0  устаревшая форма знака
+   1  оригинальная форма знака
+   2  упрощённая форма знака
+   3  заменён знаком
+   4  вариант знака
+   5  редкая форма знака
+   6  употребляется ошибочно вместо
+   7  теперь чаще
+   8  ранее также
+
+ ^[цифра][номер] - маленькая ссылка под названием кандзи
+   0  см.
+   1  ср.
+   3  реже
+   4  иначе
+   5  чаще
+   6  синоним
+   7  антоним
+   8  не путать с
+   9  ранее
+}
+function ParseKanjiRussian(inp: string): TRussianMeanings;
+var pc: PChar;
+  tmp_int: integer;
+begin
+  FillChar(Result, SizeOf(Result), 0);
+  if Length(inp)<=0 then exit;
+
+  pc := PChar(inp);
+  if pc^='~' then begin
+    Result.flags := Result.flags + [mfUnchecked];
+    Inc(pc);
+  end;
+
+  while pc^<>#00 do begin
+   //Ссылки на связанный знак
+    if (pc^='*') or (pc^='$') or (pc^='^') then begin
+      with Result.related_kanji.AddNew^ do begin
+        if pc^='*' then
+          pos := rpBigGray
+        else
+        if pc^='$' then
+          pos := rpUnderKanji
+        else
+          pos := rpUnderNickname;
+        Inc(pc);
+        Check(IsDigit(pc^));
+        _type := pc^;
+        Inc(pc);
+        charref := EatNumber(pc);
+      end;
+    end else
+   //Флаг словаря Фельдман-Конрад
+    if pc^='~' then begin
+      tmp_int := 0;
+      while pc^='~' do begin
+        Inc(tmp_int);
+        Inc(pc);
+      end;
+      case tmp_int of
+        1: Result.fk_flag := fkMissing;
+        2: Result.fk_flag := fkDeprecated;
+        3: Result.fk_flag := fkOriginal;
+        4: Result.fk_flag := fkSimplified;
+      else Die('Неверный флаг Фельдман-Конрад');
+      end;
+      Inc(pc);
+    end else
+      break;
+  end;
+
+  Result.kunyomi := ParseKanjiKunyomiMeanings(pop(pc,'|'));
+  Result.compound := ParseKanjiCompoundMeanings(inp);
+end;
+
+{
+Поле: Kanji.Russian, блок KunyomiMeanings.
+Формат: значение,в разных,вариантах/значение/значение
+Подробности:
+  _        пустой элемент (если зачем-то нужен по индексам)
+  =        название, наименование; если KanjiKunyomi достаточно пуст - номинальное значение
+^1234      символ со ссылкой прямо в строке, без пояснения
+
+
+Ещё не реализовано:
+  +        перенос строки в этом месте (инлайн)
+[^^12345]    (но фиг. скобки) ссылка от этого значения; коды те же, что в ParseCharLink
+[''текст'']  просто текст без скобок: ''текст''
+[''-текст''] просто текст без скобок: ''текст''
+[''^текст''] "от ''текст''"
+
+  ~[цифра] - "при употреблении с таким суффиксом" (встречается инлайн):
+   0  ~shita
+   1  ~suru
+   2  ~na
+   3  ~no
+   4  ~ni
+   5  ~de
+   6  ~to
+   7  ~taru
+   8  ~shite
+   9  ~shite iru
+  ~~ второй набор суффиксов:
+	 0  ~o suru
+	 1  ~ga aru
+	 2  ~no aru
+	 3  ~no nai
+	 4  ~de aru
+	 5  ~des
+	 6  ~da
+	 7  ~ni suru
+	 8  ~ni naru
+	 9  ~to shite
+  ~~~ третий набор суффиксов:
+	 0  ~naru
+	 1  ~kara
+	 2  ~made
+	 3  ~mo
+	 4  ~wa
+	 5  ~to suru
+	 6  ~yori
+	 7  ~ga shite iru
+	 8  ~to shita
+	 9  ~to shite iru
+  ~[цифра]] - то же, но в суффикс кв. скобках: ~[ni]
+  ~-[цифра] - то же, но перед суффиксом тире и всё в скобках: (-ni)
+}
+function ParseKanjiKunyomiMeanings(inp: string): TKunyomiMeanings;
+var ps, pc: PChar;
+  tmp_int: integer;
+  flag_next_nominal: boolean;
+
+  procedure CommitMeaning;
+  begin
+    Check(pc>ps);
+    while ps^='_' do Inc(ps); //ради пустых элементов "_"
+    Check(pc>=ps);
+    with Result.AddNew^ do begin
+      text := spancopy(ps, pc);
+    end;
+
+    flag_next_nominal := false;
+  end;
+
+begin
+  Result.Clear;
+  if inp='' then exit;
+
+  flag_next_nominal := false;
+
+  pc := PChar(inp);
+  ps := pc;
+  while pc^<>#00 do begin
+
+   //Следующий перевод
+    if pc^='/' then begin
+      CommitMeaning;
+      ps := pc + 1;
+      Inc(pc);
+    end else
+
+   //Инлайн-ссылка на перевод
+   //Т.к. символы ещё недоступны, оставляем её в таком виде
+    if pc^='^' then begin
+      Inc(pc);
+      tmp_int := 0;
+      while (tmp_int<4) and IsNumeric(pc^) do begin
+        Inc(pc);
+        Inc(tmp_int);
+      end;
+      Check(tmp_int=4);
+     //И всё, просто увеличили указатель
+    end else
+   //Просто буква из перевода
+    if IsLatin(pc^) or IsCyrillic(pc^) or (pc^='#') or (pc^=',') or (pc^='.')
+    or (pc^=';') or (pc^='[') or (pc^=']') then begin
+      Inc(pc);
+    end else
+    if pc^='=' then begin
+      flag_next_nominal := true;
+      Inc(pc);
+    end else
+   //Пустой элемент. Пока считываем, выкинем при копировании
+    if pc^='_' then begin
+      Inc(pc)
+    end else
+      Die('Неизвестный элемент: '+pc^);
+
+  end;
+
+  if pc>ps then
+    CommitMeaning;
+end;
+
+function ParseKanjiCompoundMeanings(inp: string): TCompoundMeanings;
+begin
+
 end;
 
 

@@ -69,6 +69,7 @@ type
 function Join(const AArray: TStringArray; const sep: string=', '): string; overload;
 
 implementation
+uses StrUtils;
 
 function Join(const AArray: TStringArray; const sep: string=', '): string;
 var i: integer;
