@@ -272,16 +272,42 @@ type
     charref: integer;
   end;
 
-  TKunyomiMeaningFlag = (
+ {
+  Значения разделены на:
+  1. Блоки/block (по чтениям)
+  2. Пункты/clause (внутри блока, по номерам)
+  3. Суффиксы/suffixedEntry (обычно внутри пункта, разные наклонения слова в нём)
+ }
+
+
+ { Часть пункта значения, объединённая одним суффиксом, например, ~suru,
+  ~ni naru или пустым. }
+  TKunyomiMeaningSuffixedEntry = record
+    suffix: integer; //код суффикса - см. комменты к функции разбора
+    text: string;
+  end;
+  PKunyomiMeaningSuffixedEntry = ^TKunyomiMeaningSuffixedEntry;
+
+ { Пункт значения }
+  TKunyomiMeaningClause = record
+    index: integer; //номер - ноль для "номера по умолчанию" (до первого буллета)
+    entries: TArray<TKunyomiMeaningSuffixedEntry>;
+  end;
+  PKunyomiMeaningClause = ^TKunyomiMeaningClause;
+
+ { Блок значения }
+  TKunyomiMeaningBlockFlag = (
     kfNominalMeaning
   );
-  TKunyomiMeaningFlags = set of TKunyomiMeaningFlag;
-  TKunyomiMeaning = record
-    text: string;
-    flags: TKunyomiMeaningFlags;
+  TKunyomiMeaningBlockFlags = set of TKunyomiMeaningBlockFlag;
+  TKunyomiMeaningBlock = record
+    flags: TKunyomiMeaningBlockFlags;
     links: TArray<TKunyomiKanjiLink>;
+    clauses: TArray<TKunyomiMeaningClause>;
   end;
-  TKunyomiMeanings = TArray<TKunyomiMeaning>;
+  PKunyomiMeaningBlock = ^TKunyomiMeaningBlock;
+
+  TKunyomiMeanings = TArray<TKunyomiMeaningBlock>;
 
   TCompoundMeaning = record
   end;
@@ -1691,27 +1717,45 @@ begin
       break;
   end;
 
-  Result.kunyomi := ParseKanjiKunyomiMeanings(pop(pc,'|'));
+  Result.kunyomi := ParseKanjiKunyomiMeanings(trypop(pc,'|'));
   Result.compound := ParseKanjiCompoundMeanings(inp);
+end;
+
+///
+
+//Возвращает первую букву последнего слова в строке
+function FindWordStartOffset(const text: string): integer;
+var i: integer;
+begin
+  Result := 0; //не нашёл
+  for i := Length(text) downto 1 do
+    if not IsLatin(text[i]) and not IsCyrillic(text[i]) then begin
+      Result := i;
+      break;
+    end;
+  Inc(Result);
 end;
 
 {
 Поле: Kanji.Russian, блок KunyomiMeanings.
 Формат: значение,в разных,вариантах/значение/значение
 Подробности:
-  _        пустой элемент (если зачем-то нужен по индексам)
-  =        название, наименование; если KanjiKunyomi достаточно пуст - номинальное значение
-^1234      символ со ссылкой прямо в строке, без пояснения
+ _        пустой элемент (если зачем-то нужен по индексам)
+ =        далее - название, наименование; если KanjiKunyomi достаточно пуст,
+          номинальное значение
+          ПРОБЛЕМА: непонятно, до какого места это длится. До переноса? Нового
+          пункта? Запятой?
+ ^1234    символ со ссылкой прямо в строке, без пояснения
+ +        перенос строки в этом месте (инлайн). Мало что значит, т.к. ставится
+          даже в середине фразы, если та не влезает.
+ &        начало нового пункта. Текст до первого & - без номера
+ @[цифра] частые выражения (напр. "и т.п.") (инлайн)
+ @@       оно же (@ вместо цифры)
+ ()       скобки. Текст внутри - курсив. Если внутри перенос, курсив за ним
+          явно: (общее название+#нескольких декоративных растений)
+ (!3)     ударение на i-й букве в предшествующем слове
 
-
-Ещё не реализовано:
-  +        перенос строки в этом месте (инлайн)
-[^^12345]    (но фиг. скобки) ссылка от этого значения; коды те же, что в ParseCharLink
-[''текст'']  просто текст без скобок: ''текст''
-[''-текст''] просто текст без скобок: ''текст''
-[''^текст''] "от ''текст''"
-
-  ~[цифра] - "при употреблении с таким суффиксом" (встречается инлайн):
+ ~[цифра] - "при употреблении с таким суффиксом" (встречается инлайн):
    0  ~shita
    1  ~suru
    2  ~na
@@ -1722,7 +1766,7 @@ end;
    7  ~taru
    8  ~shite
    9  ~shite iru
-  ~~ второй набор суффиксов:
+ ~~ второй набор суффиксов:
 	 0  ~o suru
 	 1  ~ga aru
 	 2  ~no aru
@@ -1733,7 +1777,7 @@ end;
 	 7  ~ni suru
 	 8  ~ni naru
 	 9  ~to shite
-  ~~~ третий набор суффиксов:
+ ~~~ третий набор суффиксов:
 	 0  ~naru
 	 1  ~kara
 	 2  ~made
@@ -1744,31 +1788,73 @@ end;
 	 7  ~ga shite iru
 	 8  ~to shita
 	 9  ~to shite iru
-  ~[цифра]] - то же, но в суффикс кв. скобках: ~[ni]
-  ~-[цифра] - то же, но перед суффиксом тире и всё в скобках: (-ni)
+ ~[цифра]] - то же, но в суффикс кв. скобках: ~[ni]
+ ~-[цифра] - то же, но перед суффиксом тире и всё в скобках: (-ni)
+
+
+Ещё не реализовано:
+
+[^^12345]    (но фиг. скобки) ссылка от этого значения; коды те же, что в ParseCharLink
+[''текст'']  просто текст без скобок: ''текст''
+[''-текст''] просто текст без скобок: ''текст''
+[''^текст''] "от ''текст''"
+ >       ближайший блок текста должен быть в италике, и до его конца всё -
+         вступление ко всем последующим пунктам.
+         В том числе и нулевому, если дальше после италика что-то есть.
+         Check: сразу после > идёт италик
+         Check: после италика ничего нет, только след. пункт.
+
 }
 function ParseKanjiKunyomiMeanings(inp: string): TKunyomiMeanings;
 var ps, pc: PChar;
   tmp_int: integer;
-  flag_next_nominal: boolean;
+  block: PKunyomiMeaningBlock;
+  clause: PKunyomiMeaningClause;
+  entry: PKunyomiMeaningSuffixedEntry;
+  flag_brackets: boolean;
 
-  procedure CommitMeaning;
+  procedure NeedBlock;
   begin
-    Check(pc>ps);
-    while ps^='_' do Inc(ps); //ради пустых элементов "_"
-    Check(pc>=ps);
-    with Result.AddNew^ do begin
-      text := spancopy(ps, pc);
-    end;
+    if block=nil then
+      block := PKunyomiMeaningBlock(Result.AddNew);
+  end;
 
-    flag_next_nominal := false;
+  procedure NeedClause;
+  begin
+    if clause=nil then
+      clause := PKunyomiMeaningClause(block.clauses.AddNew);
+  end;
+
+  procedure NeedEntry;
+  begin
+    if entry=nil then
+      entry := PKunyomiMeaningSuffixedEntry(clause.entries.AddNew);
+  end;
+
+ //Прибавляет выбранный непустой кусок текста к текущему block>clause>entry
+ //Если их нет, открывает по необходимости.
+  procedure CommitText;
+  begin
+    if pc<ps then exit; //текста пока не было
+    while ps^='_' do Inc(ps); //ради пустых элементов "_"
+    Check(pc>=ps); //теперь уже пустой текст оставляем - нас попросили
+
+    NeedBlock;
+    NeedClause;
+    NeedEntry;
+
+    entry.text := entry.text + spancopy(ps, pc);
   end;
 
 begin
   Result.Clear;
   if inp='' then exit;
 
-  flag_next_nominal := false;
+  block := nil;
+  clause := nil;
+  entry := nil;
+
+  flag_brackets := false;
 
   pc := PChar(inp);
   ps := pc;
@@ -1776,9 +1862,91 @@ begin
 
    //Следующий перевод
     if pc^='/' then begin
-      CommitMeaning;
-      ps := pc + 1;
+      CommitText;
+     //Наличие палки означает, что блок всё-таки должен начаться,
+     //как бы там ни было с содержимым
+      NeedBlock;
       Inc(pc);
+      ps := pc;
+    end else
+
+   //Перенос строки
+    if pc^='+' then begin
+      CommitText;
+      NeedBlock;
+      NeedClause;
+      NeedEntry;
+     //Перенос строки мало что значит, т.к. ставится по графическим соображениям
+     //(влазит ли строка в интерфейсе Яркси). Игнорируем его. Разве что ; добавляем,
+     //они не везде перед переносом.
+      if (entry.text<>'') and (entry.text[Length(entry.text)]<>';')
+      and (entry.text[Length(entry.text)]<>';') then
+        entry.text := entry.text + ';';
+      Inc(pc);
+     //См. комментарий к разбору () скобок
+      if flag_brackets then begin
+        Check(pc^='#'); //чисто из интереса - есть ли случаи, где италик забыт?
+        Inc(pc); //пропускаем
+      end;
+      ps := pc;
+    end else
+
+   //Следующий пункт
+    if pc^='&' then begin
+      CommitText;
+      NeedBlock;
+      clause := nil;
+      entry := nil;
+      NeedClause;
+     //Номер зависит от того, что уже есть
+     //Может ничего не быть, быть нулевой блок или быть несколько блоков
+      if block.clauses.Count=1 then
+        clause.index := 1
+      else
+        clause.index := block.clauses.LastPointer^.index+1;
+     //Автоматически открытая без & кляуза будет иметь номер 0, как и надо
+      Inc(pc);
+      ps := pc;
+    end else
+
+   //Новый префикс для последующего
+    if pc^='~' then begin
+      NeedBlock;
+      NeedClause;
+      NeedEntry;
+
+     //Необязательно проверки на вшивость
+      Check(not flag_brackets);
+
+     //Кодируем: ~i = 1i; ~~i = 2i; ~~~i = 3i; нулевой блок оставляем пустым ради нуля (был бы закрыт)
+
+      entry.suffix := 10;
+      Inc(pc);
+      if pc^='~' then begin
+        Inc(entry.suffix, 10);
+        Inc(pc);
+        if pc^='~' then begin
+          Inc(entry.suffix, 10);
+          Inc(pc);
+         //Глубже не должно быть
+        end;
+      end;
+
+      if pc^='-' then begin
+        entry.suffix := entry.suffix+$100; //флаг "тире перед суффиксом"
+        Inc(pc);
+      end;
+
+      Check(IsNumeric(pc^));
+      entry.suffix := entry.suffix + Ord(pc^)-Ord('0');
+      Inc(pc);
+
+      if pc^=']' then begin
+        entry.suffix := entry.suffix+$200; //флаг "суффикс опционален"
+        Inc(pc);
+      end;
+
+      ps := pc;
     end else
 
    //Инлайн-ссылка на перевод
@@ -1793,25 +1961,69 @@ begin
       Check(tmp_int=4);
      //И всё, просто увеличили указатель
     end else
+
+   //Скобки не значат ничего специального, но выделяются курсивом. Если внутри
+   //скобки перенос строки, курсив повторяется: (начало+#конец).
+   //Мы хотим этот лишний знак удалить, поэтому парсим скобки отдельно:
+    if pc^='(' then begin
+      Inc(pc);
+      if pc^='!' then begin //специальный случай, ударение
+        Dec(pc);
+        CommitText;
+        Inc(pc,2);
+        tmp_int := EatNumber(pc);
+        Check(pc^=')');
+        Inc(pc);
+        Check(entry<>nil); //иначе как-то... странно. Но можно и Need*
+       //Вставляем прямо в текст, слава богу, тут индексация не важна
+       //Хотя... если акцентов будет несколько...
+       //Но по идее, в одном слове не должно быть двух ударений.
+        tmp_int := FindWordStartOffset(entry.text)+tmp_int-1;
+        entry.text := copy(entry.text,1,tmp_int)+'́'+copy(entry.text,tmp_int+1,MaxInt);
+      end else begin //обычная скобка
+        Check(not flag_brackets); //мало ли, вложенные
+        flag_brackets := true;
+      end;
+
+    end else
+
+    if pc^=')' then begin
+      Check(flag_brackets);
+      flag_brackets := false;
+      Inc(pc); //и оставляем как текст
+    end else
+
    //Просто буква из перевода
-    if IsLatin(pc^) or IsCyrillic(pc^) or (pc^='#') or (pc^=',') or (pc^='.')
-    or (pc^=';') or (pc^='[') or (pc^=']') then begin
+    if IsLatin(pc^) or IsCyrillic(pc^) or IsNumeric(pc^) or (pc^='#')
+    or (pc^=',') or (pc^='.') or (pc^='!') or (pc^=' ') or (pc^=';')
+    or (pc^='[') or (pc^=']') or (pc^='-') or (pc^='''')  then begin
       Inc(pc);
     end else
+
     if pc^='=' then begin
-      flag_next_nominal := true;
+      NeedBlock;
+      block.flags := block.flags + [kfNominalMeaning];
       Inc(pc);
     end else
+
    //Пустой элемент. Пока считываем, выкинем при копировании
     if pc^='_' then begin
       Inc(pc)
     end else
+
+   //Стандартное выражение. Пока считываем, заменим при разборе
+    if pc^='@' then begin
+      Inc(pc);
+      Check(IsNumeric(pc^) or (pc^='@'));
+      Inc(pc);
+    end else
+
       Die('Неизвестный элемент: '+pc^);
 
   end;
 
-  if pc>ps then
-    CommitMeaning;
+  CommitText;
+  Check(not flag_brackets); //так, на всякий случай
 end;
 
 function ParseKanjiCompoundMeanings(inp: string): TCompoundMeanings;

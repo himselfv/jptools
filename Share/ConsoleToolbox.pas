@@ -95,7 +95,7 @@ end;
 { Shows the usage information. Override if your case is more complicated }
 procedure TCommandLineApp.ShowUsage;
 begin
-  writeln('Usage: '+ProgramName); //and that's it.
+  writeln(ErrOutput, 'Usage: '+ProgramName); //and that's it.
 end;
 
 { Shows the error message + the usage information. Usually you don't need to
@@ -103,7 +103,7 @@ end;
 procedure TCommandLineApp.ShowUsage(const AMessage: string);
 begin
   if AMessage<>'' then
-    writeln(AMessage);
+    writeln(ErrOutput, AMessage);
   ShowUsage;
 end;
 
@@ -115,7 +115,7 @@ begin
       Writeln(ErrOutput, E.StackTrace);
     E := E.InnerException;
     if E<>nil then
-      Writeln(''); //empty line
+      Writeln(ErrOutput, ''); //empty line
   end;
 end;
 

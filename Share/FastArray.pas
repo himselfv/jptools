@@ -38,6 +38,10 @@ type
     procedure SetLength(const ALength: integer);
     procedure Prealloc(const ACount: integer);
     function GetPreallocatedLength: integer; inline;
+    function First: T; inline;
+    function Last: T; inline;
+    function FirstPointer: PT; inline;
+    function LastPointer: PT; inline;
     property Comparison: TComparison<T> read FComparison write FComparison;
     property Length: integer read FItemCount write SetLength;
     property Count: integer read FItemCount write SetLength; //same
@@ -147,6 +151,26 @@ begin
       Result := i;
       exit;
     end;
+end;
+
+function TArray<T>.First: T;
+begin
+  Result := Self[0];
+end;
+
+function TArray<T>.Last: T;
+begin
+  Result := Self[Count-1];
+end;
+
+function TArray<T>.FirstPointer: PT;
+begin
+  Result := @FItems[0];
+end;
+
+function TArray<T>.LastPointer: PT;
+begin
+  Result := @Fitems[Count-1];
 end;
 
 //Adds the items together, interleaving the additions with ASep

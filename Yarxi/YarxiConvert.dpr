@@ -30,10 +30,10 @@ type
 
 procedure TYarxiConvert.ShowUsage;
 begin
-  writeln('Usage: '+ProgramName+' <command> <field>');
-  writeln('Supported commands:');
-  writeln('  kanji = print kanji table fields');
-  writeln('  tango = print tango table');
+  writeln(ErrOutput, 'Usage: '+ProgramName+' <command> <field>');
+  writeln(ErrOutput, 'Supported commands:');
+  writeln(ErrOutput, '  kanji = print kanji table fields');
+  writeln(ErrOutput, '  tango = print tango table');
 end;
 
 function TYarxiConvert.HandleSwitch(const s: string; var i: integer): boolean;
