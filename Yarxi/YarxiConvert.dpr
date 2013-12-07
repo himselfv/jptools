@@ -10,7 +10,9 @@ uses
   ConsoleToolbox,
   JWBIO,
   FastArray,
-  Yarxi, YarxiFmt;
+  Yarxi,
+  YarxiFmt,
+  YarxiCore;
 
 type
   TYarxiConvert = class(TCommandLineApp)
@@ -21,6 +23,9 @@ type
     Output: TStreamEncoder;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
+    procedure DumpKanjiFull(k: TKanjiRecord);
+    procedure DumpCharLink(link: PCharLink; lvl: string='');
+    procedure DumpAdditionalKanji(link: PAdditionalKanji; lvl: string='');
   public
     procedure ShowUsage; override;
     procedure Run; override;
@@ -57,7 +62,7 @@ begin
     BadUsage();
 
   Yarxi := TYarxiDB.Create('yarxi.db');
-  Yarxi.KanaTran.LoadFromFile('yarxi.kcs');
+  KanaTran.LoadFromFile('yarxi.kcs');
 
   Output := ConsoleWriter();
 
@@ -108,7 +113,122 @@ begin
     if field='compounds' then
       Output.WriteLn(DumpKanjiCompounds(k.Compounds))
     else
+    if field='*' then
+      DumpKanjiFull(k)
+    else
       raise Exception.Create('Unknown field');
+end;
+
+procedure TYarxiConvert.DumpKanjiFull(k: TKanjiRecord);
+var i, j, i2: integer;
+  kun: PKunReadingSet;
+begin
+  Output.WriteLn('#'+IntToStr(k.Nomer)+': '+k.Kanji);
+  Output.WriteLn('Nick: '+k.RusNick + ' ('+FastArray.Join(k.RusNicks, '/')+')');
+  Output.WriteLn('ON: '+k.JoinOns());
+  Output.WriteLn('Kun:');
+  if k.KunYomi.show_kuns>0 then
+    Output.WriteLn('  -show only '+IntToStr(k.KunYomi.show_kuns)+' kuns.');
+  if k.KunYomi.show_tango>0 then
+    Output.WriteLn('  -show only '+IntToStr(k.KunYomi.show_tango)+' tango.');
+  for i := 0 to Length(k.KunYomi.kun)-1 do begin
+    kun := @k.KunYomi.kun[i];
+
+    for j := 0 to Length(kun.items)-1 do begin
+      Output.Write('  '+kun.items[j].text+' ');
+      if kun.items[j].ipos.Length>0 then begin
+        Output.Write('ipos: ');
+        for i2 := 0 to kun.items[j].ipos.Length-1 do
+          Output.Write(IntToStr(kun.items[j].ipos[i2])+'; ');
+      end;
+      if kun.items[j].tpos.Length>0 then begin
+        Output.Write('tpos: ');
+        for i2 := 0 to kun.items[j].tpos.Length-1 do
+          Output.Write(IntToStr(kun.items[j].tpos[i2])+'; ');
+      end;
+      if krIgnoreInSearch in kun.items[j].flags then
+        Output.Write('ignore-on-search ');
+      if krOnReading in kun.items[j].flags then
+        Output.Write('on-reading ');
+      Output.WriteLn('');
+    end;
+
+    Output.WriteLn(Format('    Prefix:%d, main:%d, kuri:%d', [
+      kun.prefix_chars,
+      kun.main_chars,
+      kun.kuri_chars
+    ]));
+
+    for j := 0 to kun.optional_spans.Length-1 do
+      Output.WriteLn(Format('    opt_span:%d-%d', [
+        kun.optional_spans[j].op,
+        kun.optional_spans[j].ed
+      ]));
+
+    for j := 0 to kun.refs.Length-1 do
+      DumpCharLink(PCharLink(kun.refs.GetPointer(j)), '    ');
+
+    if kun.flags<>[] then begin
+      Output.Write('    flags: ');
+      if ksHidden in kun.flags then Output.Write('hidden ');
+      if ksTranscriptionUnderWord in kun.flags then Output.Write('transr-under-word ');
+      if ksWithKurikaeshi in kun.flags then Output.Write('with-kuri ');
+      if ksUnchecked in kun.flags then Output.Write('unchecked ');
+      Output.WriteLn('');
+    end;
+
+    if kun.latin_tail<>'' then
+      Output.WriteLn('    '+kun.latin_tail);
+
+    for j := 0 to kun.additional_kanji.Length-1 do
+      DumpAdditionalKanji(PAdditionalKanji(kun.additional_kanji.GetPointer(j)), '    ');
+
+    case kun.usually_in of
+      uiHiragana: Output.WriteLn('    Usually in hiragana');
+      uiKatakana: Output.WriteLn('    Usually in katakana');
+      uiKana:  Output.WriteLn('    Usually in kana');
+    end;
+
+    for j := 0 to kun.tl_usually_in.Length-1 do
+      case kun.tl_usually_in[j] of
+        uiHiragana: Output.WriteLn('    '+IntToStr(j)+': Usually in hiragana');
+        uiKatakana: Output.WriteLn('    '+IntToStr(j)+': Usually in katakana');
+        uiKana:  Output.WriteLn('    '+IntToStr(j)+': Usually in kana');
+      end;
+  end;
+
+  Output.WriteLn('');
+end;
+
+procedure TYarxiConvert.DumpCharLink(link: PCharLink; lvl: string='');
+begin
+  Output.Write(lvl+'link: '+link._type+' ');
+  case link.pos of
+    lpDefault: Output.Write('@def ');
+    lpFirstLine: Output.Write('@first ');
+    lpAllClauses: Output.Write('@all ');
+    lpOneClause: Output.Write('@'+IntToStr(link.posfrom)+' ');
+    lpFromTo: Output.Write('@'+IntToStr(link.posfrom)+'-'+IntToStr(link.posto)+' ');
+    lpNewline: Output.Write('@newl ');
+    lpKanji: Output.Write('@kanji ');
+  end;
+
+  Output.Write(DumpCharLinkRefChain(link.refs));
+
+  if link.wordref=0 then
+    Output.WriteLn('')
+  else
+    Output.WriteLn('='+IntToStr(link.wordref));
+end;
+
+procedure TYarxiConvert.DumpAdditionalKanji(link: PAdditionalKanji; lvl: string='');
+begin
+  Output.Write(lvl+'add_kanji: '+IntToStr(link.pos)+' ');
+  Output.Write(DumpCharLinkRefChain(link.chain));
+  if link.kuri then
+    Output.WriteLn('kuri')
+  else
+    Output.WriteLn('');
 end;
 
 procedure TYarxiConvert.RunTango;

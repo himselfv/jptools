@@ -5,10 +5,6 @@ Usage:
   Yarxi.KanaTran.LoadFromFile('yarxi.kcs');
 }
 
-//{$DEFINE USE_DB}
-{ Do not preload data, just query the DB. Better for small number of queries,
- but if you're doing 1000+ lookups, it'd be faster to preload. }
-
 
 interface
 uses SysUtils, sqlite3, sqlite3ds, uDataSetHelper, UniStrUtils, JWBKanaConv,
@@ -46,7 +42,9 @@ type
     function ParseKanji(const Rec: variant): TKanjiRecord;
     function ParseTango(const Rec: variant): TTangoRecord;
 
- {$IFNDEF USE_DB}
+  protected
+    procedure LoadKanjiIndex;
+
   protected
     procedure LoadKanji;
     procedure LoadTango;
@@ -54,10 +52,8 @@ type
   public
     Kanji: array of TKanjiRecord;
     Tango: array of TTangoRecord;
- {$ENDIF}
 
   public
-    KanaTran: TRomajiTranslator;
     constructor Create(const AFilename: string);
     destructor Destroy; override;
     function GetKanji(const AChar: string; out ARec: TKanjiRecord): boolean;
@@ -69,7 +65,7 @@ type
 function Join(const AArray: TStringArray; const sep: string=', '): string; overload;
 
 implementation
-uses StrUtils;
+uses StrUtils, YarxiRefs, YarxiKana;
 
 function Join(const AArray: TStringArray; const sep: string=', '): string;
 var i: integer;
@@ -99,12 +95,10 @@ constructor TYarxiDB.Create(const AFilename: string);
 begin
   inherited Create;
   Db := TSqLiteDb.Create(AFilename);
-  KanaTran := TKanaTranslator.Create;
 end;
 
 destructor TYarxiDB.Destroy;
 begin
-  FreeAndNil(KanaTran);
   FreeAndNil(Db);
   inherited;
 end;
@@ -115,8 +109,10 @@ begin
   Result.Nomer := rec.Nomer;
   if (Result.Nomer=216) or (Result.Nomer=219) or (Result.Nomer=1385)
   or (Result.Nomer=1528) or (Result.Nomer=1617) or (Result.Nomer=2403)
-  or (Result.Nomer=2664) then //некоторые кандзи просто в полной беде
+  or (Result.Nomer=2664) then begin //некоторые кандзи просто в полной беде
+    FillChar(Result, SizeOf(Result), 0);
     exit; //откройте базу, полюбуйтесь на них
+  end;
 
   PushComplainContext('#'+IntToStr(Result.Nomer));
   try
@@ -149,13 +145,28 @@ begin
   Result.Russian := DecodeRussian(rec.Russian);
 end;
 
-{$IFNDEF USE_DB}
+procedure TYarxiDB.LoadKanjiIndex;
+var ds: TSqliteDataset;
+  RecCount: integer;
+  rec: variant;
+begin
+  ds := Db.Query('SELECT * FROM Kanji');
+  RecCount := 1;
+  for rec in ds do begin
+   //Вообще-то лучше брать rec.Nomer, но пока он везде совпадает
+    KanjiRefs.Add(RecCount, WideChar(word(rec.Uncd)));
+    Inc(RecCount);
+  end;
+end;
+
+
 procedure TYarxiDB.LoadKanji;
 var ds: TSqliteDataset;
   RecCount: integer;
   rec: variant;
 begin
   if Length(Kanji)>0 then exit; //already parsed;
+  LoadKanjiIndex;
   ds := Db.Query('SELECT * FROM Kanji');
   SetLength(Kanji, 7000); //should be enough
   RecCount := 0;
@@ -196,30 +207,8 @@ begin
       break;
     end;
 end;
-{$ENDIF}
 
 function TYarxiDB.GetKanji(const AChar: string; out ARec: TKanjiRecord): boolean;
-{$IFDEF USE_DB}
-var ds: TSqliteDataset;
-  charval: integer;
-begin
-  case Length(AChar) of
-    1: charval := Word(AChar[1]);
-    2: charval := Word(AChar[1]) + Word(AChar[2]) shl 16;
-  else //0 and 2+ are not valid
-    Result := false;
-    exit;
-  end;
-
-  ds := Db.Query('SELECT * FROM Kanji WHERE Kanji.Uncd='+IntToStr(charval));
-  if ds.EOF then
-    Result := false
-  else begin
-    ARec := ParseKanji(ds.CurrentRec);
-    Result := true;
-  end;
-end;
-{$ELSE}
 var idx: integer;
 begin
   idx := FindKanjiIndex(AChar);
@@ -231,34 +220,17 @@ begin
     Result := true;
   end;
 end;
-{$ENDIF}
 
 function TYarxiDB.KanjiCount: integer;
-{$IFDEF USE_DB}
-var ds: TSqliteDataset;
-begin
-  ds := Db.Query('SELECT COUNT(*) FROM Kanji');
-  Result := ds.Fields[0];
-end;
-{$ELSE}
 begin
   LoadKanji;
   Result := Length(Kanji);
 end;
-{$ENDIF}
 
 function TYarxiDB.TangoCount: integer;
-{$IFDEF USE_DB}
-var ds: TSqliteDataset;
-begin
-  ds := Db.Query('SELECT COUNT(*) FROM Tango');
-  Result := ds.Fields[0];
-end;
-{$ELSE}
 begin
   LoadTango;
   Result := Length(Tango);
 end;
-{$ENDIF}
 
 end.

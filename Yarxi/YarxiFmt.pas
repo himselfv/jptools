@@ -1,6 +1,5 @@
 ﻿unit YarxiFmt;
-{ Форматы, используемые в базе данных Яркси. Перед чтением убедитесь, что рядом
- нет женщин и детей. }
+{ Форматы, используемые в базе данных Яркси. }
 
 {$DEFINE STRICT}
 { Допускать только те вольности в формате, которые действительно встречались
@@ -9,6 +8,14 @@
 
 interface
 uses SysUtils, Classes, UniStrUtils, FastArray, WcExceptions;
+
+{
+Названия функций:
+ match_*   попробовать извлечь из строки последовательность, false если её нет
+           или не удалось разобрать
+ parse_*   извлечь из строки последовательность или бросить ошибку
+}
+
 
 { Полезные функции для работы со строками }
 
@@ -30,14 +37,16 @@ function TryUnquote(var s: string; op, ed: char): boolean;
 function IsLatin(const ch: char): boolean; inline;
 function IsUpperCaseLatin(const ch: char): boolean; inline;
 function IsCyrillic(const ch: char): boolean; inline;
-function IsNumeric(const ch: char): boolean; inline;
+function IsDigit(const ch: char): boolean; inline;
 
-function EatNumber(var pc: PChar): integer;// inline;
+function DigitToInt(const ch: char): byte; inline;
+
+function EatNumber(var pc: PChar): integer; overload;
 function EatLatin(var pc: PChar): string;// inline;
 
+function test_char(const ch: char; const chars: string): integer;
 
-{ Функции посылают сюда жалобы на жизнь. В дальнейшем надо сделать нормальный
- сборщик жалоб, как в WarodaiConvert. }
+{ Функции посылают сюда жалобы на жизнь. }
 
 var
   ComplainContext: string;
@@ -200,6 +209,7 @@ type
 function ParseKanjiKunReadings(inp: string): TKunReadings;
 function ParseCharLink(var pc: PChar): TCharLink;
 function ParseAdditionalKanjiChain(var pc: PChar): TCharLinkRefChain;
+function DumpCharLinkRefChain(const AChain: TCharLinkRefChain): string;
 
 
 {
@@ -279,11 +289,10 @@ type
   3. Суффиксы/suffixedEntry (обычно внутри пункта, разные наклонения слова в нём)
  }
 
-
  { Часть пункта значения, объединённая одним суффиксом, например, ~suru,
   ~ni naru или пустым. }
   TKunyomiMeaningSuffixedEntry = record
-    suffix: integer; //код суффикса - см. комменты к функции разбора
+    suffix: string; //суффикс - см. match_suffix
     text: string;
   end;
   PKunyomiMeaningSuffixedEntry = ^TKunyomiMeaningSuffixedEntry;
@@ -292,16 +301,13 @@ type
   TKunyomiMeaningClause = record
     index: integer; //номер - ноль для "номера по умолчанию" (до первого буллета)
     entries: TArray<TKunyomiMeaningSuffixedEntry>;
+    common_clause: boolean; //общее вступление для последующих пунктов
   end;
   PKunyomiMeaningClause = ^TKunyomiMeaningClause;
 
  { Блок значения }
-  TKunyomiMeaningBlockFlag = (
-    kfNominalMeaning
-  );
-  TKunyomiMeaningBlockFlags = set of TKunyomiMeaningBlockFlag;
   TKunyomiMeaningBlock = record
-    flags: TKunyomiMeaningBlockFlags;
+    isNominal: boolean;
     links: TArray<TKunyomiKanjiLink>;
     clauses: TArray<TKunyomiMeaningClause>;
   end;
@@ -332,12 +338,7 @@ type
     fkSimplified
   );
 
-  TRussianMeaningFlag = (
-    mfUnchecked
-  );
-  TRussianMeaningFlags = set of TRussianMeaningFlag;
   TRussianMeanings = record
-    flags: TRussianMeaningFlags;
     kunyomi: TKunyomiMeanings;
     compound: TCompoundMeanings;
     related_kanji: TArray<TRelatedKanjiLink>;
@@ -515,15 +516,21 @@ begin
   Result := (ch>='A') and (ch<='Z');
 end;
 
-function IsNumeric(const ch: char): boolean;
-begin
-  Result := (ch>='0') and (ch<='9');
-end;
-
 function IsCyrillic(const ch: char): boolean;
 begin
   Result := ((ch>='А') and (ch<='Я')) or ((ch>='а') and (ch<='я'))
     or (ch='Ё') or (ch='ё');
+end;
+
+function IsDigit(const ch: char): boolean;
+begin
+  Result := (ch>='0') and (ch<='9');
+end;
+
+//Если это было не число, пеняйте на себя
+function DigitToInt(const ch: char): byte;
+begin
+  Result := Ord(ch)-Ord('0');
 end;
 
 //Reads a positive number (only digits)
@@ -531,7 +538,7 @@ function EatNumber(var pc: PChar): integer;
 var ps: PChar;
 begin
   ps := pc;
-  while IsNumeric(pc^) do
+  while IsDigit(pc^) do
     Inc(pc);
   Check(pc>ps);
   Result := StrToInt(spancopy(ps,pc));
@@ -547,6 +554,13 @@ begin
   Result := spancopy(ps,pc);
 end;
 
+//Возвращает индекс символа в списке или 0
+function test_char(const ch: char; const chars: string): integer;
+begin
+  Result := Length(chars);
+  while (Result>0) and (ch<>chars[Result]) do
+    Dec(Result);
+end;
 
 
 { Сборщик жалоб }
@@ -958,7 +972,7 @@ begin
     end else
 
    //также бывает нормальное тире: *-ni itatte wa. #1108
-    if (pc^='-') and IsNumeric((pc+1)^) then begin
+    if (pc^='-') and IsDigit((pc+1)^) then begin
       Inc(pc);
       Check(rd<>nil, 'No open reading');
       rd.tpos.Add(EatNumber(pc));
@@ -991,7 +1005,7 @@ begin
         end;
         Check(pc^=']');
         Inc(pc);
-        if IsNumeric(pc^) then //что-то осталось
+        if IsDigit(pc^) then //что-то осталось
           ed := EatNumber(pc)
         else
           ed := 0;
@@ -1078,7 +1092,7 @@ begin
     if pc^='$' then begin
       Check(rset<>nil, 'No open reading set');
       Inc(pc);
-      Check(IsNumeric(pc^), 'invalid additional_kanji_pos');
+      Check(IsDigit(pc^), 'invalid additional_kanji_pos');
       with rset.additional_kanji.AddNew^ do begin
         pos := Ord(pc^)-Ord('0');
         Inc(pc);
@@ -1185,7 +1199,7 @@ begin
   Inc(pc);
   if pc^<>'_' then exit;
   Inc(pc);
-  if not IsNumeric(pc^) then exit;
+  if not IsDigit(pc^) then exit;
   Inc(pc); //пока допускаем макс. одну цифру
  { Более свободно:
     while IsNumeric(pc^) do Inc(pc);
@@ -1238,6 +1252,7 @@ function ParseCharLink(var pc: PChar): TCharLink;
 var i: integer;
   ps: PChar;
 begin
+  FillChar(Result, SizeOf(Result), 0);
   Check(pc^='^', 'Invalid start mark');
   Inc(pc);
 
@@ -1314,7 +1329,7 @@ begin
       Inc(pc);
     end else
    //Число
-    if IsNumeric(pc^) then  begin
+    if IsDigit(pc^) then  begin
       with Result.refs.AddNew^ do begin
         text := '';
         charref := 0;
@@ -1383,13 +1398,26 @@ begin
       Inc(pc);
     end else
    //Число (номер кандзи)
-    if IsNumeric(pc^) then begin
+    if IsDigit(pc^) then begin
       with Result.AddNew^ do begin
         text := '';
         charref := EatNumber(pc); //надеюсь, два подряд не бывает..
       end;
     end else
       break; //неизвестный символ => выходим
+  end;
+end;
+
+function DumpCharLinkRefChain(const AChain: TCharLinkRefChain): string;
+var i: integer;
+begin
+  Result := '';
+  for i := 0 to AChain.Length-1 do begin
+    if AChain[i].text<>'' then
+      Result := Result + AChain[i].text;
+    if AChain[i].charref<>0 then
+      Result := Result + '[' + IntToStr(AChain[i].charref) + ']';
+    Result := Result + ' ';
   end;
 end;
 
@@ -1616,6 +1644,42 @@ begin
   Result := Result + AReading.text;
 end;
 
+{
+Ссылки на связанные кандзи. Присутствуют в заголовке Kanji.Russian, может быть
+несколько (даже одного типа).
+ *[буква][номер] - большая теневая ссылка справа
+ $[буква][номер] - маленькая ссылка возле знака
+ ^[буква][номер] - маленькая ссылка под названием кандзи
+Кодировка буквами во всех случаях разная, но пока общей вводить мы не будем.
+}
+function match_related_kanji(var pc: PChar; out link: TRelatedKanjiLink): boolean;
+begin
+  if pc^='*' then
+    link.pos := rpBigGray
+  else
+  if pc^='$' then
+    link.pos := rpUnderKanji
+  else
+  if pc^='^' then
+    link.pos := rpUnderNickname
+  else begin
+    Result := false;
+    exit;
+  end;
+  Inc(pc);
+
+ //Допустимые буквы
+  case link.pos of
+    rpBigGray: Check(IsDigit(pc^) or (pc^='?'));
+    rpUnderNickname: Check(IsDigit(pc^) or (test_char(pc^, 'oimrsStvzZ')>0));
+  else Check(IsDigit(pc^));
+  end;
+  link._type := pc^;
+  Inc(pc);
+  link.charref := EatNumber(pc);
+  Result := true;
+end;
+
 
 {
 Поле: Kanji.Russian.
@@ -1634,72 +1698,26 @@ end;
  ~~   В словаре Фельдман-Конрад представлен устаревшей формой
  ~~~  В словаре Фельдман-Конрад представлен оригинальной формой
  ~~~~ В словаре Фельдман-Конрад представлен упрощённой формой
-
- *[цифра][номер] - большая теневая ссылка справа
-   0  устаревшая форма:
-   1  оригинальная форма:
-   2  упрощённая форма:
-   3  вариантная форма:
-   4  редкая форма:
-   5  в документах:
-   6  синоним и омоним:
-   7  ошибочная форма:
-
- $[цифра][номер] - маленькая ссылка возле знака
-   0  устаревшая форма знака
-   1  оригинальная форма знака
-   2  упрощённая форма знака
-   3  заменён знаком
-   4  вариант знака
-   5  редкая форма знака
-   6  употребляется ошибочно вместо
-   7  теперь чаще
-   8  ранее также
-
- ^[цифра][номер] - маленькая ссылка под названием кандзи
-   0  см.
-   1  ср.
-   3  реже
-   4  иначе
-   5  чаще
-   6  синоним
-   7  антоним
-   8  не путать с
-   9  ранее
+ *[код], $[код], ^[код] - ссылки на связанные кандзи
 }
 function ParseKanjiRussian(inp: string): TRussianMeanings;
 var pc: PChar;
   tmp_int: integer;
+  rel_kanji: TRelatedKanjiLink;
 begin
   FillChar(Result, SizeOf(Result), 0);
   if Length(inp)<=0 then exit;
 
   pc := PChar(inp);
-  if pc^='~' then begin
-    Result.flags := Result.flags + [mfUnchecked];
-    Inc(pc);
-  end;
-
   while pc^<>#00 do begin
    //Ссылки на связанный знак
     if (pc^='*') or (pc^='$') or (pc^='^') then begin
-      with Result.related_kanji.AddNew^ do begin
-        if pc^='*' then
-          pos := rpBigGray
-        else
-        if pc^='$' then
-          pos := rpUnderKanji
-        else
-          pos := rpUnderNickname;
-        Inc(pc);
-        Check(IsDigit(pc^));
-        _type := pc^;
-        Inc(pc);
-        charref := EatNumber(pc);
-      end;
+      Check(match_related_kanji(pc, rel_kanji));
+      Result.related_kanji.Add(rel_kanji);
     end else
    //Флаг словаря Фельдман-Конрад
     if pc^='~' then begin
+      Check(Result.fk_flag=fkNone); //два фк-флага нельзя
       tmp_int := 0;
       while pc^='~' do begin
         Inc(tmp_int);
@@ -1712,7 +1730,6 @@ begin
         4: Result.fk_flag := fkSimplified;
       else Die('Неверный флаг Фельдман-Конрад');
       end;
-      Inc(pc);
     end else
       break;
   end;
@@ -1720,8 +1737,6 @@ begin
   Result.kunyomi := ParseKanjiKunyomiMeanings(trypop(pc,'|'));
   Result.compound := ParseKanjiCompoundMeanings(inp);
 end;
-
-///
 
 //Возвращает первую букву последнего слова в строке
 function FindWordStartOffset(const text: string): integer;
@@ -1736,7 +1751,280 @@ begin
   Inc(Result);
 end;
 
+
+{ Выбирает из строки суффикс в форматах ~i, ~~i, ~~~i, ~=ii, ~-i.
+Возвращает его текстовое представление.
+Формат:
+ ~i] - то же, но в суффикс кв. скобках: ~[ni] }
+function match_suffix(var pc: PChar; out postfix: string): boolean;
+var tmp_int: integer;
+begin
+  if pc^<>'~' then begin
+    Result := false;
+    exit;
+  end;
+  Inc(pc);
+
+  Result := true;
+  case pc^ of
+    '0': postfix := 'shita';
+    '1': postfix := 'suru';
+    '2': postfix := 'na';
+    '3': postfix := 'no';
+    '4': postfix := 'ni';
+    '5': postfix := 'de';
+    '6': postfix := 'to';
+    '7': postfix := 'taru';
+    '8': postfix := 'shite';
+    '9': postfix := 'shite iru';
+    '-': begin
+      Inc(pc);
+      case pc^ of
+        '0': postfix := '(-wa)';
+        '1': postfix := '(-kara)';
+        //'2': postfix := '(-made)???????';
+        '3': postfix := '(-no)';
+        '4': postfix := '(-ni)';
+        //'5': postfix := '(-de)????????';
+        '6': postfix := '(-to)';
+        '7': postfix := '(-wo)';
+        '8': postfix := '(-ga)';
+        '9': postfix := '(-suru)';
+        '@': postfix := '(-to shite)';
+        //'+': postfix := '(-shita)????????';
+        //'=': postfix := '(shite iru)??????';
+      else postfix := '(-demo)'; //~-something_else //TODO: Does this really work? No collisions?
+      end;
+    end;
+    '~': begin
+      Inc(pc);
+      case pc^ of
+        '0': postfix := 'o suru';
+        '1': postfix := 'ga aru';
+        '2': postfix := 'no aru';
+        '3': postfix := 'no nai';
+        '4': postfix := 'de aru';
+        '5': postfix := 'des'; //From yarxi.pl: TODO: check #42
+        '6': postfix := 'da';
+        '7': postfix := 'ni suru';
+        '8': postfix := 'ni naru';
+        '9': postfix := 'to shite';
+        '~': begin
+          Inc(pc);
+          case pc^ of
+            '0': postfix := 'naru';
+            '1': postfix := 'kara';
+            '2': postfix := 'made';
+            '3': postfix := 'mo';
+            '4': postfix := 'wa';
+            '5': postfix := 'to suru';
+            '6': postfix := 'yori';
+            '7': postfix := 'ga shite iru';
+            '8': postfix := 'to shita';
+            '9': postfix := 'to shite iru';
+          else
+            Dec(pc,3);
+            Result := false;
+          end;
+        end
+      else
+        Dec(pc,2);
+        Result := false;
+      end;
+    end;
+    '=': begin
+      Inc(pc);
+     //Переводим 2 байта в число.
+      if IsDigit(pc^) and IsDigit((pc+1)^) then
+        tmp_int := DigitToInt(pc^)*10+DigitToInt((pc+1)^)
+      else
+        tmp_int := -1; //негодное
+      case tmp_int of
+        00: postfix := '!';
+        01: postfix := 'aru';
+        02: postfix := 'atte';
+        03: postfix := 'ga nai';
+        04: postfix := 'ga atte';
+        05: postfix := 'ga shite aru';
+        06: postfix := 'ga suru';
+        07: postfix := 'de mo';
+        08: postfix := 'de wa';
+        09: postfix := 'de nai';
+        10: postfix := 'de (~ni)';
+        11: postfix := 'des ka?';
+        12: postfix := 'deshita';
+        13: postfix := 'de suru';
+        14: postfix := 'ka';
+        15: postfix := 'made mo';
+        16: postfix := 'mo nai';
+        17: postfix := '[mo] nai';
+        18: postfix := 'mo naku';
+        19: postfix := 'nagara';
+        20: postfix := 'nai';
+        21: postfix := 'na (~no)';
+        22: postfix := 'narazaru';
+        23: postfix := 'narazu';
+        24: postfix := 'na[ru]';
+        25: postfix := 'nasai';
+        26: postfix := 'nashi no';
+        27: postfix := 'naki';
+        28: postfix := 'naku';
+        29: postfix := 'ni (~wa)';
+        30: postfix := 'ni (~de)';
+        31: postfix := 'ni mo';
+        32: postfix := 'teki';
+        33: postfix := 'ni shite';
+        34: postfix := 'ni [shite]';
+        35: postfix := 'ni nai';
+        36: postfix := 'ni natte';
+        37: postfix := 'ni natte iru';
+        38: postfix := 'ni aru';
+        39: postfix := 'ni sareru';
+        40: postfix := 'ni iru';
+        41: postfix := 'ni naranai';
+        42: postfix := 'sarete';
+        43: postfix := '[ni] suru';
+        44: postfix := 'ni yaru';
+        45: postfix := '[no] aru';
+        46: postfix := 'no shita';
+        47: postfix := 'no shinai';
+        48: postfix := 'no suru';
+        49: postfix := 'wo';
+        50: postfix := '[wo] suru';
+        51: postfix := 'wo shite iru';
+        52: postfix := 'wo shita';
+        53: postfix := 'wo yaru';
+        54: postfix := 'saseru';
+        55: postfix := 'sareru';
+        56: postfix := 'shite aru';
+        57: postfix := 'su';
+        58: postfix := 'shimas';
+        59: postfix := 'shinai';
+        60: postfix := 'sezuni';
+        61: postfix := 'seru';
+        62: postfix := 'to naru';
+        63: postfix := 'to saseru';
+        //64: postfix := '???';
+        65: postfix := '[to] shita';
+        66: postfix := 'to [shite]';
+        67: postfix := 'to mo';
+        68: postfix := '[to] mo sureba';
+        69: postfix := 'to nareba';
+        70: postfix := 'to [naku]';
+        71: postfix := 'e';
+        72: postfix := 'sarate iru';
+        73: postfix := 'ga gotoshi';
+        74: postfix := 'da kara';
+        75: postfix := 'dake no';
+        //'76: postfix := '???';
+        77: postfix := 'mono';
+        78: postfix := 'naru';
+        79: postfix := 'naraba';
+        80: postfix := 'naranu';
+        81: postfix := 'narashimeru';
+        82: postfix := 'ni [natte]';
+        83: postfix := 'o shinai';
+        84: postfix := 'wo shite';
+        85: postfix := 'shinagara';
+        86: postfix := 'subeki';
+        87: postfix := 'sureba';
+        88: postfix := 'shitemo';
+        89: postfix := 'to mo shinai';
+        90: postfix := 'yaru';
+        91: postfix := 'to natte';
+        92: postfix := 'suruna';
+        93: postfix := 'ni oite';
+      end;
+    end;
+  else
+    Dec(pc);
+    Result := false;
+  end;
+
+ //Что-то матчнули
+  if Result and (pc^=']') then begin
+    postfix := '['+postfix+']';
+    Inc(pc);
+  end;
+end;
+
 {
+Формат квадратных скобок из Kanji.Russian/KunyomiMeanings:
+[''текст'']   текст красным, в скобках     (''текст'')
+[''^текст'']  => (от ''текст'')
+[''=текст'']  => (= ''текст'')
+[''-текст'']  простой текст без скобок:    ''текст''
+[''^o:sho:]   бывает, что кавычки не закрыты, яркси закрывает
+Несколько элементов:
+  [''-de aru'', ''-shite aru'', ''koto-ga aru'']
+  Первый ''- задаёт формат (см. выше), и отображается без тире, если нужно тире,
+  ставьте их два: [[''--de aru'']]. Остальные как есть: (''-shite aru'').
+}
+function parse_kmeaning_sq_brackets(var pc: PChar): string;
+var ps: PChar;
+  flag_no_outer_brackets: boolean; //внешних скобок нет (закрывающая не нужна)
+  flag_inner_brackets: boolean; //внутренние кв. скобки
+begin
+  Inc(pc);
+  Check(pc^='''');
+  while pc^='''' do Inc(pc);
+
+  flag_no_outer_brackets := false;
+  flag_inner_brackets := false;
+
+  if pc^='-' then begin
+    Result := '''''';
+    flag_no_outer_brackets := true;
+    Inc(pc);
+  end else
+  if pc^='^' then begin
+    Result := '(от ''''';
+    Inc(pc);
+  end else
+  if pc^='=' then begin {#2317}
+    Result := '(= ''''';
+    Inc(pc);
+  end else
+    Result := '(''''';
+
+ //Вытаскиваем содержимое, оно требует спец. разбора
+  ps := pc;
+  while pc^<>#00 do begin
+    if IsLatin(pc^) or IsDigit(pc^){#343} or (test_char(pc^, ' :-.')>0) {#343, #866}
+    or (pc^='''') {#630 одиночное ' встречается в транскрипциях}{#2739: двойное ' встречается из-за списков}
+    or (pc^=',') {#2739: списки через запятую}
+    then
+      Inc(pc)
+    else
+    if pc^='>' then begin //замена вложенным кв. скобкам
+      if flag_inner_brackets then
+        Result := Result + spancopy(ps,pc) + '['
+      else
+        Result := Result + spancopy(ps,pc) + '[';
+      flag_inner_brackets := not flag_inner_brackets;
+      Inc(pc);
+      ps := pc;
+    end else
+    if (pc^=']') then begin
+      break; //конец скобки
+    end else
+      Die('Недопустимый символ в кв. скобках');
+  end;
+
+  Check(not flag_inner_brackets);
+
+ //Последние кавычки Яркси закрывает автоматически, но не прочие.
+  if (Length(Result)<1) or (Result[Length(Result)]<>'''') then
+    Result := Result + '''''';
+
+  if not flag_no_outer_brackets then
+    Result := Result + ')';
+  Check(pc^=']');
+  Inc(pc);
+end;
+
+
+(*
 Поле: Kanji.Russian, блок KunyomiMeanings.
 Формат: значение,в разных,вариантах/значение/значение
 Подробности:
@@ -1748,63 +2036,40 @@ end;
  ^1234    символ со ссылкой прямо в строке, без пояснения
  +        перенос строки в этом месте (инлайн). Мало что значит, т.к. ставится
           даже в середине фразы, если та не влезает.
+ ++       перенос строки и начало новой левее кандзи, без отступа (для длинных)
  &        начало нового пункта. Текст до первого & - без номера
  @[цифра] частые выражения (напр. "и т.п.") (инлайн)
  @@       оно же (@ вместо цифры)
  ()       скобки. Текст внутри - курсив. Если внутри перенос, курсив за ним
           явно: (общее название+#нескольких декоративных растений)
+ (##)     скобки без курсива (с его отменой). После переносов, соотв., тоже не восст.
  (!3)     ударение на i-й букве в предшествующем слове
+ ~i и др. "при употреблении с таким суффиксом" (встречается инлайн) -
+          см. match_suffix
+ >        ближайший кусок текста - вступление ко всем последующим пунктам.
+          Что такое кусок - точно неясно, но #италик# и @7-частое  - это куски.
+          Затем должно сразу идти &, но если есть ещё текст - это обычный
+          нулевой пункт.
+ {текст}  текст синим ссылочным цветом, вынесен в конец строки         #127
+ Поддерживает спец. префиксы:
+   +      на новой строке, в центре
+   +_     на новой строке, слева
+   ++     через одну строку, в центре
+   ++_    через одну строку, слева
+   ^1234  вставка кандзи (в любом месте)
 
- ~[цифра] - "при употреблении с таким суффиксом" (встречается инлайн):
-   0  ~shita
-   1  ~suru
-   2  ~na
-   3  ~no
-   4  ~ni
-   5  ~de
-   6  ~to
-   7  ~taru
-   8  ~shite
-   9  ~shite iru
- ~~ второй набор суффиксов:
-	 0  ~o suru
-	 1  ~ga aru
-	 2  ~no aru
-	 3  ~no nai
-	 4  ~de aru
-	 5  ~des
-	 6  ~da
-	 7  ~ni suru
-	 8  ~ni naru
-	 9  ~to shite
- ~~~ третий набор суффиксов:
-	 0  ~naru
-	 1  ~kara
-	 2  ~made
-	 3  ~mo
-	 4  ~wa
-	 5  ~to suru
-	 6  ~yori
-	 7  ~ga shite iru
-	 8  ~to shita
-	 9  ~to shite iru
- ~[цифра]] - то же, но в суффикс кв. скобках: ~[ni]
- ~-[цифра] - то же, но перед суффиксом тире и всё в скобках: (-ni)
+ [''кв. скобки'']  - см. match_kmeaning_sq_brackets
 
 
 Ещё не реализовано:
 
-[^^12345]    (но фиг. скобки) ссылка от этого значения; коды те же, что в ParseCharLink
-[''текст'']  просто текст без скобок: ''текст''
-[''-текст''] просто текст без скобок: ''текст''
-[''^текст''] "от ''текст''"
- >       ближайший блок текста должен быть в италике, и до его конца всё -
-         вступление ко всем последующим пунктам.
-         В том числе и нулевому, если дальше после италика что-то есть.
-         Check: сразу после > идёт италик
-         Check: после италика ничего нет, только след. пункт.
 
-}
+Похоже, это в правой части:
+{^^12345}    ссылка от этого значения; коды те же, что в ParseCharLink
+{^^^}
+
+
+*)
 function ParseKanjiKunyomiMeanings(inp: string): TKunyomiMeanings;
 var ps, pc: PChar;
   tmp_int: integer;
@@ -1812,7 +2077,10 @@ var ps, pc: PChar;
   clause: PKunyomiMeaningClause;
   entry: PKunyomiMeaningSuffixedEntry;
   flag_brackets: boolean;
+  flag_brackets_noitalic: boolean;
+  flag_curly_brackets: boolean;
 
+ //Открывает новые block, clause или entry, если открытых нет
   procedure NeedBlock;
   begin
     if block=nil then
@@ -1821,14 +2089,34 @@ var ps, pc: PChar;
 
   procedure NeedClause;
   begin
+    NeedBlock;
     if clause=nil then
       clause := PKunyomiMeaningClause(block.clauses.AddNew);
   end;
 
   procedure NeedEntry;
   begin
+    NeedClause;
     if entry=nil then
       entry := PKunyomiMeaningSuffixedEntry(clause.entries.AddNew);
+  end;
+
+ //Закрывает любые открытые entry, clause или block, даже пустые.
+  procedure EndEntry;
+  begin
+    entry := nil;
+  end;
+
+  procedure EndClause;
+  begin
+    EndEntry;
+    clause := nil;
+  end;
+
+  procedure EndBlock;
+  begin
+    EndClause;
+    block := nil;
   end;
 
  //Прибавляет выбранный непустой кусок текста к текущему block>clause>entry
@@ -1839,11 +2127,24 @@ var ps, pc: PChar;
     while ps^='_' do Inc(ps); //ради пустых элементов "_"
     Check(pc>=ps); //теперь уже пустой текст оставляем - нас попросили
 
-    NeedBlock;
-    NeedClause;
     NeedEntry;
-
     entry.text := entry.text + spancopy(ps, pc);
+  end;
+
+ { Закрывает "общий clause", если он был.
+   Вызывать только после элементов, которые *явно* закрывают common_clause и
+   переключают на обычный нулевой clause. И только стоя на след. символе.
+   Открытие ненулевого clause закрое common_clause обычным образом, и это хорошо,
+   т.к. новому clause там будет выдан номер 1, а здесь следующий NeedClause
+   выдаст 0 по дефолту }
+  procedure EndCommonClause;
+  begin
+    if (clause=nil) or not clause.common_clause then exit;
+    CommitText;
+    EndClause;
+   //По идее после окончания common_clause не должно быть текста в нулевой
+   //кляузе, однако #1995
+   // Check((pc^=#00) or (pc^='&') or (pc^='/'));
   end;
 
 begin
@@ -1855,6 +2156,8 @@ begin
   entry := nil;
 
   flag_brackets := false;
+  flag_brackets_noitalic := false;
+  flag_curly_brackets := false;
 
   pc := PChar(inp);
   ps := pc;
@@ -1863,6 +2166,7 @@ begin
    //Следующий перевод
     if pc^='/' then begin
       CommitText;
+      EndBlock;
      //Наличие палки означает, что блок всё-таки должен начаться,
      //как бы там ни было с содержимым
       NeedBlock;
@@ -1873,8 +2177,6 @@ begin
    //Перенос строки
     if pc^='+' then begin
       CommitText;
-      NeedBlock;
-      NeedClause;
       NeedEntry;
      //Перенос строки мало что значит, т.к. ставится по графическим соображениям
      //(влазит ли строка в интерфейсе Яркси). Игнорируем его. Разве что ; добавляем,
@@ -1885,8 +2187,12 @@ begin
       Inc(pc);
      //См. комментарий к разбору () скобок
       if flag_brackets then begin
-        Check(pc^='#'); //чисто из интереса - есть ли случаи, где италик забыт?
-        Inc(pc); //пропускаем
+        while pc^='+' do Inc(pc); //Иногда переносов несколько подряд #127
+        if not flag_brackets_noitalic then begin
+          Check(pc^='#'); //чисто из интереса - есть ли случаи, где италик забыт?
+          Inc(pc); //пропускаем
+        end else
+          Check(pc^<>'#');
       end;
       ps := pc;
     end else
@@ -1894,12 +2200,11 @@ begin
    //Следующий пункт
     if pc^='&' then begin
       CommitText;
-      NeedBlock;
-      clause := nil;
-      entry := nil;
+      EndClause;
       NeedClause;
      //Номер зависит от того, что уже есть
-     //Может ничего не быть, быть нулевой блок или быть несколько блоков
+     //Может ничего не быть, быть нулевой блок, общий нулевой блок или несколько
+     //блоков
       if block.clauses.Count=1 then
         clause.index := 1
       else
@@ -1911,50 +2216,48 @@ begin
 
    //Новый префикс для последующего
     if pc^='~' then begin
-      NeedBlock;
-      NeedClause;
+      CommitText; //закрываем старое
+      if (entry<>nil) and (entry.text<>'') then
+        EndEntry;
       NeedEntry;
 
      //Необязательно проверки на вшивость
       Check(not flag_brackets);
 
-     //Кодируем: ~i = 1i; ~~i = 2i; ~~~i = 3i; нулевой блок оставляем пустым ради нуля (был бы закрыт)
-
-      entry.suffix := 10;
-      Inc(pc);
-      if pc^='~' then begin
-        Inc(entry.suffix, 10);
-        Inc(pc);
-        if pc^='~' then begin
-          Inc(entry.suffix, 10);
-          Inc(pc);
-         //Глубже не должно быть
-        end;
-      end;
-
-      if pc^='-' then begin
-        entry.suffix := entry.suffix+$100; //флаг "тире перед суффиксом"
-        Inc(pc);
-      end;
-
-      Check(IsNumeric(pc^));
-      entry.suffix := entry.suffix + Ord(pc^)-Ord('0');
-      Inc(pc);
-
-      if pc^=']' then begin
-        entry.suffix := entry.suffix+$200; //флаг "суффикс опционален"
-        Inc(pc);
-      end;
-
+     //Разбор
+      Check(match_suffix(pc, entry.suffix));
       ps := pc;
     end else
 
-   //Инлайн-ссылка на перевод
-   //Т.к. символы ещё недоступны, оставляем её в таком виде
+   //Текст специальным ссылочным цветом
+    if pc^='{' then begin
+      Check(not flag_curly_brackets);
+     //Содержимое пишем в тот же блок, но, пожалуй, обернём его фигурными
+     //скобками, чтобы можно было потом разобраться.
+      Inc(pc); //скобочку тоже записываем
+      CommitText;
+     //блок не сбрасываем
+     //Наплевать на переносы и размещение по строкам. Блин! Кто всё это придумал.
+      while pc^='+' do Inc(pc);
+      if pc^='_' then Inc(pc);
+      flag_curly_brackets := true;
+      ps := pc;
+    end else
+
+    if pc^='}' then begin
+      Check(flag_curly_brackets);
+      Inc(pc); //скобочку записываем
+      CommitText;
+      flag_curly_brackets := false;
+      ps := pc;
+    end else
+
+   //Инлайн-ссылка на перевод. Т.к. символы ещё недоступны, оставляем её в таком виде.
+   //Вообще-то, кажется, случается только в {фиг. скобках}, но мы их разбираем по-общему
     if pc^='^' then begin
       Inc(pc);
       tmp_int := 0;
-      while (tmp_int<4) and IsNumeric(pc^) do begin
+      while (tmp_int<4) and IsDigit(pc^) do begin
         Inc(pc);
         Inc(tmp_int);
       end;
@@ -1983,26 +2286,60 @@ begin
       end else begin //обычная скобка
         Check(not flag_brackets); //мало ли, вложенные
         flag_brackets := true;
+        flag_brackets_noitalic := (pc^='#'); //не-италик скобки
       end;
 
     end else
 
     if pc^=')' then begin
-      Check(flag_brackets);
-      flag_brackets := false;
-      Inc(pc); //и оставляем как текст
+     //В Яркси есть совершенно БРАТСКИЕ статьи с подпунктами а), б).
+     //На текущем этапе мы посылаем это логическое разделение в Европу и пишем
+     //его как текст. (Но это требует кода тут, в закр. скобке)
+      if not flag_brackets and (test_char((pc-1)^,'абв')>0) then begin
+        Inc(pc);
+      end else begin
+        Check(flag_brackets);
+        flag_brackets := false;
+        flag_brackets_noitalic := false;
+        Inc(pc); //и оставляем как текст
+      end;
+    end else
+
+   //Следующий кусок - общее вступление
+    if pc^='>' then begin
+      Check((clause=nil) or (clause.entries.Length=0) or (clause.entries.Length=1));
+      Check((entry=nil) or (entry.text=''));
+      Inc(pc);
+      NeedClause;
+      clause.common_clause := true;
+      Check((pc^='#') or (pc^='@') or (pc^='~')); //проверяем, что там элементы, к-е мы встречали в common_clause -- необязательно
+      ps := pc;
+      if pc^='#' then
+        Inc(pc); //съедаем тут, чтобы в стд. обработчике не сработал сразу EndCommonClause
+    end else
+
+   //Квадратные скобки [''текст'']. Бывают и обычные, их общим чередом.
+    if (pc^='[') and ((pc+1)^='''') then begin
+      CommitText;
+      NeedEntry;
+      entry.text := entry.text + parse_kmeaning_sq_brackets(pc);
     end else
 
    //Просто буква из перевода
-    if IsLatin(pc^) or IsCyrillic(pc^) or IsNumeric(pc^) or (pc^='#')
-    or (pc^=',') or (pc^='.') or (pc^='!') or (pc^=' ') or (pc^=';')
-    or (pc^='[') or (pc^=']') or (pc^='-') or (pc^='''')  then begin
-      Inc(pc);
+    if IsLatin(pc^) or IsCyrillic(pc^) or IsDigit(pc^) or
+    (test_char(pc^,'#:;,.!? []-''%')>0) {? #462} {% #2683}
+    then begin
+      if (pc^='#') and (clause<>nil) and (clause.common_clause=true) then begin
+        Inc(pc);
+        EndCommonClause;
+        ps := pc;
+      end else
+        Inc(pc);
     end else
 
     if pc^='=' then begin
       NeedBlock;
-      block.flags := block.flags + [kfNominalMeaning];
+      block.isNominal := true;
       Inc(pc);
     end else
 
@@ -2014,8 +2351,9 @@ begin
    //Стандартное выражение. Пока считываем, заменим при разборе
     if pc^='@' then begin
       Inc(pc);
-      Check(IsNumeric(pc^) or (pc^='@'));
+      Check(IsDigit(pc^) or (pc^='@'));
       Inc(pc);
+      EndCommonClause;
     end else
 
       Die('Неизвестный элемент: '+pc^);
