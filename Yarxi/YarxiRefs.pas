@@ -24,13 +24,13 @@ type
 var
   KanjiRefs: TArticleIndex;
 
-function getKanji(const AId: integer; out AText: string): boolean; inline;
+function getKanji(const AId: integer): string; inline;
 
 { Потом можно сделать аналогичный индекс и для танго, но танго ещё нужно само
  составить из кандзи и каны }
 
 implementation
-uses SysUtils;
+uses SysUtils, WcExceptions;
 
 function TIndexEntry.CompareData(const a):Integer;
 begin
@@ -66,9 +66,10 @@ begin
     AText := item.FText;
 end;
 
-function getKanji(const AId: integer; out AText: string): boolean;
+function getKanji(const AId: integer): string;
 begin
-  Result := KanjiRefs.Get(AId, AText);
+  if not KanjiRefs.Get(AId, Result) then
+    Die('Не удалось найти кандзи #'+IntToStr(AId));
 end;
 
 initialization

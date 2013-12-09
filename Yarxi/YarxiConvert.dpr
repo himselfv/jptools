@@ -93,7 +93,7 @@ begin
       Output.WriteLn(k.JoinOns)
     else
     if field='kanaons' then
-      Output.WriteLn(Yarxi.KanaTran.RomajiToKana('K'+k.JoinOns(' '), []))
+      Output.WriteLn(KanaTran.RomajiToKana('K'+k.JoinOns(' '), []))
     else
     if field='rawkunyomi' then
       Output.WriteLn(k.RawKunYomi)
@@ -213,7 +213,7 @@ begin
     lpKanji: Output.Write('@kanji ');
   end;
 
-  Output.Write(DumpCharLinkRefChain(link.refs));
+  Output.Write(link.text);
 
   if link.wordref=0 then
     Output.WriteLn('')
@@ -224,7 +224,7 @@ end;
 procedure TYarxiConvert.DumpAdditionalKanji(link: PAdditionalKanji; lvl: string='');
 begin
   Output.Write(lvl+'add_kanji: '+IntToStr(link.pos)+' ');
-  Output.Write(DumpCharLinkRefChain(link.chain));
+  Output.Write(link.text);
   if link.kuri then
     Output.WriteLn('kuri')
   else

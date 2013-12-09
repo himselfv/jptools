@@ -65,7 +65,7 @@ type
 function Join(const AArray: TStringArray; const sep: string=', '): string; overload;
 
 implementation
-uses StrUtils, YarxiRefs, YarxiKana;
+uses StrUtils, YarxiRefs, YarxiCore;
 
 function Join(const AArray: TStringArray; const sep: string=', '): string;
 var i: integer;

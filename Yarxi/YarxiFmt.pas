@@ -126,13 +126,6 @@ function ParseOnYomi(const inp: string): TOnYomiEntries;
 }
 
 type
-  TCharLinkRef = record
-   //Одно из двух:
-    charref: integer;
-    text: string;
-  end;
-  PCharLinkRef = ^TCharLinkRef;
-  TCharLinkRefChain = TArray<TCharLinkRef>;
   TCharLinkPosition = (
     lpDefault = 0, //по-моему, LastLine
     lpFirstLine,
@@ -147,10 +140,11 @@ type
     pos: TCharLinkPosition;
     posfrom: byte;
     posto: byte;
-    refs: TCharLinkRefChain;
+    text: string;
     wordref: integer; //весь набор целиком ссылается на слово. Обычно ноль
   end;
   PCharLink = ^TCharLink;
+
   TKunReadingFlag = (
     krIgnoreInSearch, //не учитывать при поиске
     krOnReading       //онное чтение в японском слове (напр. АИрасии)
@@ -168,7 +162,7 @@ type
   PKunReading = ^TKunReading;
   TAdditionalKanji = record
     pos: integer; //точка вставки доп. цепочки кандзи, в кандзи!
-    chain: TCharLinkRefChain; //пока что такие же свойства, как в ссылках
+    text: string;
     kuri: boolean; //в конце цепочки курикаэси
   end;
   PAdditionalKanji = ^TAdditionalKanji;
@@ -208,8 +202,7 @@ type
 
 function ParseKanjiKunReadings(inp: string): TKunReadings;
 function ParseCharLink(var pc: PChar): TCharLink;
-function ParseAdditionalKanjiChain(var pc: PChar): TCharLinkRefChain;
-function DumpCharLinkRefChain(const AChain: TCharLinkRefChain): string;
+function ParseAdditionalKanjiChain(var pc: PChar): string;
 
 
 {
@@ -374,7 +367,7 @@ function DumpKanjiCompound(const ACompound: TCompoundEntry): string;
 
 
 implementation
-uses StrUtils;
+uses StrUtils, YarxiRefs;
 
 { Полезные функции для работы со строками }
 
@@ -1096,7 +1089,7 @@ begin
       with rset.additional_kanji.AddNew^ do begin
         pos := Ord(pc^)-Ord('0');
         Inc(pc);
-        chain := ParseAdditionalKanjiChain(pc);
+        text := ParseAdditionalKanjiChain(pc);
         if pc^='+' then begin
           Inc(pc);
           kuri := true;
@@ -1247,9 +1240,13 @@ end;
   ^4''текст''номер
 Тогда в чём смысл тире? Неизвестно, но без тире Яркси с длинными цепочками не
 справляется (>2 эл-тов).
+
+Похоже, если у кандзи нет доп. хвоста (?), присоединяется стандартный хвост из
+соотв. чтения главного кандзи.
+Нужно разобраться и подставлять в конце.
 }
 function ParseCharLink(var pc: PChar): TCharLink;
-var i: integer;
+var i, tmp_int: integer;
   ps: PChar;
 begin
   FillChar(Result, SizeOf(Result), 0);
@@ -1298,7 +1295,7 @@ begin
     Die('Invalid type: '+pc^);
   Inc(pc);
 
-  Result.refs.Clear;
+  Result.text := '';
   while pc^<>#00 do begin
     if pc^='''' then begin
       Check((pc+1)^='''', 'invalid singular '' mark');
@@ -1308,18 +1305,12 @@ begin
         Inc(pc);
       Check(pc^<>#00, 'invalid unclosed text element');
       Check((pc+1)^='''', 'invalid singular '' mark');
-      with Result.refs.AddNew^ do begin
-        charref := 0;
-        text := spancopy(ps,pc);
-      end;
+      Result.text := Result.text + spancopy(ps,pc);
       pc := pc+2;
     end else
    //Допустимые печатные символы
     if (pc^='/') then begin
-      with Result.refs.AddNew^ do begin
-        charref := 0;
-        text := pc;
-      end;
+      Result.text := Result.text + pc^;
       Inc(pc);
     end else
    //Разделитель. Необязателен, но обычно присутствует. С длинными цепочками
@@ -1329,16 +1320,14 @@ begin
       Inc(pc);
     end else
    //Число
-    if IsDigit(pc^) then  begin
-      with Result.refs.AddNew^ do begin
-        text := '';
-        charref := 0;
-        for i := 1 to 4 do begin
-          Check((pc^>='0') and (pc^<='9'), 'invalid charref');
-          charref := charref * 10 + Ord(pc^)-Ord('0');
-          Inc(pc);
-        end;
+    if IsDigit(pc^) then begin
+      tmp_int := 0;
+      for i := 1 to 4 do begin
+        Check((pc^>='0') and (pc^<='9'), 'invalid charref');
+        tmp_int := tmp_int * 10 + Ord(pc^)-Ord('0');
+        Inc(pc);
       end;
+      Result.text := Result.text + getKanji(tmp_int);
     end else
    //Что-то другое => конец цепочки
       break;
@@ -1357,7 +1346,7 @@ end;
 
 { Цепочка вида номер''текст''[номер]номер, встречающаяся в KunYomi при вставке
  дополнительных кандзи }
-function ParseAdditionalKanjiChain(var pc: PChar): TCharLinkRefChain;
+function ParseAdditionalKanjiChain(var pc: PChar): string;
 var ps: PChar;
 begin
  {
@@ -1368,7 +1357,7 @@ begin
   Если с текста, то оставляет на месте:
     K0_текст_K1_канахвост
  }
-  Result.Clear;
+  Result := '';
   while pc^<>#00 do begin
 
    //Текст каной
@@ -1380,10 +1369,7 @@ begin
       while (pc^<>#00) and (pc^<>'''') do
         Inc(pc);
       Check(pc^<>#00);
-      with Result.AddNew^ do begin
-        text := spancopy(ps,pc);
-        charref := 0;
-      end;
+      Result := Result + spancopy(ps,pc);
       Check(pc^='''');
       Inc(pc);
       Check(pc^='''');
@@ -1391,33 +1377,14 @@ begin
     end else
    //Допустимые символы
     if (pc^='[') or (pc^=']') then begin
-      with Result.AddNew^ do begin
-        text := pc^;
-        charref := 0;
-      end;
+      Result := Result + pc^;
       Inc(pc);
     end else
    //Число (номер кандзи)
     if IsDigit(pc^) then begin
-      with Result.AddNew^ do begin
-        text := '';
-        charref := EatNumber(pc); //надеюсь, два подряд не бывает..
-      end;
+      Result := Result + getKanji(EatNumber(pc)); //надеюсь, два подряд не бывает..
     end else
       break; //неизвестный символ => выходим
-  end;
-end;
-
-function DumpCharLinkRefChain(const AChain: TCharLinkRefChain): string;
-var i: integer;
-begin
-  Result := '';
-  for i := 0 to AChain.Length-1 do begin
-    if AChain[i].text<>'' then
-      Result := Result + AChain[i].text;
-    if AChain[i].charref<>0 then
-      Result := Result + '[' + IntToStr(AChain[i].charref) + ']';
-    Result := Result + ' ';
   end;
 end;
 
