@@ -25,7 +25,10 @@ type
     function HandleParam(const s: string; var i: integer): boolean; override;
     procedure DumpKanjiFull(k: TKanjiRecord);
     procedure DumpCharLink(link: PCharLink; lvl: string='');
-    procedure DumpAdditionalKanji(link: PAdditionalKanji; lvl: string='');
+    procedure DumpKunyomi(ks: PKunReadingSet; km: PKunyomiMeaningBlock; lvl: string='');
+    procedure DumpKunyomiKanjiLink(link: PKunyomiKanjiLink; lvl: string='');
+    procedure DumpKunyomiMeaningClause(rc: PKunyomiMeaningClause; lvl: string='');
+    procedure DumpRelatedKanji(link: PRelatedKanjiLink; lvl: string='');
   public
     procedure ShowUsage; override;
     procedure Run; override;
@@ -121,8 +124,9 @@ begin
 end;
 
 procedure TYarxiConvert.DumpKanjiFull(k: TKanjiRecord);
-var i, j: integer;
-  kun: PKunReadingSet;
+var i: integer;
+  ks: PKunReadingSet;
+  km: PKunyomiMeaningBlock;
 begin
   Output.WriteLn('#'+IntToStr(k.Nomer)+': '+k.Kanji);
   if k.RusNicks.Length>1 then
@@ -135,49 +139,99 @@ begin
     Output.WriteLn('  -show only '+IntToStr(k.KunYomi.show_kuns)+' kuns.');
   if k.KunYomi.show_tango>0 then
     Output.WriteLn('  -show only '+IntToStr(k.KunYomi.show_tango)+' tango.');
-  for i := 0 to Length(k.KunYomi.kun)-1 do begin
-    kun := @k.KunYomi.kun[i];
 
-    Output.Write('  '+kun.kanji);
-    for j := 0 to Length(kun.items)-1 do begin
-      Output.Write(' ['+kun.items[j].kana+'/'+kun.items[j].romaji);
-      if krHidden in kun.items[j].flags then
+  i := 0;
+  while (i<Length(k.KunYomi.kun)) or (i<k.Russian.kunyomi.Length) do begin
+    if i<Length(k.KunYomi.kun) then
+      ks := @k.KunYomi.kun[i]
+    else
+      ks := nil;
+    if i<k.Russian.kunyomi.Length then
+      km := PKunyomiMeaningBlock(k.Russian.kunyomi.GetPointer(i))
+    else
+      km := nil;
+    DumpKunyomi(ks, km, '  ');
+    Inc(i);
+  end;
+
+  case k.Russian.fk_flag of
+    fkMissing: Output.Writeln('Feldman-Konrad: Missing.');
+    fkDeprecated: Output.Writeln('Feldman-Konrad: Deprecated.');
+    fkOriginal: Output.Writeln('Feldman-Konrad: Original.');
+    fkSimplified: Output.Writeln('Feldman-Konrad: Simplified.');
+  //иначе ничего
+  end;
+
+  if k.Russian.related_kanji.Count>0 then
+    Output.WriteLn('Related kanji:');
+  for i := 0 to k.Russian.related_kanji.Count-1 do
+    DumpRelatedKanji(PRelatedKanjiLink(k.Russian.related_kanji.GetPointer(i)), '  ');
+
+  Output.WriteLn('');
+end;
+
+{ Любой из rs, rb может быть nil, если парного нет }
+procedure TYarxiConvert.DumpKunyomi(ks: PKunReadingSet; km: PKunyomiMeaningBlock; lvl: string='');
+var i: integer;
+begin
+ //Заголовок
+  if ks=nil then
+    Output.WriteLn(lvl+'!!! no kunyomi entry')
+  else begin
+    Output.Write('  '+ks.kanji);
+    for i := 0 to Length(ks.items)-1 do begin
+      Output.Write(' ['+ks.items[i].kana+'/'+ks.items[i].romaji);
+      if krHidden in ks.items[i].flags then
         Output.Write('/hidden');
-      if krUnchecked in kun.items[j].flags then
+      if krUnchecked in ks.items[i].flags then
         Output.Write('/unchecked');
-      if krSpaces in kun.items[j].flags then
+      if krSpaces in ks.items[i].flags then
         Output.Write('/spaces');
       Output.Write(']');
     end;
     Output.WriteLn('');
 
-    for j := 0 to kun.refs.Length-1 do
-      DumpCharLink(PCharLink(kun.refs.GetPointer(j)), '    ');
+   //Начальная информация
+    if ks.latin_tail<>'' then
+      Output.WriteLn(lvl+'  ~~ '+ks.latin_tail);
 
-    if kun.flags<>[] then begin
-      Output.Write('    flags: ');
-      if ksTranscriptionUnderWord in kun.flags then Output.Write('transcr-under-word ');
+    if ks.flags<>[] then begin
+      Output.Write(lvl+'  flags: ');
+      if ksTranscriptionUnderWord in ks.flags then Output.Write('transcr-under-word ');
       Output.WriteLn('');
     end;
+  end;
 
-    if kun.latin_tail<>'' then
-      Output.WriteLn('    '+kun.latin_tail);
+ //Переводы
+  if km=nil then
+    Output.WriteLn(lvl+'  !!! no meaning entry')
+  else begin
+    if km.isNominal then
+      Output.WriteLn(lvl+'  -- nominal meaning');
+    for i := 0 to km.clauses.Count-1 do
+      DumpKunyomiMeaningClause(PKunyomiMeaningClause(km.clauses.GetPointer(i)), lvl+'  ');
+    for i := 0 to km.links.Count-1 do
+      DumpKunyomiKanjiLink(PKunyomiKanjiLink(km.links.GetPointer(i)), lvl+'  ');
+  end;
 
-    case kun.usually_in of
+ //Прочая информация
+  if ks<>nil then begin
+    for i := 0 to ks.refs.Length-1 do
+      DumpCharLink(PCharLink(ks.refs.GetPointer(i)), lvl+'  ');
+
+    case ks.usually_in of
       uiHiragana: Output.WriteLn('    Usually in hiragana');
       uiKatakana: Output.WriteLn('    Usually in katakana');
       uiKana:  Output.WriteLn('    Usually in kana');
     end;
 
-    for j := 0 to kun.tl_usually_in.Length-1 do
-      case kun.tl_usually_in[j] of
-        uiHiragana: Output.WriteLn('    '+IntToStr(j)+': Usually in hiragana');
-        uiKatakana: Output.WriteLn('    '+IntToStr(j)+': Usually in katakana');
-        uiKana:  Output.WriteLn('    '+IntToStr(j)+': Usually in kana');
+    for i := 0 to ks.tl_usually_in.Length-1 do
+      case ks.tl_usually_in[i] of
+        uiHiragana: Output.WriteLn('    '+IntToStr(i)+': Usually in hiragana');
+        uiKatakana: Output.WriteLn('    '+IntToStr(i)+': Usually in katakana');
+        uiKana:  Output.WriteLn('    '+IntToStr(i)+': Usually in kana');
       end;
   end;
-
-  Output.WriteLn('');
 end;
 
 procedure TYarxiConvert.DumpCharLink(link: PCharLink; lvl: string='');
@@ -201,14 +255,50 @@ begin
     Output.WriteLn('='+IntToStr(link.wordref));
 end;
 
-procedure TYarxiConvert.DumpAdditionalKanji(link: PAdditionalKanji; lvl: string='');
+procedure TYarxiConvert.DumpKunyomiMeaningClause(rc: PKunyomiMeaningClause; lvl: string='');
+var i: integer;
+  entry: PKunyomiMeaningSuffixedEntry;
 begin
-  Output.Write(lvl+'add_kanji: '+IntToStr(link.pos)+' ');
-  Output.Write(link.text);
-  if link.kuri then
-    Output.WriteLn('kuri')
+ //Начало кляузы. Первое вхождение в той же строчке (чаще всего оно одно),
+ //последующие с отступом на следующих.
+  if rc.common_clause then
+    Output.Write(lvl+'Common: ')
   else
-    Output.WriteLn('');
+  if rc.index=0 then
+    Output.Write(lvl) //Для нуля в порядке исключения ничего не пишем, т.к. самый частый вариат
+  else
+    Output.Write(lvl+'#'+IntToStr(rc.index)+': ');
+
+  if rc.common_clause and (rc.index<>0) then
+    Output.Write(' !!! common clause with non-zero index! ');
+
+  for i := 0 to rc.entries.Count-1 do begin
+    entry := PKunyomiMeaningSuffixedEntry(rc.entries.GetPointer(i));
+    if i>0 then
+      Output.Write(lvl+'  ');
+    if entry.suffix<>'' then
+      Output.Write('~~ '+entry.suffix+': ');
+    if entry.text<>'' then
+      Output.WriteLn(entry.text)
+    else
+      Output.WriteLn('---');
+  end;
+end;
+
+procedure TYarxiConvert.DumpRelatedKanji(link: PRelatedKanjiLink; lvl: string='');
+begin
+  Output.Write(lvl+'link: '+link._type);
+  case link.pos of
+    rpBigGray: Output.Write(' @biggray');
+    rpUnderKanji: Output.Write(' @underkanji');
+    rpUnderNickname: Output.Write(' @undernick');
+  end;
+  Output.WriteLn(' '+link.text);
+end;
+
+procedure TYarxiConvert.DumpKunyomiKanjiLink(link: PKunyomiKanjiLink; lvl: string='');
+begin
+  Output.Write(lvl+'link: '+link._type+': '+link.text);
 end;
 
 procedure TYarxiConvert.RunTango;

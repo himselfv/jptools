@@ -42,6 +42,7 @@ function IsDigit(const ch: char): boolean; inline;
 function DigitToInt(const ch: char): byte; inline;
 
 function EatNumber(var pc: PChar): integer; overload;
+function EatNumber(var pc: PChar; DigitCount: integer): integer; overload;
 function EatLatin(var pc: PChar): string;// inline;
 
 function test_char(const ch: char; const chars: string): integer;
@@ -169,17 +170,6 @@ type
     class function cleanRoma(const s: string): string; static;
   end;
   PKunReading = ^TKunReading;
-  TAdditionalKanji = record
-    pos: integer; //точка вставки доп. цепочки кандзи, в кандзи!
-    text: string;
-    kuri: boolean; //в конце цепочки курикаэси
-  end;
-  PAdditionalKanji = ^TAdditionalKanji;
-  TOptionalSpan = record
-    op: byte; //начинается после ...
-    ed: byte; //кончается после ...; 0 = до конца транскрипции
-  end;
-  POptionalSpan = ^TOptionalSpan;
   TUsuallyIn = (
     uiNormal = 0,
     uiHiragana,
@@ -208,6 +198,7 @@ function ParseCharLink(var pc: PChar): TCharLink;
 function ParseAdditionalKanjiChain(var pc: PChar): string;
 
 
+
 {
   Кандзи: Чтения в сочетаниях.
 }
@@ -228,6 +219,7 @@ function ParseKanjiCompoundReadings(inp: string): TCompoundReadings;
 function DumpKanjiCompoundReadings(const AReadings: TCompoundReadings): string;
 function DumpKanjiCompoundReadingSet(const AReadingSet: TCompoundReadingSet): string;
 function DumpKanjiCompoundReading(const AReading: TCompoundReading): string;
+
 
 
 {
@@ -252,13 +244,14 @@ function DumpKanjiNameReadings(const AReadings: TNameReadings): string;
 function DumpKanjiNameReading(const AReading: TNameReading): string;
 
 
+
 {
   Кандзи: Kanji.Kunyomi
 }
 type
   TKanjiReadings = record
-    show_kuns: byte; //показывать n кунов, остальное под кат
-    show_tango: byte; //показывать n танго, остальное под кат
+    show_kuns: byte; //показывать n кунов, остальное под кат -- не уверен
+    show_tango: byte; //показывать n танго, остальное под кат -- не уверен
     kun: TKunReadings;
     compound: TCompoundReadings;
     name: TNameReadings;
@@ -275,8 +268,9 @@ function DumpKanjiKunYomi(const AReadings: TKanjiReadings): string;
 type
   TKunyomiKanjiLink = record
     _type: char;
-    charref: integer;
+    text: string;
   end;
+  PKunyomiKanjiLink = ^TKunyomiKanjiLink;
 
  {
   Значения разделены на:
@@ -323,8 +317,9 @@ type
   TRelatedKanjiLink = record
     pos: TRelatedKanjiPos;
     _type: char;
-    charref: integer;
+    text: string;
   end;
+  PRelatedKanjiLink = ^TRelatedKanjiLink;
 
   TFeldmanKonradFlag = (
     fkNone,
@@ -537,6 +532,18 @@ begin
   while IsDigit(pc^) do
     Inc(pc);
   Check(pc>ps);
+  Result := StrToInt(spancopy(ps,pc));
+end;
+
+function EatNumber(var pc: PChar; DigitCount: integer): integer;
+var ps: PChar;
+begin
+  ps := pc;
+  while DigitCount>0 do begin
+    Check(IsDigit(pc^));
+    Inc(pc);
+    Dec(DigitCount);
+  end;
   Result := StrToInt(spancopy(ps,pc));
 end;
 
@@ -958,6 +965,17 @@ end;
 }
 type
  //Временная информация по KunReadingSet, при закрытии сета формирующая финальную
+  TAdditionalKanji = record
+    pos: integer; //точка вставки доп. цепочки кандзи, в кандзи!
+    text: string;
+    kuri: boolean; //в конце цепочки курикаэси
+  end;
+  PAdditionalKanji = ^TAdditionalKanji;
+  TOptionalSpan = record
+    op: byte; //начинается после ...
+    ed: byte; //кончается после ...; 0 = до конца транскрипции
+  end;
+  POptionalSpan = ^TOptionalSpan;
   TRawKunReadingSet = record
     prefix_chars: byte; //число символов префикса (до кандзи)
     main_chars: byte; //префикс + число символов, заменяемых кандзи
@@ -1123,10 +1141,14 @@ begin
         else
           ed := 0;
       end;
-      req_sep := true;
+     // req_sep := true; //Nope: #837
     end else
 
     if (pc^='&') or (pc^='=') then begin
+     { Иногда скрытые чтения присоединяются к совсем непохожим (#13). Может
+      показаться, что имелся в виду новый блок. Так ли это - надо подумать...
+      Во всяком случае, перевода для скрытого варианта нет (Яркси ошибочно
+      лезет за ним в другую часть вообще) }
       Inc(pc);
       Check(not flag_next_hidden, 'Duplicate flag_hidden.');
       flag_next_hidden := true;
@@ -1431,8 +1453,9 @@ begin
 
  //Дополняем хвостом ссылки, которым это нужно
   for i := 0 to rset.refs.Length-1 do begin
-    if Length(rset.refs[i].text)=1 then //один-единственный кандзи.. я надеюсь
-      rset.refs.GetPointer(i).text := rset.refs.GetPointer(i).text+kana_tail;
+   { Дополняются ссылки из единственного кандзи, также ссылки вида 因/由 #45 }
+   // if Length(rset.refs[i].text)=1 then //один-единственный кандзи.. я надеюсь
+    rset.refs.GetPointer(i).text := rset.refs.GetPointer(i).text+kana_tail;
   //А префикс не нужно ли? Курикаэси?
   end;
 
@@ -1888,7 +1911,9 @@ begin
   end;
   link._type := pc^;
   Inc(pc);
-  link.charref := EatNumber(pc);
+
+ //Номер ровно 4 цифры -- дальше могут быть другие цифры #945
+  link.text := getKanji(EatNumber(pc, 4));
   Result := true;
 end;
 
@@ -2035,12 +2060,12 @@ begin
             '8': postfix := 'to shita';
             '9': postfix := 'to shite iru';
           else
-            Dec(pc,3);
+            Dec(pc,4);
             Result := false;
           end;
         end
       else
-        Dec(pc,2);
+        Dec(pc,3);
         Result := false;
       end;
     end;
@@ -2149,9 +2174,10 @@ begin
       end;
     end;
   else
-    Dec(pc);
+    Dec(pc, 2);
     Result := false;
   end;
+  Inc(pc);
 
  //Что-то матчнули
   if Result and (pc^=']') then begin
@@ -2335,7 +2361,7 @@ var ps, pc: PChar;
  //Если их нет, открывает по необходимости.
   procedure CommitText;
   begin
-    if pc<ps then exit; //текста пока не было
+    if pc<=ps then exit; //текста пока не было
     while ps^='_' do Inc(ps); //ради пустых элементов "_"
     Check(pc>=ps); //теперь уже пустой текст оставляем - нас попросили
 
@@ -2413,15 +2439,16 @@ begin
     if pc^='&' then begin
       CommitText;
       EndClause;
-      NeedClause;
-     //Номер зависит от того, что уже есть
-     //Может ничего не быть, быть нулевой блок, общий нулевой блок или несколько
-     //блоков
-      if block.clauses.Count=1 then
-        clause.index := 1
+      NeedBlock; //но пока не новую кляузу
+     //Следующий номер зависит от того, что уже есть. Может ничего не быть,
+     //быть нулевой блок, общий нулевой блок или несколько блоков
+      if block.clauses.Count=0 then
+        tmp_int := 1 //Явно открытые кляузы нумеруются с единицы
       else
-        clause.index := block.clauses.LastPointer^.index+1;
-     //Автоматически открытая без & кляуза будет иметь номер 0, как и надо
+        tmp_int := block.clauses.LastPointer^.index+1;
+     //А автоматически открытая без & кляуза будет иметь номер 0, как и надо
+      NeedClause;
+      clause.index := tmp_int;
       Inc(pc);
       ps := pc;
     end else
