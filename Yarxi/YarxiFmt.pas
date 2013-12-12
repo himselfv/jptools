@@ -823,7 +823,8 @@ begin
   while APos>0 do begin
     Inc(Result);
     if Result>Length(romaji) then break;
-    if (romaji[Result]<>'-') and (romaji[Result]<>'·') then
+    if (romaji[Result]<>'-') and (romaji[Result]<>'·')
+    and (romaji[Result]<>'[') and (romaji[Result]<>']') then
       Dec(APos);
   end;
 end;
@@ -840,7 +841,7 @@ begin
   while APos>0 do begin
     Inc(Result);
     if Result>Length(romaji) then break;
-    if romaji[Result]='i' then
+    if (romaji[Result]='i') or (romaji[Result]='I') then
       Dec(APos);
   end;
 end;
@@ -895,8 +896,8 @@ end;
 
 чтение*Qn*     "и" вместо "й" в русской транскрипции в n-й букве i, считая от
                начала ReadingSet
-чтеНИЕ         часть слова катаканой (онное чтение в яп. слове - напр. АИрасии).
-               Если всё слово большими - отображается синим.
+ЧТЕНИЕ         онное чтение в яп. слове - напр. АИрасии. Отображается синим.
+чтеНИЕ         часть слова бывает большими буквами без причины.
 * чтение *     пробелы вокруг => не искать по этому чтению (вероятно?)
 */*чтение      следующий вариант чтения в одном вхождении
 *&*чтение      не показывать, но учитывать при поиске (иногда &слитно).
@@ -1271,17 +1272,14 @@ begin
 
       rd.romaji := spancopy(ps,pc);
       if rd.romaji<>'' then begin
-       //сначала пробелы
+       //пробелы
         if (rd.romaji[1]=' ') or (rd.romaji[Length(rd.romaji)]=' ') then begin
           rd.romaji := Trim(rd.romaji);
           rd.flags := rd.flags + [krSpaces];
         end;
 
-       //теперь заглавные
-        if IsUppercaseLatin(rd.romaji[1]) then begin
-          rd.romaji := LowerCase(rd.romaji);
-          rd.flags := rd.flags + [krOnReading];
-        end;
+       //большие буквы
+        rd.romaji := LowerCase(rd.romaji);
       end;
 
      //req_sep := true;  //Nope, возможно, что-то осталось
@@ -1323,12 +1321,6 @@ begin
   Self.with_kurikaeshi := false;
 end;
 
-{ К сожалению, ромадзи хранится в базе  }
-function cleanroma(const s: string): string;
-begin
-
-end;
-
 { Преобразует временную сырую информацию о наборе чтений в финальную.
 1. Базовый курикаэси (種々). Число kuri_chars задаёт, после какой буквы чтения
 вставить кури. Если оно не равно длине корня (явной или неявной), то весь хвост
@@ -1360,7 +1352,8 @@ var i, main_chars: integer;
   rd: PKunReading;
   ak: PAdditionalKanji;
   prefix: string;
-  add_tail: string;
+  kana_tail: string;
+  add_kanji_tail: string;
   had_secondary_kuri: boolean;
 begin
   Check(Length(rset.items)>0); //иначе странно
@@ -1391,38 +1384,61 @@ begin
 
  //Доп. символы -- не сразу в rset.kanji, их может потребоваться пристроить
  //в разные места
-  add_tail := '';
+  add_kanji_tail := '';
   had_secondary_kuri := false;
   for i := 0 to raw.additional_kanji.Length-1 do begin
     ak := PAdditionalKanji(raw.additional_kanji.GetPointer(i));
-    while ak.pos-1>Length(add_tail) do
-      add_tail := add_tail + ' ';
-    add_tail :=
-      copy(add_tail, 1, ak.pos-2)
+    while ak.pos-1>Length(add_kanji_tail) do
+      add_kanji_tail := add_kanji_tail + ' ';
+    add_kanji_tail :=
+      copy(add_kanji_tail, 1, ak.pos-2)
       +TKunReading.cleanRoma(ak.text)
-      +copy(add_tail, ak.pos-1+Length(ak.text)-1, MaxInt);
+      +copy(add_kanji_tail, ak.pos-1+Length(ak.text)-1, MaxInt);
   end;
 
   rset.kanji := kanji;
   if not had_secondary_kuri then
-    rset.kanji := rset.kanji + add_tail;
+    rset.kanji := rset.kanji + add_kanji_tail;
 
  //Главный курикаэси - перед хвостом
   if raw.with_kurikaeshi then
     rset.kanji := rset.kanji + '々';
 
+ { Вставляем кв. скобки. Вообще говоря, Яркси вставляет их только в кандзи-версию,
+  а все варианты каны оставляет без них. Однако нумеруются они именно в кане.
+  Логично вставлять их и туда, но версий каны может быть несколько, и к другим
+  они уже не подойдут (длина другая, корень другой, окончание другое).
+
+  Однако наблюдается, что Яркси как раз это и использует: если часть кандзи
+  опциональна, в записи есть соотв. число вариантов каны.
+  TODO: Определять такие варианты и объединять. }
+  for i := 0 to raw.optional_spans.Length-1 do begin
+    Insert('[', rd.romaji, rd.roma_getPos(raw.optional_spans[i].op+1));
+    Insert(']', rd.romaji, rd.roma_getPos(raw.optional_spans[i].ed+1));
+  end;
+
  //Хвост
   if raw.with_kurikaeshi and (raw.kuri_chars<>main_chars) then begin
    //Хвост не показывается. Так в Яркси, и он даже на это рассчитывает.
+    kana_tail := '';
   end else begin
    //Обычный хвост
-    rset.kanji := rset.kanji + KanaTran.RomajiToKana(
+    kana_tail := KanaTran.RomajiToKana(
       TKunReading.cleanRoma(copy(rd.romaji, main_chars+1, MaxInt)),
       []);
   end;
+  rset.kanji := rset.kanji + kana_tail;
+
+ //Дополняем хвостом ссылки, которым это нужно
+  for i := 0 to rset.refs.Length-1 do begin
+    if Length(rset.refs[i].text)=1 then //один-единственный кандзи.. я надеюсь
+      rset.refs.GetPointer(i).text := rset.refs.GetPointer(i).text+kana_tail;
+  //А префикс не нужно ли? Курикаэси?
+  end;
+
 
   if had_secondary_kuri then //если был вторичный кури, то доп. кандзи после хвоста
-    rset.kanji := rset.kanji + add_tail;
+    rset.kanji := rset.kanji + add_kanji_tail;
 
  //Префикс
   rset.kanji := prefix + rset.kanji;

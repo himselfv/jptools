@@ -145,8 +145,6 @@ begin
         Output.Write('/hidden');
       if krUnchecked in kun.items[j].flags then
         Output.Write('/unchecked');
-      if krOnReading in kun.items[j].flags then
-        Output.Write('/ON');
       if krSpaces in kun.items[j].flags then
         Output.Write('/spaces');
       Output.Write(']');
