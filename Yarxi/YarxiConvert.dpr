@@ -120,11 +120,14 @@ begin
 end;
 
 procedure TYarxiConvert.DumpKanjiFull(k: TKanjiRecord);
-var i, j, i2: integer;
+var i, j: integer;
   kun: PKunReadingSet;
 begin
   Output.WriteLn('#'+IntToStr(k.Nomer)+': '+k.Kanji);
-  Output.WriteLn('Nick: '+k.RusNick + ' ('+FastArray.Join(k.RusNicks, '/')+')');
+  if k.RusNicks.Length>1 then
+    Output.WriteLn('Nick: '+k.RusNick + ' ('+FastArray.Join(k.RusNicks, '/')+')')
+  else
+    Output.WriteLn('Nick: '+k.RusNick);
   Output.WriteLn('ON: '+k.JoinOns());
   Output.WriteLn('Kun:');
   if k.KunYomi.show_kuns>0 then
@@ -136,16 +139,6 @@ begin
 
     for j := 0 to Length(kun.items)-1 do begin
       Output.Write('  '+kun.items[j].text+' ');
-      if kun.items[j].ipos.Length>0 then begin
-        Output.Write('ipos: ');
-        for i2 := 0 to kun.items[j].ipos.Length-1 do
-          Output.Write(IntToStr(kun.items[j].ipos[i2])+'; ');
-      end;
-      if kun.items[j].tpos.Length>0 then begin
-        Output.Write('tpos: ');
-        for i2 := 0 to kun.items[j].tpos.Length-1 do
-          Output.Write(IntToStr(kun.items[j].tpos[i2])+'; ');
-      end;
       if krIgnoreInSearch in kun.items[j].flags then
         Output.Write('ignore-on-search ');
       if krOnReading in kun.items[j].flags then

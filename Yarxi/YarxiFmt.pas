@@ -29,6 +29,8 @@ function leq(pc: PChar; const match: string): boolean;
 function eat(var pc: PChar; const match: string): boolean; overload;
 function eat(var pc: PChar; const matches: array of string): integer; overload;
 
+function insert(const s: string; APos: integer; const block: string): string;
+
 function repl(const s: string; const AFrom, ATo: string): string; inline;
 function Split(const s: string; const sep: char): TStringArray; inline;
 function Unquote(const s: string; op, ed: char): string;
@@ -121,6 +123,7 @@ type
 function ParseOnYomi(const inp: string): TOnYomiEntries;
 
 
+
 {
  Кандзи: чтения в словах.
 }
@@ -151,13 +154,16 @@ type
   );
   TKunReadingFlags = set of TKunReadingFlag;
   TKunReading = record
+   { Транскрипция, как она встречается в базе + в нужных местах вставлено тире,
+    и после букв, где в русской версии должно стоять "и", вставлены "·" }
     text: string;
-    ipos: TArray<byte>; //места, в к-х в транскрипции вместо й должно стоять и.
-    //В дальнейшем нужно скомбинировать эти поля в расширенную транскрипцию типа:
-    //  jii'jii'
-    //Чтобы парсер мог работать по фиксированным правилам (ii'->ии, ii->ий).
-    tpos: TArray<byte>; //места, где надо вставить тире (не меняя индексации остального)
     flags: TKunReadingFlags;
+   { Мы модифицируем text, вставляя спец. символы. Функция переводит номер буквы
+    в номер в модифицированном тексте. }
+    class function getPos(const AText: string; APos: integer): integer; static;
+    class function getNthI(const AText: string; APos: integer): integer; overload; static;
+    function getNthI(APos: integer): integer; overload; inline;
+    function getIcount: integer; overload; inline;
   end;
   PKunReading = ^TKunReading;
   TAdditionalKanji = record
@@ -196,6 +202,7 @@ type
     additional_kanji: TArray<TAdditionalKanji>;
     usually_in: TUsuallyIn;
     tl_usually_in: TArray<TUsuallyIn>; //если даны метки для конкретных подпунктов
+    procedure getNthI(APos: integer; out AItem: integer; out ACharIdx: integer);
   end;
   PKunReadingSet = ^TKunReadingSet;
   TKunReadings = array of TKunReadingSet;
@@ -470,6 +477,12 @@ begin
       Result := i;
       break;
     end;
+end;
+
+{ Вставляет указанный кусок текста в строку после символа с указанным номером }
+function insert(const s: string; APos: integer; const block: string): string;
+begin
+  Result := copy(s, 1, APos) + block + copy(s, APos+1, MaxInt);
 end;
 
 { Заменяет подстроку в строке }
@@ -809,8 +822,59 @@ begin
     +'Names: '+DumpKanjiNameReadings(AReadings.name);
 end;
 
+
+{ Возвращает положение в модифицированной (расширенной) строке по положению для
+ исходной }
+class function TKunReading.getPos(const AText: string; APos: integer): integer;
+begin
+  Result := 0;
+  while APos>0 do begin
+    Inc(Result);
+    if Result>Length(AText) then break;
+    if (AText[Result]<>'-') and (AText[Result]<>'·') then
+      Dec(APos);
+  end;
+end;
+
+{ Возвращает n-тое вхождение буквы i в строке - нужно для некоторых кодов }
+class function TKunReading.getNthI(const AText: string; APos: integer): integer;
+begin
+  Result := 0;
+  while APos>0 do begin
+    Inc(Result);
+    if Result>Length(AText) then break;
+    if AText[Result]='i' then
+      Dec(APos);
+  end;
+end;
+
+function TKunReading.getNthI(APos: integer): integer;
+begin
+  Result := getNthI(Self.text, APos);
+end;
+
+function TKunReading.getIcount: integer;
+var i: integer;
+begin
+  Result := 0;
+  for i := 1 to Length(text) do
+    if text[i]='i' then Inc(Result);
+end;
+
+{ То же, но для всего ReadingSet }
+procedure TKunReadingSet.getNthI(APos: integer; out AItem: integer; out ACharIdx: integer);
+begin
+  AItem := 0;
+  while AItem<Length(items) do begin
+    ACharIdx := items[AItem].getNthI(APos);
+    if ACharIdx<=Length(items[AItem].text) then
+      break;
+    Dec(APos, items[AItem].getIcount);
+    Inc(AItem);
+  end;
+end;
+
 {
-НЕ ДОПИСАНО ПО-ЧЕЛОВЕЧЕСКИ.
 Поле: Kanji.KunYomi, блок KunReadings.
 Формат: 334*aware*awareppoi*kanashii
 Набор цифр определяет, сколько букв покрывает кандзи в соотв. чтении:
@@ -823,7 +887,8 @@ end;
   034*jiji*/*jijii*/*jii*aware*kanashii
 Последняя * не ставится.
 
-чтение*Qn*     "и" вместо "й" в русской транскрипции в n-й позиции
+чтение*Qn*     "и" вместо "й" в русской транскрипции в n-й букве i, считая от
+               начала ReadingSet
 ЧТЕНИЕ         онное чтение в яп. слове (напр. АИрасии) - отобр. синим
 * чтение *     пробелы вокруг => не искать по этому чтению
 *&*набор       не показывать, но учитывать при поиске (иногда &слитно).
@@ -947,8 +1012,14 @@ begin
 
     if pc^='Q' then begin
       Inc(pc);
-      Check(rd<>nil, 'No open reading');
-      rd.ipos.Add(EatNumber(pc));
+      Check(rd<>nil, 'No open reading'); //должно быть, хоть обращаемся и не напрямую
+      Check(rset<>nil, 'No open reading set');
+      tmp_int := EatNumber(pc);
+     //#2708: если вариантов чтения несколько, индексация букв i идёт сквозь все
+      rset.getNthI(tmp_int, i, tmp_int);
+      Check((i>=0) and (i<Length(rset.items)));
+      Check((tmp_int>=0) and (tmp_int<=Length(rset.items[i].text)));
+      rset.items[i].text := insert(rset.items[i].text, tmp_int, '·');
       req_sep := true;
     end else
 
@@ -967,8 +1038,11 @@ begin
    //также бывает нормальное тире: *-ni itatte wa. #1108
     if (pc^='-') and IsDigit((pc+1)^) then begin
       Inc(pc);
-      Check(rd<>nil, 'No open reading');
-      rd.tpos.Add(EatNumber(pc));
+      Check(rd<>nil, 'No open reading set');
+      tmp_int := EatNumber(pc);
+      i := TKunReading.getPos(rd.text, tmp_int);
+      Check((i>=0) and (i<=Length(rd.text)));
+      rd.text := insert(rd.text, i, '-');
      //req_sep := true;  //#217
     end else
 
