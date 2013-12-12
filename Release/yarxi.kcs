@@ -247,8 +247,6 @@ Dc,cc
 ; M/N english
 nb,mb
 np,mp
-; Misc
-',
 
 ; Conversions to do on RomajiToKana before applying the main translation
 [RomajiToKana]
@@ -311,4 +309,3 @@ ff,Df
 cc,Dc
 ; Misc
 +,x
--,ー

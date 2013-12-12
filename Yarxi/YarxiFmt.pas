@@ -29,8 +29,6 @@ function leq(pc: PChar; const match: string): boolean;
 function eat(var pc: PChar; const match: string): boolean; overload;
 function eat(var pc: PChar; const matches: array of string): integer; overload;
 
-function insert(const s: string; APos: integer; const block: string): string;
-
 function repl(const s: string; const AFrom, ATo: string): string; inline;
 function Split(const s: string; const sep: char): TStringArray; inline;
 function Unquote(const s: string; op, ed: char): string;
@@ -52,6 +50,7 @@ function test_char(const ch: char; const chars: string): integer;
 
 var
   ComplainContext: string;
+  Complaints: integer;
  //добавляется ко всем жалобам. Внешние функции могут записывать сюда
  //номер и/или содержание текущей записи
 
@@ -110,6 +109,7 @@ function ParseKanjiRusNick(const inp: string): TRusNicks;
 Встречается такое (сейчас не обрабатывается):
   *cho:*(*ten**)*
   *ryu:*(*ryo:**)*
+  *setsu*(*sai**)* #3814
   -*do:*
 }
 type
@@ -149,22 +149,24 @@ type
   PCharLink = ^TCharLink;
 
   TKunReadingFlag = (
-    krIgnoreInSearch, //не учитывать при поиске
-    krOnReading       //онное чтение в японском слове (напр. АИрасии)
+    krSpaces,       //было окружено пробелами - хз, что это
+    krHidden,       //не показывать, но учитывать при поиске
+    krUnchecked     //не отредактировано. Если элемент первый, применяется и к переводу
   );
   TKunReadingFlags = set of TKunReadingFlag;
   TKunReading = record
-   { Транскрипция, как она встречается в базе + в нужных местах вставлено тире,
+   { Транскрипция, как она встречается в базе + в нужных местах вставлено тире
     и после букв, где в русской версии должно стоять "и", вставлены "·" }
     romaji: string;
     kana: string;
     flags: TKunReadingFlags;
    { Мы модифицируем text, вставляя спец. символы. Функция переводит номер буквы
     в номер в модифицированном тексте. }
-    class function getPos(const AText: string; APos: integer): integer; static;
-    class function getNthI(const AText: string; APos: integer): integer; overload; static;
-    function getNthI(APos: integer): integer; overload; inline;
-    function getIcount: integer; overload; inline;
+    function roma_getPos(APos: integer): integer;
+    function roma_getLen: integer;
+    function roma_getNthI(APos: integer): integer;
+    function roma_getIcount: integer;
+    class function cleanRoma(const s: string): string; static;
   end;
   PKunReading = ^TKunReading;
   TAdditionalKanji = record
@@ -185,30 +187,23 @@ type
     uiKana
   );
   TKunReadingSetFlag = (
-    ksHidden,                  //не показывать, но учитывать при поиске
-    ksTranscriptionUnderWord,
-    ksWithKurikaeshi,
-    ksUnchecked
+    ksTranscriptionUnderWord
   );
   TKunReadingSetFlags = set of TKunReadingSetFlag;
   TKunReadingSet = record
-    items: array of TKunReading;
-    prefix_chars: byte; //число символов префикса (до кандзи)
-    main_chars: byte; //префикс + число символов, заменяемых кандзи
-    kuri_chars: byte; //число символов, указанных до основного курикаэси
-    optional_spans: TArray<TOptionalSpan>; //опциональные блоки
-    additional_kanji: TArray<TAdditionalKanji>;
+    items: array of TKunReading; //варианты чтения
+    kanji: string; //запись кандзи - одна на все варианты
     refs: TArray<TCharLink>;
     flags: TKunReadingSetFlags;
     latin_tail: string; //дополнительный хвост вида ~суру
     usually_in: TUsuallyIn;
     tl_usually_in: TArray<TUsuallyIn>; //если даны метки для конкретных подпунктов
-    procedure getNthI(APos: integer; out AItem: integer; out ACharIdx: integer);
+    procedure roma_getNthI(APos: integer; out AItem: integer; out ACharIdx: integer);
   end;
   PKunReadingSet = ^TKunReadingSet;
   TKunReadings = array of TKunReadingSet;
 
-function ParseKanjiKunReadings(inp: string): TKunReadings;
+function ParseKanjiKunReadings(const kanji: string; inp: string): TKunReadings;
 function ParseCharLink(var pc: PChar): TCharLink;
 function ParseAdditionalKanjiChain(var pc: PChar): string;
 
@@ -270,7 +265,7 @@ type
   end;
   PKanjiReadings = ^TKanjiReadings;
 
-function ParseKanjiKunYomi(inp: string): TKanjiReadings;
+function ParseKanjiKunYomi(const kanji: string; inp: string): TKanjiReadings;
 function DumpKanjiKunYomi(const AReadings: TKanjiReadings): string;
 
 
@@ -480,12 +475,6 @@ begin
     end;
 end;
 
-{ Вставляет указанный кусок текста в строку после символа с указанным номером }
-function insert(const s: string; APos: integer; const block: string): string;
-begin
-  Result := copy(s, 1, APos) + block + copy(s, APos+1, MaxInt);
-end;
-
 { Заменяет подстроку в строке }
 function repl(const s: string; const AFrom, ATo: string): string;
 begin
@@ -596,6 +585,7 @@ end;
 
 procedure Complain(const msg: string);
 begin
+  Inc(Complaints);
   if ComplainContext<>'' then
     Warning(#13#10'  '+repl(ComplainContext,#09,#13#10'  ')+#13#10'  '+msg)
   else
@@ -608,6 +598,7 @@ begin
     Warning(#13#10'  '+repl(ComplainContext,#09,#13#10'  ')+#13#10'  '+data)
   else
     Warning(msg+#13#10'  '+data);
+  Inc(Complaints);
 end;
 
 
@@ -782,7 +773,7 @@ end;
 Любые блоки могут отсутствовать, однако появляются последовательно. Блок может
 быть пуст.
 }
-function ParseKanjiKunYomi(inp: string): TKanjiReadings;
+function ParseKanjiKunYomi(const kanji: string; inp: string): TKanjiReadings;
 var block: string;
   i: integer;
 begin
@@ -807,7 +798,7 @@ begin
     end;
 
     block := pop(inp, '|');
-    Result.kun := ParseKanjiKunReadings(block);
+    Result.kun := ParseKanjiKunReadings(kanji, block);
     block := pop(inp, '|');
     Result.compound := ParseKanjiCompoundReadings(block);
    //Остальное - имена
@@ -826,35 +817,35 @@ end;
 
 { Возвращает положение в модифицированной (расширенной) строке по положению для
  исходной }
-class function TKunReading.getPos(const AText: string; APos: integer): integer;
+function TKunReading.roma_getPos(APos: integer): integer;
 begin
   Result := 0;
   while APos>0 do begin
     Inc(Result);
-    if Result>Length(AText) then break;
-    if (AText[Result]<>'-') and (AText[Result]<>'·') then
+    if Result>Length(romaji) then break;
+    if (romaji[Result]<>'-') and (romaji[Result]<>'·') then
       Dec(APos);
   end;
+end;
+
+function TKunReading.roma_getLen: integer;
+begin
+  Result := roma_GetPos(MaxInt)-1;
 end;
 
 { Возвращает n-тое вхождение буквы i в строке - нужно для некоторых кодов }
-class function TKunReading.getNthI(const AText: string; APos: integer): integer;
+function TKunReading.roma_getNthI(APos: integer): integer;
 begin
   Result := 0;
   while APos>0 do begin
     Inc(Result);
-    if Result>Length(AText) then break;
-    if AText[Result]='i' then
+    if Result>Length(romaji) then break;
+    if romaji[Result]='i' then
       Dec(APos);
   end;
 end;
 
-function TKunReading.getNthI(APos: integer): integer;
-begin
-  Result := getNthI(Self.romaji, APos);
-end;
-
-function TKunReading.getIcount: integer;
+function TKunReading.roma_getIcount: integer;
 var i: integer;
 begin
   Result := 0;
@@ -862,15 +853,29 @@ begin
     if romaji[i]='i' then Inc(Result);
 end;
 
+{ Ромадзи хранится в базе с пробелами и индексируется с их учётом. Перед
+ преобразованием в кану пробелы и прочий добавленный нами мусор нужно убирать,
+ но из-за того, что на пробелы завязано индексирование, делать это надо уже
+ после выкусывания нужно куска. }
+class function TKunReading.cleanRoma(const s: string): string;
+begin
+  Result := s;
+  Result := repl(Result, ' ', '');
+  Result := repl(Result, '-', ''); //это уже мы добавляли, в базе отдельным кодом
+  Result := repl(Result, '·', '')
+ //А вот кв. скобки не трогаем, они нужны во всех версиях.
+ //Пусть те, кому хочется без них, удаляют их уже из каны/кандзи
+end;
+
 { То же, но для всего ReadingSet }
-procedure TKunReadingSet.getNthI(APos: integer; out AItem: integer; out ACharIdx: integer);
+procedure TKunReadingSet.roma_getNthI(APos: integer; out AItem: integer; out ACharIdx: integer);
 begin
   AItem := 0;
   while AItem<Length(items) do begin
-    ACharIdx := items[AItem].getNthI(APos);
+    ACharIdx := items[AItem].roma_getNthI(APos);
     if ACharIdx<=Length(items[AItem].romaji) then
       break;
-    Dec(APos, items[AItem].getIcount);
+    Dec(APos, items[AItem].roma_getIcount);
     Inc(AItem);
   end;
 end;
@@ -890,18 +895,19 @@ end;
 
 чтение*Qn*     "и" вместо "й" в русской транскрипции в n-й букве i, считая от
                начала ReadingSet
-ЧТЕНИЕ         онное чтение в яп. слове (напр. АИрасии) - отобр. синим
-* чтение *     пробелы вокруг => не искать по этому чтению
-*&*набор       не показывать, но учитывать при поиске (иногда &слитно).
-               Относится именно к набору, т.к. покрытие относится к набору, а для
-               скрытых чтений нет покрытия
+чтеНИЕ         часть слова катаканой (онное чтение в яп. слове - напр. АИрасии).
+               Если всё слово большими - отображается синим.
+* чтение *     пробелы вокруг => не искать по этому чтению (вероятно?)
+*/*чтение      следующий вариант чтения в одном вхождении
+*&*чтение      не показывать, но учитывать при поиске (иногда &слитно).
 *=*чтение      разновидность предыдущего чтения, не показывать
+**чтение       не отредактировано (чтение бледным цветом). Если стоит у первого
+               чтения, то касается и перевода.
 набор*!!*      транскрипция помещается ПОД словом, кол-во транскрипций может быть
                больше одной (#1196)
 набор*!R*      то же, что !!, но только для русского словаря
 чтение*-n*     вставить тире в n-ю позицию чтения. Похоже, только для красоты.
                Номера букв и длина чтения логически не меняются.
-**набор        не отредактировано (набор и его переводы бледным цветом)
 набор*#хвост*  латинский хвост к набору (~суру). Иногда пробел *#в конце *
                На длину чтения и его кандзи-отображение не влияет.
 
@@ -922,33 +928,21 @@ end;
 
 Отображение в кандзи:
 набор*+6*      добавить курикаэси (種々) перед хвостом каны. Число задаёт, после
-  какой буквы чтения вставить кури. Если оно не равно длине корня, то весь хвост
-  отбрасывается:
-    4*abcdef     = 種ef
-    4*abcdef*+4* = 種々ef
-    4*abcdef*+6* = 種々
-  На это код братски закладывается, добавляя недостающий хвост как latin_tail.
-  Хочется взять и уверстать.
-
+               какой буквы чтения вставить кури.
 *набор*$1[..]* вставить с указанной позиции кандзи-позиции (в итоговом тексте):
   [1084]       кандзи в скобках
   1084         кандзи по номеру
   ''кана''     кана
-От стандартного чтения по-прежнему добавляется хвост после всего. Если был кури,
-он добавляется перед хвостом.
-Вхождений $ может быть несколько. Кандзи-позиций перед хвостом выделяется столько,
-какой макс. номер вхождения + длина. Вхождения могут оставлять дыры ($1..$3..)
-или перекрываться ($1''sou''$2''u'' - u в кане накрываются)
-  $25445+      вторичный курикаэси, вставляется после вхождения
-Вторичный кури допускается только один. После него обрезаются остальные вхождения,
-в т.ч. последующие вторичные кури.
-Если присутствует вторичный кури, любой канахвост переносится после первого кандзи:
-  К1_канахвост_К2_К3_вторкури
-Первичный кури вторичному не обязателен. Цифры после + не требуются и игнорируются.
+  $25445+      вторичный курикаэси, вставляется после вхождения. Допускается
+               не больше одного.
+См. комментарии к FinalizeKunReadingSet по подробной трактовке этих параметров
+и их комбинаций.
 
 набор*~n*      n символов от начала чтения вынести перед кандзи (для гонорификов)
 набор*[3]5*    часть чтения с 4-й буквы по 5-ю опциональна (кв. скобки)
 набор*[4[6]6]8 две опциональных части, (4..6] и (6..8]
+Опциональные части могут быть только в хвосте (>= длины корня), т.е. после любых
+кури и доп. кандзи.
 
 Игнорируем:
 набор*VI*
@@ -962,12 +956,22 @@ end;
 !2!041133* AKU *warui*ashi*ashikarazu*akutareru*^!^*akutare*^^*&*nikui*|AKU,WARU/O/-NIKUI
 }
 type
-  TRawKunReading = record
+ //Временная информация по KunReadingSet, при закрытии сета формирующая финальную
+  TRawKunReadingSet = record
+    prefix_chars: byte; //число символов префикса (до кандзи)
+    main_chars: byte; //префикс + число символов, заменяемых кандзи
+    kuri_chars: byte; //число символов, указанных до основного курикаэси
+    optional_spans: TArray<TOptionalSpan>; //опциональные блоки
+    additional_kanji: TArray<TAdditionalKanji>;
+    with_kurikaeshi: boolean;
+    procedure Reset;
   end;
 
+procedure FinalizeKunReadingSet(const kanji: string; rset: PKunReadingSet;
+  const raw: TRawKunReadingSet); forward;
 function match_targeted_kana_flag(pc: PChar): boolean; forward;
 
-function ParseKanjiKunReadings(inp: string): TKunReadings;
+function ParseKanjiKunReadings(const kanji: string; inp: string): TKunReadings;
 var lead: string;
   rset: PKunReadingSet;
   rd: PKunReading;
@@ -977,6 +981,39 @@ var lead: string;
   flag_slash: boolean;
   req_sep: boolean; //require * or EOF as the next char
   i, j: integer;
+  raw: TRawKunReadingSet;
+
+  procedure CloseReading;
+  begin
+    rd := nil;
+  end;
+
+  procedure CloseSet;
+  begin
+    CloseReading();
+    if rset<>nil then
+      FinalizeKunReadingSet(kanji, rset, raw);
+    rset := nil;
+    raw.Reset;
+  end;
+
+  procedure NewSet;
+  begin
+    CloseSet();
+    SetLength(Result, Length(Result)+1);
+    rset := @Result[Length(Result)-1];
+    FillChar(rset^, SizeOf(rset^), 0);
+  end;
+
+  procedure NewReading;
+  begin
+    CloseReading;
+    Check(rset<>nil);
+    SetLength(rset.items, Length(rset.items)+1);
+    rd := @rset.items[Length(rset.items)-1];
+    FillChar(rd^, SizeOf(rd^), 0);
+  end;
+
 begin
   FillChar(Result, SizeOf(Result), 0);
   if Length(inp)<=0 then exit;
@@ -989,6 +1026,8 @@ begin
   lead := pop(inp,'*');
   rset := nil;
   rd := nil;
+  raw.Reset;
+
   pc := PChar(inp);
   while pc^<>#00 do begin
 
@@ -1022,10 +1061,10 @@ begin
       Check(rset<>nil, 'No open reading set');
       j := EatNumber(pc);
      //#2708: если вариантов чтения несколько, индексация букв i идёт сквозь все
-      rset.getNthI(j, i, j);
+      rset.roma_getNthI(j, i, j);
       Check((i>=0) and (i<Length(rset.items)));
       Check((j>=0) and (j<=Length(rset.items[i].romaji)));
-      rset.items[i].romaji := insert(rset.items[i].romaji, j, '·');
+      Insert('·', rset.items[i].romaji, j+1); //insert counts from 1
       req_sep := true;
     end else
 
@@ -1046,30 +1085,30 @@ begin
       Inc(pc);
       Check(rd<>nil, 'No open reading set');
       j := EatNumber(pc);
-      i := TKunReading.getPos(rd.romaji, j);
+      i := rd.roma_getPos(j);
       Check((i>=0) and (i<=Length(rd.romaji)));
-      rd.romaji := insert(rd.romaji, i, '-');
+      Insert('-', rd.romaji, i+1); //insert counts from 1
      //req_sep := true;  //#217
     end else
 
     if pc^='~' then begin
       Inc(pc);
       Check(rset<>nil, 'No open reading set');
-      Check(rset.prefix_chars<=0, 'Duplicate prefix char declaration');
-      rset.prefix_chars := EatNumber(pc);
+      Check(raw.prefix_chars<=0, 'Duplicate prefix char declaration');
+      raw.prefix_chars := EatNumber(pc);
      //req_sep := true;  //Nope: #94
     end else
 
     if pc^='[' then begin
       Inc(pc);
       Check(rset<>nil, 'No open reading set');
-      Check(rset.optional_spans.Length=0, 'Duplicate optional_pos declaration');
-      with rset.optional_spans.AddNew^ do begin
+      Check(raw.optional_spans.Length=0, 'Duplicate optional_pos declaration');
+      with raw.optional_spans.AddNew^ do begin
         op := EatNumber(pc);
         if pc^='[' then begin
           Inc(pc);
          //доп. блок - такой же
-          with rset.optional_spans.AddNew^ do begin
+          with raw.optional_spans.AddNew^ do begin
             op := EatNumber(pc);
             Check(pc^=']');
             Inc(pc);
@@ -1090,12 +1129,13 @@ begin
       Inc(pc);
       Check(not flag_next_hidden, 'Duplicate flag_hidden.');
       flag_next_hidden := true;
+      flag_slash := true;
      //req_sep := true;  //Nope, может слипаться с последующими
     end else
 
     if pc^='/' then begin
       Inc(pc);
-      rd := nil;
+      CloseReading();
       flag_slash := true;
       req_sep := true;
     end else
@@ -1156,9 +1196,9 @@ begin
     if pc^='+' then begin
       Inc(pc);
       Check(rset<>nil, 'No open reading set');
-      Check(not (ksWithKurikaeshi in rset.flags), 'Duplicate +kurikaeshi');
-      rset.kuri_chars := EatNumber(pc);
-      rset.flags := rset.flags + [ksWithKurikaeshi];
+      Check(not raw.with_kurikaeshi, 'Duplicate +kurikaeshi');
+      raw.kuri_chars := EatNumber(pc);
+      raw.with_kurikaeshi := true;
       req_sep := true;
     end else
 
@@ -1166,15 +1206,15 @@ begin
       Check(rset<>nil, 'No open reading set');
       Inc(pc);
       Check(IsDigit(pc^), 'invalid additional_kanji_pos');
-      with rset.additional_kanji.AddNew^ do begin
+      with raw.additional_kanji.AddNew^ do begin
         pos := Ord(pc^)-Ord('0');
         Inc(pc);
         text := ParseAdditionalKanjiChain(pc);
         if pc^='+' then begin
           Inc(pc);
           kuri := true;
-          for i := 0 to rset.additional_kanji.Length-2 do
-            Assert(not rset.additional_kanji[i].kuri); //допуск.-ся только один доп. кури
+          for i := 0 to raw.additional_kanji.Length-2 do
+            Assert(not raw.additional_kanji[i].kuri); //допуск.-ся только один доп. кури
         end;
       end;
      //req_sep := true;  //Nope, бывают цепочки
@@ -1191,62 +1231,50 @@ begin
       Check(pc>ps, 'Cannot parse this part: '+pc);
 
       if not flag_slash then begin
-        SetLength(Result, Length(Result)+1);
-        rset := @Result[Length(Result)-1];
-        FillChar(rset^, SizeOf(rset^), 0);
+        NewSet();
 
-        if flag_next_hidden then begin
-         //Ну и что, блин, делать? Откуда брать настоящую информацию о покрытии?
-         //Потому, что попадаются чтения типа nikui, которые и явно важны,
-         //и покрытие нетривиально.
-         //Идиотский формат.
-          rset.main_chars := 0; //так делает сам яркси
+       //Съедаем одну позицию из lead
+        if lead='' then begin
+          Complain('No char coverage data for another reading block');
+          raw.main_chars := 0;
         end else begin
-         //Съедаем одну позицию из lead
-          if lead='' then begin
-            Complain('No char coverage data for another reading block');
-            rset.main_chars := 0;
-          end else begin
-           //Расширенная позиция: ^7 == 17
-            if lead[1]='^' then begin
-              rset.main_chars := 10;
-              delete(lead,1,1);
-              Check(lead<>'', 'Incomplete char coverage ^expansion');
-            end else
-              rset.main_chars := 0;
-
-            if lead[1]='_' then begin //похоже, это как ноль
-              Complain('lead[i]==_, correcting to 0');
-              lead[1]:='0';
-            end;
-
-           //Остаток позиции
-            Check((lead[1]>='0') and (lead[1]<='9'), 'Invalid char coverage position: '+lead[1]+' (digit expected)');
-            rset.main_chars := rset.main_chars + Ord(lead[1])-Ord('0');
+         //Расширенная позиция: ^7 == 17
+          if lead[1]='^' then begin
+            raw.main_chars := 10;
             delete(lead,1,1);
+            Check(lead<>'', 'Incomplete char coverage ^expansion');
+          end else
+            raw.main_chars := 0;
+
+          if lead[1]='_' then begin //похоже, это как ноль
+            Complain('lead[i]==_, correcting to 0');
+            lead[1]:='0';
           end;
+
+         //Остаток позиции
+          Check((lead[1]>='0') and (lead[1]<='9'), 'Invalid char coverage position: '+lead[1]+' (digit expected)');
+          raw.main_chars := raw.main_chars + Ord(lead[1])-Ord('0');
+          delete(lead,1,1);
         end;
-
-        if flag_next_unchecked then
-          rset.flags := rset.flags + [ksUnchecked];
-        flag_next_unchecked := false;
-
-        if flag_next_hidden then
-          rset.flags := rset.flags + [ksHidden];
-        flag_next_hidden := false;
       end else
         flag_slash := false; //слеш работает на одно чтение вперёд
 
-      SetLength(rset.items, Length(rset.items)+1);
-      rd := @rset.items[Length(rset.items)-1];
-      FillChar(rd^, SizeOf(rd^), 0);
+      NewReading();
+
+      if flag_next_hidden then
+        rd.flags := rd.flags + [krHidden];
+      flag_next_hidden := false;
+
+      if flag_next_unchecked then
+        rd.flags := rd.flags + [krUnchecked];
+      flag_next_unchecked := false;
 
       rd.romaji := spancopy(ps,pc);
       if rd.romaji<>'' then begin
        //сначала пробелы
         if (rd.romaji[1]=' ') or (rd.romaji[Length(rd.romaji)]=' ') then begin
           rd.romaji := Trim(rd.romaji);
-          rd.flags := rd.flags + [krIgnoreInSearch];
+          rd.flags := rd.flags + [krSpaces];
         end;
 
        //теперь заглавные
@@ -1260,13 +1288,11 @@ begin
     end;
   end;
 
+  CloseSet(); //если был
+
  //Контроль
   if lead<>'' then
     Complain('Остались неразобранные позиции числа символов.');
-
-  for i := 0 to Length(Result)-1 do
-    for j := 0 to Length(Result[i].items)-1 do
-      Result[i].items[j].kana := KanaTran.RomajiToKana(Result[i].items[j].romaji, []);
 end;
 
 function match_targeted_kana_flag(pc: PChar): boolean;
@@ -1285,6 +1311,125 @@ begin
   if pc^<>'^' then exit;
   Inc(pc);
   Result := (pc^='^') or (pc^='@') or (pc^='#');
+end;
+
+procedure TRawKunReadingSet.Reset;
+begin
+  Self.prefix_chars := 0;
+  Self.main_chars := 0;
+  Self.kuri_chars := 0;
+  Self.optional_spans.Reset;
+  Self.additional_kanji.Reset;
+  Self.with_kurikaeshi := false;
+end;
+
+{ К сожалению, ромадзи хранится в базе  }
+function cleanroma(const s: string): string;
+begin
+
+end;
+
+{ Преобразует временную сырую информацию о наборе чтений в финальную.
+1. Базовый курикаэси (種々). Число kuri_chars задаёт, после какой буквы чтения
+вставить кури. Если оно не равно длине корня (явной или неявной), то весь хвост
+отбрасывается:
+  4*abcdef     = 種ef
+  4*abcdef*+4* = 種々ef
+  4*abcdef*+6* = 種々
+На это код братски закладывается, добавляя недостающий хвост как latin_tail.
+Хочется взять и уверстать.
+
+2. Сколько бы ни было $доп.кандзи, от стандартного чтения по-прежнему
+добавляется хвост после всего. Если был кури, он добавляется перед хвостом.
+
+3. Вхождений $доп.кандзи может быть несколько. Кандзи-позиций перед хвостом
+выделяется столько, какой макс. номер вхождения + длина. Вхождения могут
+оставлять дыры ($1..$3..) или перекрываться ($1''sou''$2''u'' - u в кане
+накрываются).
+
+4. Вторичный кури допускается только один. После него обрезаются остальные
+вхождения, в т.ч. последующие вторичные кури.
+Если присутствует вторичный кури, любой канахвост переносится после первого
+кандзи:
+  К1_канахвост_К2_К3_вторкури
+Первичный кури вторичному не обязателен. Цифры после + не требуются и
+игнорируются. }
+procedure FinalizeKunReadingSet(const kanji: string; rset: PKunReadingSet;
+  const raw: TRawKunReadingSet);
+var i, main_chars: integer;
+  rd: PKunReading;
+  ak: PAdditionalKanji;
+  prefix: string;
+  add_tail: string;
+  had_secondary_kuri: boolean;
+begin
+  Check(Length(rset.items)>0); //иначе странно
+
+ { Если вариантов несколько, по факту Яркси просто использует для вычислений
+  первый, а остальные просто пишет каной. Хотелось бы что-то проверить (длину,
+  совпадение хвоста), но к сожалению, они могут различаться практически во всём. }
+  rd := @rset.items[0];
+
+  if raw.main_chars>0 then
+    main_chars := raw.main_chars
+  else
+    main_chars := rd.roma_getLen;
+
+ { Непонятно, как опциональные части должны взаимодействовать с каной.
+  Требуем, чтобы все были в хвосте }
+  for i := 0 to raw.optional_spans.Length-1 do begin
+    Check(raw.optional_spans[i].op>=main_chars);
+    Check(raw.optional_spans[i].ed>=main_chars);
+  end;
+
+  if raw.prefix_chars>0 then begin
+    prefix := KanaTran.RomajiToKana(
+      TKunReading.cleanRoma(copy(rd.romaji, 1, rd.roma_getPos(raw.prefix_chars))),
+      []);
+  end else
+    prefix := '';
+
+ //Доп. символы -- не сразу в rset.kanji, их может потребоваться пристроить
+ //в разные места
+  add_tail := '';
+  had_secondary_kuri := false;
+  for i := 0 to raw.additional_kanji.Length-1 do begin
+    ak := PAdditionalKanji(raw.additional_kanji.GetPointer(i));
+    while ak.pos-1>Length(add_tail) do
+      add_tail := add_tail + ' ';
+    add_tail :=
+      copy(add_tail, 1, ak.pos-2)
+      +TKunReading.cleanRoma(ak.text)
+      +copy(add_tail, ak.pos-1+Length(ak.text)-1, MaxInt);
+  end;
+
+  rset.kanji := kanji;
+  if not had_secondary_kuri then
+    rset.kanji := rset.kanji + add_tail;
+
+ //Главный курикаэси - перед хвостом
+  if raw.with_kurikaeshi then
+    rset.kanji := rset.kanji + '々';
+
+ //Хвост
+  if raw.with_kurikaeshi and (raw.kuri_chars<>main_chars) then begin
+   //Хвост не показывается. Так в Яркси, и он даже на это рассчитывает.
+  end else begin
+   //Обычный хвост
+    rset.kanji := rset.kanji + KanaTran.RomajiToKana(
+      TKunReading.cleanRoma(copy(rd.romaji, main_chars+1, MaxInt)),
+      []);
+  end;
+
+  if had_secondary_kuri then //если был вторичный кури, то доп. кандзи после хвоста
+    rset.kanji := rset.kanji + add_tail;
+
+ //Префикс
+  rset.kanji := prefix + rset.kanji;
+
+ //Остальным просто кану
+  for i := 0 to Length(rset.items)-1 do
+    rset.items[i].kana := KanaTran.RomajiToKana(TKunReading.cleanRoma(rset.items[i].romaji), []);
 end;
 
 {

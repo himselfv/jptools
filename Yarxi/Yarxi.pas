@@ -128,7 +128,7 @@ begin
     for i := 0 to Length(Result.OnYomi)-1 do
       Result.OnYomi[i].kana := KanaTran.RomajiToKana(Result.OnYomi[i].kana, []);
     Result.RawKunYomi := rec.KunYomi;
-    Result.KunYomi := ParseKanjiKunYomi(Result.RawKunYomi);
+    Result.KunYomi := ParseKanjiKunYomi(Result.Kanji, Result.RawKunYomi);
     Result.RawRussian := repl(DecodeRussian(rec.Russian),'\','');
     Result.Russian := ParseKanjiRussian(Result.RawRussian);
     Result.RawCompounds := rec.Compounds;

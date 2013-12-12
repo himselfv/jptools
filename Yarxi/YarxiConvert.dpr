@@ -82,6 +82,7 @@ procedure TYarxiConvert.RunKanji(const field: string);
 var k: TKanjiRecord;
 begin
   writeln(ErrOutput, IntToStr(Yarxi.KanjiCount)+' kanji in DB.');
+  writeln(ErrOutput, IntToStr(YarxiFmt.Complaints)+' complaints.');
   for k in Yarxi.Kanji do
     if field='rawrusnick' then
       Output.WriteLn(k.RawKunYomi)
@@ -137,44 +138,32 @@ begin
   for i := 0 to Length(k.KunYomi.kun)-1 do begin
     kun := @k.KunYomi.kun[i];
 
+    Output.Write('  '+kun.kanji);
     for j := 0 to Length(kun.items)-1 do begin
-      Output.Write('  '+kun.items[j].kana+' ['+kun.items[j].romaji+']');
-      if krIgnoreInSearch in kun.items[j].flags then
-        Output.Write('ignore-on-search ');
+      Output.Write(' ['+kun.items[j].kana+'/'+kun.items[j].romaji);
+      if krHidden in kun.items[j].flags then
+        Output.Write('/hidden');
+      if krUnchecked in kun.items[j].flags then
+        Output.Write('/unchecked');
       if krOnReading in kun.items[j].flags then
-        Output.Write('on-reading ');
-      Output.WriteLn('');
+        Output.Write('/ON');
+      if krSpaces in kun.items[j].flags then
+        Output.Write('/spaces');
+      Output.Write(']');
     end;
-
-    Output.WriteLn(Format('    Prefix:%d, main:%d, kuri:%d', [
-      kun.prefix_chars,
-      kun.main_chars,
-      kun.kuri_chars
-    ]));
-
-    for j := 0 to kun.optional_spans.Length-1 do
-      Output.WriteLn(Format('    opt_span:%d-%d', [
-        kun.optional_spans[j].op,
-        kun.optional_spans[j].ed
-      ]));
+    Output.WriteLn('');
 
     for j := 0 to kun.refs.Length-1 do
       DumpCharLink(PCharLink(kun.refs.GetPointer(j)), '    ');
 
     if kun.flags<>[] then begin
       Output.Write('    flags: ');
-      if ksHidden in kun.flags then Output.Write('hidden ');
-      if ksTranscriptionUnderWord in kun.flags then Output.Write('transr-under-word ');
-      if ksWithKurikaeshi in kun.flags then Output.Write('with-kuri ');
-      if ksUnchecked in kun.flags then Output.Write('unchecked ');
+      if ksTranscriptionUnderWord in kun.flags then Output.Write('transcr-under-word ');
       Output.WriteLn('');
     end;
 
     if kun.latin_tail<>'' then
       Output.WriteLn('    '+kun.latin_tail);
-
-    for j := 0 to kun.additional_kanji.Length-1 do
-      DumpAdditionalKanji(PAdditionalKanji(kun.additional_kanji.GetPointer(j)), '    ');
 
     case kun.usually_in of
       uiHiragana: Output.WriteLn('    Usually in hiragana');
@@ -228,6 +217,7 @@ procedure TYarxiConvert.RunTango;
 var k: TTangoRecord;
 begin
   writeln(ErrOutput, IntToStr(Yarxi.TangoCount)+' tango in DB.');
+  writeln(ErrOutput, IntToStr(YarxiFmt.Complaints)+' complaints.');
 
   for k in Yarxi.Tango do
     Output.WriteLn(k.Kana + #09 + k.Reading + #09 + k.Russian);
