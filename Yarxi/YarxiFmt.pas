@@ -156,7 +156,8 @@ type
   TKunReading = record
    { Транскрипция, как она встречается в базе + в нужных местах вставлено тире,
     и после букв, где в русской версии должно стоять "и", вставлены "·" }
-    text: string;
+    romaji: string;
+    kana: string;
     flags: TKunReadingFlags;
    { Мы модифицируем text, вставляя спец. символы. Функция переводит номер буквы
     в номер в модифицированном тексте. }
@@ -196,10 +197,10 @@ type
     main_chars: byte; //префикс + число символов, заменяемых кандзи
     kuri_chars: byte; //число символов, указанных до основного курикаэси
     optional_spans: TArray<TOptionalSpan>; //опциональные блоки
+    additional_kanji: TArray<TAdditionalKanji>;
     refs: TArray<TCharLink>;
     flags: TKunReadingSetFlags;
     latin_tail: string; //дополнительный хвост вида ~суру
-    additional_kanji: TArray<TAdditionalKanji>;
     usually_in: TUsuallyIn;
     tl_usually_in: TArray<TUsuallyIn>; //если даны метки для конкретных подпунктов
     procedure getNthI(APos: integer; out AItem: integer; out ACharIdx: integer);
@@ -374,7 +375,7 @@ function DumpKanjiCompound(const ACompound: TCompoundEntry): string;
 
 
 implementation
-uses StrUtils, YarxiRefs;
+uses StrUtils, YarxiCore, YarxiRefs;
 
 { Полезные функции для работы со строками }
 
@@ -850,15 +851,15 @@ end;
 
 function TKunReading.getNthI(APos: integer): integer;
 begin
-  Result := getNthI(Self.text, APos);
+  Result := getNthI(Self.romaji, APos);
 end;
 
 function TKunReading.getIcount: integer;
 var i: integer;
 begin
   Result := 0;
-  for i := 1 to Length(text) do
-    if text[i]='i' then Inc(Result);
+  for i := 1 to Length(romaji) do
+    if romaji[i]='i' then Inc(Result);
 end;
 
 { То же, но для всего ReadingSet }
@@ -867,7 +868,7 @@ begin
   AItem := 0;
   while AItem<Length(items) do begin
     ACharIdx := items[AItem].getNthI(APos);
-    if ACharIdx<=Length(items[AItem].text) then
+    if ACharIdx<=Length(items[AItem].romaji) then
       break;
     Dec(APos, items[AItem].getIcount);
     Inc(AItem);
@@ -960,7 +961,12 @@ end;
 Для скрытых чтений информация о покрытии отсутствует (напр. #13):
 !2!041133* AKU *warui*ashi*ashikarazu*akutareru*^!^*akutare*^^*&*nikui*|AKU,WARU/O/-NIKUI
 }
+type
+  TRawKunReading = record
+  end;
+
 function match_targeted_kana_flag(pc: PChar): boolean; forward;
+
 function ParseKanjiKunReadings(inp: string): TKunReadings;
 var lead: string;
   rset: PKunReadingSet;
@@ -970,7 +976,7 @@ var lead: string;
   flag_next_unchecked: boolean;
   flag_slash: boolean;
   req_sep: boolean; //require * or EOF as the next char
-  i, tmp_int: integer;
+  i, j: integer;
 begin
   FillChar(Result, SizeOf(Result), 0);
   if Length(inp)<=0 then exit;
@@ -1014,12 +1020,12 @@ begin
       Inc(pc);
       Check(rd<>nil, 'No open reading'); //должно быть, хоть обращаемся и не напрямую
       Check(rset<>nil, 'No open reading set');
-      tmp_int := EatNumber(pc);
+      j := EatNumber(pc);
      //#2708: если вариантов чтения несколько, индексация букв i идёт сквозь все
-      rset.getNthI(tmp_int, i, tmp_int);
+      rset.getNthI(j, i, j);
       Check((i>=0) and (i<Length(rset.items)));
-      Check((tmp_int>=0) and (tmp_int<=Length(rset.items[i].text)));
-      rset.items[i].text := insert(rset.items[i].text, tmp_int, '·');
+      Check((j>=0) and (j<=Length(rset.items[i].romaji)));
+      rset.items[i].romaji := insert(rset.items[i].romaji, j, '·');
       req_sep := true;
     end else
 
@@ -1039,10 +1045,10 @@ begin
     if (pc^='-') and IsDigit((pc+1)^) then begin
       Inc(pc);
       Check(rd<>nil, 'No open reading set');
-      tmp_int := EatNumber(pc);
-      i := TKunReading.getPos(rd.text, tmp_int);
-      Check((i>=0) and (i<=Length(rd.text)));
-      rd.text := insert(rd.text, i, '-');
+      j := EatNumber(pc);
+      i := TKunReading.getPos(rd.romaji, j);
+      Check((i>=0) and (i<=Length(rd.romaji)));
+      rd.romaji := insert(rd.romaji, i, '-');
      //req_sep := true;  //#217
     end else
 
@@ -1115,18 +1121,18 @@ begin
      //К сожалению, придётся заниматься проституцией
       if match_targeted_kana_flag(pc) then begin
         Inc(pc,2); //^_
-        tmp_int := EatNumber(pc);
-        if rset.tl_usually_in.Length<tmp_int then
-          rset.tl_usually_in.SetLength(tmp_int+1);
-        Check(rset.tl_usually_in[tmp_int] = uiNormal);
+        j := EatNumber(pc);
+        if rset.tl_usually_in.Length<j then
+          rset.tl_usually_in.SetLength(j+1);
+        Check(rset.tl_usually_in[j] = uiNormal);
         if eat(pc,['^^','^!^'])>=0 then begin
-          rset.tl_usually_in[tmp_int] := uiHiragana;
+          rset.tl_usually_in[j] := uiHiragana;
         end else
         if eat(pc,'^@') then begin
-          rset.tl_usually_in[tmp_int] := uiKatakana;
+          rset.tl_usually_in[j] := uiKatakana;
         end else
         if eat(pc,'^#') then begin
-          rset.tl_usually_in[tmp_int] := uiKana;
+          rset.tl_usually_in[j] := uiKana;
         end else
           Die('This is goddamn horrible.')
       end else
@@ -1235,17 +1241,17 @@ begin
       rd := @rset.items[Length(rset.items)-1];
       FillChar(rd^, SizeOf(rd^), 0);
 
-      rd.text := spancopy(ps,pc);
-      if rd.text<>'' then begin
+      rd.romaji := spancopy(ps,pc);
+      if rd.romaji<>'' then begin
        //сначала пробелы
-        if (rd.text[1]=' ') or (rd.text[Length(rd.text)]=' ') then begin
-          rd.text := Trim(rd.text);
+        if (rd.romaji[1]=' ') or (rd.romaji[Length(rd.romaji)]=' ') then begin
+          rd.romaji := Trim(rd.romaji);
           rd.flags := rd.flags + [krIgnoreInSearch];
         end;
 
        //теперь заглавные
-        if IsUppercaseLatin(rd.text[1]) then begin
-          rd.text := LowerCase(rd.text);
+        if IsUppercaseLatin(rd.romaji[1]) then begin
+          rd.romaji := LowerCase(rd.romaji);
           rd.flags := rd.flags + [krOnReading];
         end;
       end;
@@ -1256,7 +1262,11 @@ begin
 
  //Контроль
   if lead<>'' then
-    Complain('Остались неразобранные позиции числа символов.')
+    Complain('Остались неразобранные позиции числа символов.');
+
+  for i := 0 to Length(Result)-1 do
+    for j := 0 to Length(Result[i].items)-1 do
+      Result[i].items[j].kana := KanaTran.RomajiToKana(Result[i].items[j].romaji, []);
 end;
 
 function match_targeted_kana_flag(pc: PChar): boolean;
@@ -1443,7 +1453,7 @@ begin
       while (pc^<>#00) and (pc^<>'''') do
         Inc(pc);
       Check(pc^<>#00);
-      Result := Result + spancopy(ps,pc);
+      Result := Result + KanaTran.RomajiToKana(spancopy(ps,pc), []);
       Check(pc^='''');
       Inc(pc);
       Check(pc^='''');

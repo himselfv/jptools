@@ -138,7 +138,7 @@ begin
     kun := @k.KunYomi.kun[i];
 
     for j := 0 to Length(kun.items)-1 do begin
-      Output.Write('  '+kun.items[j].text+' ');
+      Output.Write('  '+kun.items[j].kana+' ['+kun.items[j].romaji+']');
       if krIgnoreInSearch in kun.items[j].flags then
         Output.Write('ignore-on-search ');
       if krOnReading in kun.items[j].flags then
