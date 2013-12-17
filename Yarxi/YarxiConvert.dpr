@@ -2,7 +2,29 @@ program YarxiConvert;
 {$APPTYPE CONSOLE}
 { Reads Yarxi database format and generates various things out of it.
  Requires sqlite3.dll in the same folder.
- Requires sqlite/sqlite3ds to compile }
+ Requires sqlite/sqlite3ds to compile
+
+Также см.:
+  http://code.google.com/p/yarxi-pl/
+  http://code.google.com/p/yarxi-pl/source/browse/trunk/JDFormatter.pm
+
+Везде:
+Названия функций:
+ match_*   попробовать извлечь из строки последовательность, false если её нет
+           или не удалось разобрать
+ parse_*
+ Parse*    извлечь из строки последовательность или бросить ошибку
+ Is*       true, если указанный символ относится к соотв. классу
+ Eat*      извлечь из строки последовательность в определённом формате. Некоторые
+           функции требуют, чтобы она была непустой.
+
+Общие правила:
+ По возможности, допускать исключительно те вольности формата, которые реально
+  были замечены в Yarxi.
+  Если очень хочется написать универсальнее, спрячьте под флаг FORGIVING. Когда
+  потом обнаружим такое в жизни, просто вынем оттуда.
+ Везде ставим пометки #243 на номер записи, где замечена особенность.
+}
 
 uses
   SysUtils,
@@ -10,10 +32,12 @@ uses
   ConsoleToolbox,
   JWBIO,
   FastArray,
-  Yarxi,
-  YarxiFmt,
-  YarxiCore,
-  YarxiStrings in 'YarxiStrings.pas';
+  Yarxi in 'Yarxi.pas',
+  YarxiCore in 'YarxiCore.pas',
+  YarxiStrings in 'YarxiStrings.pas',
+  YarxiRefs in 'YarxiRefs.pas',
+  YarxiKanji in 'YarxiKanji.pas',
+  YarxiTango in 'YarxiTango.pas';
 
 type
   TYarxiConvert = class(TCommandLineApp)
@@ -24,17 +48,20 @@ type
     Output: TStreamEncoder;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
+  protected
     procedure DumpKanjiFull(k: TKanjiRecord);
     procedure DumpCharLink(link: PCharLink; lvl: string='');
     procedure DumpKunyomi(ks: PKunReadingSet; km: PKunyomiMeaningBlock; lvl: string='');
     procedure DumpKunyomiKanjiLink(link: PKunyomiKanjiLink; lvl: string='');
     procedure DumpKunyomiMeaningClause(rc: PKunyomiMeaningClause; lvl: string='');
     procedure DumpRelatedKanji(link: PRelatedKanjiLink; lvl: string='');
+  protected
+    procedure DumpTangoFull(k: TTangoRecord);
   public
     procedure ShowUsage; override;
     procedure Run; override;
     procedure RunKanji(const field: string);
-    procedure RunTango;
+    procedure RunTango(const field: string);
   end;
 
 procedure TYarxiConvert.ShowUsage;
@@ -55,7 +82,7 @@ begin
   if Command='' then
     Command := s
   else
-  if Command='kanji' then
+  if (Command='kanji') or (Command='tango') then
     Field := s;
   Result := true;
 end;
@@ -66,15 +93,15 @@ begin
     BadUsage();
 
   Yarxi := TYarxiDB.Create('yarxi.db');
-  KanaTran.LoadFromFile('yarxi.kcs');
+  KanaTran.LoadFromFile('Hepburn-Yarxi.roma');
 
   Output := ConsoleWriter();
 
   if Command='kanji' then
     RunKanji(Field)
   else
-  if (Command='words') or (Command='tango') then
-    RunTango
+  if Command='tango' then
+    RunTango(Field)
   else
     BadUsage('Invalid command: '+Command);
 
@@ -88,11 +115,8 @@ begin
   writeln(ErrOutput, IntToStr(Yarxi.KanjiCount)+' kanji in DB.');
   writeln(ErrOutput, IntToStr(YarxiCore.Complaints)+' complaints.');
   for k in Yarxi.Kanji do
-    if field='rawrusnick' then
-      Output.WriteLn(k.RawKunYomi)
-    else
     if field='rusnick' then
-      Output.WriteLn(FastArray.Join(k.RusNicks, '/'))
+      Output.WriteLn(k.RawKunYomi)
     else
     if field='ons' then
       Output.WriteLn(k.JoinOns)
@@ -100,18 +124,12 @@ begin
     if field='kanaons' then
       Output.WriteLn(KanaTran.RomajiToKana('K'+k.JoinOns(' '), []))
     else
-    if field='rawkunyomi' then
+    if field='kunyomi' then
       Output.WriteLn(k.RawKunYomi)
     else
-    if field='kunyomi' then
-      Output.WriteLn(DumpKanjiKunYomi(k.KunYomi))
-    else
-    if field='rawrussian' then
+    if (field='russian') or (field='rawrussian') then
       Output.WriteLn(k.RawRussian)
     else
-{    if field='russian' then
-      Output.WriteLn(DumpKanjiRussian(k.Russian))
-    else}
     if field='rawcompounds' then
       Output.WriteLn(k.RawCompounds)
     else
@@ -308,7 +326,20 @@ begin
   writeln(ErrOutput, IntToStr(YarxiCore.Complaints)+' complaints.');
 
   for k in Yarxi.Tango do
-    Output.WriteLn(k.Kana + #09 + k.Reading + #09 + k.Russian);
+    if field='kana' then
+      Output.WriteLn(IntToStr(k.K1)+' '+IntToStr(k.K2)+' '+IntToStr(k.K3)+' '
+        +IntToStr(k.K4)+' '+k.RawKana)
+    else
+    if field='*' then
+      DumpTangoFull(k)
+    else
+      raise Exception.Create('Unknown field');
+end;
+
+procedure TYarxiConvert.DumpTangoFull(k: TTangoRecord);
+begin
+  Output.WriteLn('['+k.Kana+']');
+  Output.WriteLn('');
 end;
 
 begin

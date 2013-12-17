@@ -1,66 +1,46 @@
-﻿unit YarxiFmt;
-{ Форматы, используемые в базе данных Яркси. }
-
-{$DEFINE STRICT}
-{ Допускать только те вольности в формате, которые действительно встречались
- в базе Яркси. Рекомендуется.
- Без этого парсер старается быть терпимым к ошибкам. }
+﻿unit YarxiKanji;
+{
+Kanji
+  Nomer      Номер. В точности соответствует номеру записи, можно игнорировать.
+  RusNick    Имя кандзи на русском, иногда несколько. См. ParseKanjiRusNick
+  OnYomi     Оны, см. ParseKanjiOnYomi
+  KunYomi    Транскрипции чтений кандзи, см. ParseKanjiKunYomi
+              - кунные чтения
+              - онные смыслы и их чтения
+              - чтения в именах
+  Russian    Значения, см. ParseKanjiRussian
+              - значения в кунных чтениях
+              - значения в онных смыслах
+  Compounds  Примеры употреблений в сочетаниях, см. ParseKanjiCompounds
+  Str
+  Utility
+  Uncd       Код символа в UCS2/UTF16 (число).
+  Bushu
+  Dicts
+  Layout
+  Concise
+  Yo
+}
 
 interface
 uses SysUtils, Classes, UniStrUtils, FastArray, WcExceptions;
 
 {
-Названия функций:
- match_*   попробовать извлечь из строки последовательность, false если её нет
-           или не удалось разобрать
- parse_*   извлечь из строки последовательность или бросить ошибку
+ Русское название кандзи.
+ Может быть несколько, некоторые могут быть альтернативными вариантами предыдущих,
+ но мы такие сейчас выкидываем.
 }
 
-{ Полезные функции для работы со строками, которые не могли войти в YarxiStrings,
- т.к. относятся именно к парсеру }
-
-function EatNumber(var pc: PChar): integer; overload;
-function EatNumber(var pc: PChar; DigitCount: integer): integer; overload;
-function EatLatin(var pc: PChar): string;
-
-{
-Поле Kanji.RusNick:
-Формат:  человеколюбие*косточка*вишнёвая берёза
-*#* - альтернативные записи (ставятся ко всему набору):
-  дешёвый*#*дешевый*
-  лёгкий*обмен*#*легкий*обмен**  --- две звёздочки в конце
-*_* - там, где стоит, строка не переносится:
-  речь*_*различать*_*лепесток*косичка*_*управление*
-Ударения:
-  замок*!2  --- ударение на 2-й букве
-  ах!  --- просто восклицательный знак
-Курсив? (для названий радикалов):
-  ''капля''
-  ''лёд''*#*''лед''  --- совместно с альтернативой
-  императорское ''мы''  --- просто кавычки
-
-Ещё встречается:
-  -ха-  --- ничего не значит, отображается, как есть
-}
 type
   TRusNicks = TArray<string>;
 
 function ParseKanjiRusNick(const inp: string): TRusNicks;
 
+
 {
-Поле Kanji.OnYomi:
-Формат: *kana*;*kana**;*kana*
-Могут использоваться ";" и ",".
-Флаги:
- *kana**   чтение малоупотребимое
- -         кокудзи (в т.ч. как один из вариантов)
-Всё поле пустое => кокудзи.
-Встречается такое (сейчас не обрабатывается):
-  *cho:*(*ten**)*
-  *ryu:*(*ryo:**)*
-  *setsu*(*sai**)* #3814
-  -*do:*
+ Онные чтения.
 }
+
 type
   TOnYomiEntry = record
     kana: string; //если пустое => кокудзи
@@ -69,12 +49,12 @@ type
   POnYomiEntry = ^TOnYomiEntry;
   TOnYomiEntries = array of TOnYomiEntry; //пустой => кокудзи
 
-function ParseOnYomi(const inp: string): TOnYomiEntries;
+function ParseKanjiOnYomi(const inp: string): TOnYomiEntries;
 
 
 
 {
- Кандзи: чтения в словах.
+ Readings: Чтения в словах.
 }
 
 type
@@ -147,7 +127,7 @@ function ParseAdditionalKanjiChain(var pc: PChar): string;
 
 
 {
-  Кандзи: Чтения в сочетаниях.
+  Readings: Чтения в сочетаниях.
 }
 type
   TCompoundReadingType = (ctCommon, ctRare);
@@ -170,7 +150,7 @@ function DumpKanjiCompoundReading(const AReading: TCompoundReading): string;
 
 
 {
-  Кандзи: Чтения в именах.
+  Readings: Чтения в именах.
 }
 type
   TNameReadingType = (
@@ -314,42 +294,25 @@ function DumpKanjiCompound(const ACompound: TCompoundEntry): string;
 implementation
 uses StrUtils, YarxiStrings, YarxiCore, YarxiRefs;
 
-{ Полезные функции для работы со строками }
+{
+Поле Kanji.RusNick:
+Формат:  человеколюбие*косточка*вишнёвая берёза
+*#* - альтернативные записи (ставятся ко всему набору):
+  дешёвый*#*дешевый*
+  лёгкий*обмен*#*легкий*обмен**  --- две звёздочки в конце
+*_* - там, где стоит, строка не переносится:
+  речь*_*различать*_*лепесток*косичка*_*управление*
+Ударения:
+  замок*!2  --- ударение на 2-й букве
+  ах!  --- просто восклицательный знак
+Курсив? (для названий радикалов):
+  ''капля''
+  ''лёд''*#*''лед''  --- совместно с альтернативой
+  императорское ''мы''  --- просто кавычки
 
-//Reads a positive number (only digits)
-function EatNumber(var pc: PChar): integer;
-var ps: PChar;
-begin
-  ps := pc;
-  while IsDigit(pc^) do
-    Inc(pc);
-  Check(pc>ps);
-  Result := StrToInt(spancopy(ps,pc));
-end;
-
-function EatNumber(var pc: PChar; DigitCount: integer): integer;
-var ps: PChar;
-begin
-  ps := pc;
-  while DigitCount>0 do begin
-    Check(IsDigit(pc^));
-    Inc(pc);
-    Dec(DigitCount);
-  end;
-  Result := StrToInt(spancopy(ps,pc));
-end;
-
-function EatLatin(var pc: PChar): string;
-var ps: PChar;
-begin
-  ps := pc;
-  while IsLatin(pc^) do
-    Inc(pc);
-  Check(pc>ps);
-  Result := spancopy(ps,pc);
-end;
-
-
+Ещё встречается:
+  -ха-  --- ничего не значит, отображается, как есть
+}
 
 { Убирает ''кавычки'' по сторонам RusNick }
 function KillQuotes(const inp: string): string;
@@ -410,7 +373,21 @@ begin
 end;
 
 
-function ParseOnYomi(const inp: string): TOnYomiEntries;
+{
+Поле Kanji.OnYomi:
+Формат: *kana*;*kana**;*kana*
+Могут использоваться ";" и ",".
+Флаги:
+ *kana**   чтение малоупотребимое
+ -         кокудзи (в т.ч. как один из вариантов)
+Всё поле пустое => кокудзи.
+Встречается такое (сейчас не обрабатывается):
+  *cho:*(*ten**)*
+  *ryu:*(*ryo:**)*
+  *setsu*(*sai**)* #3814
+  -*do:*
+}
+function ParseKanjiOnYomi(const inp: string): TOnYomiEntries;
 var i_beg, i_pos, cnt: integer;
 
   procedure PostWord;
@@ -1569,11 +1546,11 @@ begin
   ps := pc;
   while pc^<>#00 do begin
     if pc^='|' then begin
-     {$IFDEF STRICT}
+     {$IFDEF FORGIVING}
+      CommitReading;
+     {$ELSE}
       if ps<pc then
         raise Exception.Create('ParseKanjiNameReadings: No closing tag for a reading');
-     {$ELSE}
-      CommitReading;
      {$ENDIF}
       case blockType of
         ntCommon: blockType := ntOccasional;
@@ -1587,11 +1564,11 @@ begin
 
    //note: могут быть и как часть текста: $asd$-bsd$  $asd-$bsd$
     if (pc^='-') and ((pc+1)^='$') and (ps>=pc) then begin
-     {$IFDEF STRICT}
+     {$IFDEF FORGIVING}
+      CommitReading;
+     {$ELSE}
       if ps<pc then
         raise Exception.Create('ParseKanjiNameReadings: No closing tag for a reading');
-     {$ELSE}
-      CommitReading;
      {$ENDIF}
       blockType := ntHidden;
       ps := pc+1;
@@ -1605,7 +1582,7 @@ begin
     end else
 
     begin
-     {$IFDEF STRICT}
+     {$IFNDEF FORGIVING}
       if not ReadingSetOpen then
         raise Exception.Create('ParseKanjiNameReadings: No opening tag for a reading');
      {$ENDIF}

@@ -30,13 +30,19 @@ function IsLatin(const ch: char): boolean; inline;
 function IsUpperCaseLatin(const ch: char): boolean; inline;
 function IsCyrillic(const ch: char): boolean; inline;
 function IsDigit(const ch: char): boolean; inline;
+function IsKanji(const ch: char): boolean; inline;
 
 function DigitToInt(const ch: char): byte; inline;
+
+function EatNumber(var pc: PChar): integer; overload;
+function EatNumber(var pc: PChar; DigitCount: integer): integer; overload;
+function EatLatin(var pc: PChar): string;
 
 function test_char(const ch: char; const chars: string): integer;
 
 
 implementation
+uses SysUtils, StrUtils, WcExceptions;
 
 { Длина в char-позициях промежутка между символами }
 function spanlen(ps, pe: PChar): integer;
@@ -228,10 +234,51 @@ begin
   Result := (ch>='0') and (ch<='9');
 end;
 
+//Вообще-то мы немножко просрали двухпозиционные символы... Эх!
+//Слава богу, в Яркси их и близко нет. По-моему.
+function IsKanji(const ch: char): boolean;
+begin
+  Result := ((Word(ch)>=$3400) and (Word(ch)<=$9FFF))
+    or ((Word(ch)>=$F900) and (Word(ch)<=$FAFF));
+end;
+
 //Если это было не число, пеняйте на себя
 function DigitToInt(const ch: char): byte;
 begin
   Result := Ord(ch)-Ord('0');
+end;
+
+//Reads a positive number (only digits)
+function EatNumber(var pc: PChar): integer;
+var ps: PChar;
+begin
+  ps := pc;
+  while IsDigit(pc^) do
+    Inc(pc);
+  Check(pc>ps);
+  Result := StrToInt(spancopy(ps,pc));
+end;
+
+function EatNumber(var pc: PChar; DigitCount: integer): integer;
+var ps: PChar;
+begin
+  ps := pc;
+  while DigitCount>0 do begin
+    Check(IsDigit(pc^));
+    Inc(pc);
+    Dec(DigitCount);
+  end;
+  Result := StrToInt(spancopy(ps,pc));
+end;
+
+function EatLatin(var pc: PChar): string;
+var ps: PChar;
+begin
+  ps := pc;
+  while IsLatin(pc^) do
+    Inc(pc);
+  Check(pc>ps);
+  Result := spancopy(ps,pc);
 end;
 
 //Возвращает индекс символа в списке или 0

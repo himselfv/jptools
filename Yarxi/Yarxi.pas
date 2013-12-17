@@ -8,7 +8,7 @@ Usage:
 
 interface
 uses SysUtils, sqlite3, sqlite3ds, uDataSetHelper, UniStrUtils, JWBKanaConv,
-  FastArray, YarxiStrings, YarxiFmt;
+  FastArray, YarxiStrings, YarxiKanji;
 
 type
   TKanjiRecord = record
@@ -29,7 +29,9 @@ type
   PKanjiRecord = ^TKanjiRecord;
 
   TTangoRecord = record
-    K1, K2, K3, K4: word;
+    Nomer: integer;
+    K1, K2, K3, K4: SmallInt; //can be -1
+    RawKana: string;
     Kana: string;
     Reading: string;
     Russian: string;
@@ -65,7 +67,7 @@ type
 function Join(const AArray: TStringArray; const sep: string=', '): string; overload;
 
 implementation
-uses StrUtils, YarxiRefs, YarxiCore;
+uses StrUtils, YarxiRefs, YarxiCore, YarxiTango;
 
 function Join(const AArray: TStringArray; const sep: string=', '): string;
 var i: integer;
@@ -123,7 +125,7 @@ begin
       Result.RusNick := Result.RusNicks[0]
     else
       Result.RusNick := '';
-    Result.OnYomi := ParseOnYomi(rec.OnYomi);
+    Result.OnYomi := ParseKanjiOnYomi(rec.OnYomi);
    //Преобразуем после сплита, т.к. может затронуть разметочные символы типа тире
     for i := 0 to Length(Result.OnYomi)-1 do
       Result.OnYomi[i].kana := KanaTran.RomajiToKana(Result.OnYomi[i].kana, []);
@@ -140,7 +142,14 @@ end;
 
 function TYarxiDB.ParseTango(const Rec: variant): TTangoRecord;
 begin
-  Result.Kana := rec.Kana;
+  Result.Nomer := rec.Nomer;
+  Result.K1 := rec.K1;
+  Result.K2 := rec.K2;
+  Result.K3 := rec.K3;
+  Result.K4 := rec.K4;
+  Result.RawKana := rec.Kana;
+  Result.Kana := ParseTangoKana(Result.K1, Result.K2, Result.K3, Result.K4,
+    Result.RawKana);
   Result.Reading := rec.Reading;
   Result.Russian := DecodeRussian(rec.Russian);
 end;
@@ -183,11 +192,13 @@ var ds: TSqliteDataset;
   rec: variant;
 begin
   if Length(Tango)>0 then exit; //already parsed;
+  LoadKanjiIndex;
   ds := Db.Query('SELECT * FROM Tango');
-  SetLength(Tango, 60000); //should be enough
+  SetLength(Tango, 70000); //should be enough
   RecCount := 0;
   for rec in ds do begin
-    Tango[RecCount] := ParseTango(rec);
+    if rec.k1 <> -1 then //так отмечена последняя запись, и это что-то чудовищное
+      Tango[RecCount] := ParseTango(rec);
     Inc(RecCount);
   end;
   SetLength(Kanji, RecCount); //trim
