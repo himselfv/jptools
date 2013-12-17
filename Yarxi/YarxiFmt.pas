@@ -16,64 +16,12 @@ uses SysUtils, Classes, UniStrUtils, FastArray, WcExceptions;
  parse_*   извлечь из строки последовательность или бросить ошибку
 }
 
-
-{ Полезные функции для работы со строками }
-
-function spancopy(ps, pe: PChar): string;
-function pop(var s: string; const sep: char): string; overload;
-function pop(var pc: PChar; const sep: char): string; overload;
-function trypop(var s: string; const sep: char): string; overload;
-function trypop(var pc: PChar; const sep: char): string; overload;
-
-function leq(pc: PChar; const match: string): boolean;
-function eat(var pc: PChar; const match: string): boolean; overload;
-function eat(var pc: PChar; const matches: array of string): integer; overload;
-
-function repl(const s: string; const AFrom, ATo: string): string; inline;
-function Split(const s: string; const sep: char): TStringArray; inline;
-function Unquote(const s: string; op, ed: char): string;
-function TryUnquote(var s: string; op, ed: char): boolean;
-
-function IsLatin(const ch: char): boolean; inline;
-function IsUpperCaseLatin(const ch: char): boolean; inline;
-function IsCyrillic(const ch: char): boolean; inline;
-function IsDigit(const ch: char): boolean; inline;
-
-function DigitToInt(const ch: char): byte; inline;
+{ Полезные функции для работы со строками, которые не могли войти в YarxiStrings,
+ т.к. относятся именно к парсеру }
 
 function EatNumber(var pc: PChar): integer; overload;
 function EatNumber(var pc: PChar; DigitCount: integer): integer; overload;
-function EatLatin(var pc: PChar): string;// inline;
-
-function test_char(const ch: char; const chars: string): integer;
-
-{ Функции посылают сюда жалобы на жизнь. }
-
-var
-  ComplainContext: string;
-  Complaints: integer;
- //добавляется ко всем жалобам. Внешние функции могут записывать сюда
- //номер и/или содержание текущей записи
-
-procedure PushComplainContext(const AData: string);
-procedure PopComplainContext;
-procedure Complain(const msg: string); inline; overload;
-procedure Complain(const msg, data: string); inline; overload;
-
-
-{ Во всех полях используется "обезъяний русский":
-    <a   =>   a
-    <b   =>   б
-    <c   =>   в
-
-Обычно всё пишется маленькими, а заглавная буква первой делается автоматически.
-Но если записано имя собственное, то заглавная прописывается явно.
-Заглавные получаются из обычных так: <c -> <C. Для специальных букв заглавные
-смотри ниже по табличке.
-Цифры не кодируются.
-}
-
-function DecodeRussian(const inp: string): string;
+function EatLatin(var pc: PChar): string;
 
 {
 Поле Kanji.RusNick:
@@ -157,7 +105,7 @@ type
   TKunReadingFlags = set of TKunReadingFlag;
   TKunReading = record
    { Транскрипция, как она встречается в базе + в нужных местах вставлено тире
-    и после букв, где в русской версии должно стоять "и", вставлены "·" }
+    и после букв, где в русской версии должно стоять "и", вставлены "´" }
     romaji: string;
     kana: string;
     flags: TKunReadingFlags;
@@ -167,7 +115,6 @@ type
     function roma_getLen: integer;
     function roma_getNthI(APos: integer): integer;
     function roma_getIcount: integer;
-    class function cleanRoma(const s: string): string; static;
   end;
   PKunReading = ^TKunReading;
   TUsuallyIn = (
@@ -365,164 +312,9 @@ function DumpKanjiCompound(const ACompound: TCompoundEntry): string;
 
 
 implementation
-uses StrUtils, YarxiCore, YarxiRefs;
+uses StrUtils, YarxiStrings, YarxiCore, YarxiRefs;
 
 { Полезные функции для работы со строками }
-
-{ Копирует набор символов с ps по pe не включительно }
-function spancopy(ps, pe: PChar): string;
-var i: integer;
-begin
-  SetLength(Result, (NativeUInt(pe)-NativeUInt(ps)) div SizeOf(char));
-  for i := 1 to Length(Result) do begin
-    Result[i] := ps^;
-    Inc(ps);
-  end;
-end;
-
-{ Извлекает начало строки до разделителя; уничтожает разделитель. Если
- разделителя нет, извлекает остаток строки. }
-function pop(var s: string; const sep: char): string;
-var i: integer;
-begin
-  i := pos(sep, s);
-  if i<=0 then begin
-    Result := s;
-    s := '';
-  end else begin
-    Result := copy(s, 1, i-1);
-    delete(s, 1, i);
-  end;
-end;
-
-function pop(var pc: PChar; const sep: char): string;
-var ps: PChar;
-begin
-  ps := pc;
-  while (pc^<>#00) and (pc^<>sep) do
-    Inc(pc);
-  Result := spancopy(ps, pc);
-  if pc^=sep then Inc(pc);
-end;
-
-{ То же, но когда разделителя нет, ничего не возвращает и оставляет хвост, как
- есть. }
-function trypop(var s: string; const sep: char): string;
-var i: integer;
-begin
-  i := pos(sep, s);
-  if i<=0 then
-    Result := ''
-  else begin
-    Result := copy(s, 1, i-1);
-    delete(s, 1, i);
-  end;
-end;
-
-function trypop(var pc: PChar; const sep: char): string;
-var ps: PChar;
-begin
-  ps := pc;
-  while (pc^<>#00) and (pc^<>sep) do
-    Inc(pc);
-  if pc^=#00 then
-    pc := ps
-  else begin
-    Result := spancopy(ps, pc);
-    if pc^=sep then Inc(pc);
-  end;
-end;
-
-
-{ Tests that Pc matches Match at the starting point }
-function leq(pc: PChar; const match: string): boolean;
-var pm: PChar;
-begin
-  pm := PChar(match);
-  while pc^=pm^ do begin
-    Inc(pc);
-    Inc(pm);
-  end;
-  Result := (pm^=#00);
-end;
-
-{ Проверяет, что pc начинается с match, увеличивает pc на его длину. Возвращает
- false, если совпадения нет. }
-function eat(var pc: PChar; const match: string): boolean;
-begin
-  Result := leq(pc, match);
-  if Result then
-    Inc(pc, Length(match));
-end;
-
-{ Проверяет, что pc начинается с какого-то из matches, увеличивает pc на его
- длину. Возвращает номер варианта или -1, если совпадения нет.
- Внимание: если варианты перекрывающиеся (напр. ABC, AB), начинайте с более
- длинных. }
-function eat(var pc: PChar; const matches: array of string): integer;
-var i: integer;
-begin
-  Result := -1;
-  for i := 0 to Length(matches)-1 do
-    if eat(pc, matches[i]) then begin
-      Result := i;
-      break;
-    end;
-end;
-
-{ Заменяет подстроку в строке }
-function repl(const s: string; const AFrom, ATo: string): string;
-begin
-  Result := UniReplaceStr(s, AFrom, ATo);
-end;
-
-{ Чуть более удобная обёртка для функции StrSplit }
-function Split(const s: string; const sep: char): TStringArray;
-begin
-  Result := StrSplit(PChar(s), sep);
-end;
-
-function Unquote(const s: string; op, ed: char): string;
-begin
-  if (Length(s)>=2) and (s[1]=op) and (s[Length(s)]=ed) then
-    Result := copy(s,2,Length(s)-2);
-end;
-
-function TryUnquote(var s: string; op, ed: char): boolean;
-begin
-  Result := (Length(s)>=2) and (s[1]=op) and (s[Length(s)]=ed);
-  if Result then
-    s := copy(s,2,Length(s)-2);
-end;
-
-
-
-function IsLatin(const ch: char): boolean;
-begin
-  Result := ((ch>='A') and (ch<='Z')) or ((ch>='a') and (ch<='z'));
-end;
-
-function IsUpperCaseLatin(const ch: char): boolean;
-begin
-  Result := (ch>='A') and (ch<='Z');
-end;
-
-function IsCyrillic(const ch: char): boolean;
-begin
-  Result := ((ch>='А') and (ch<='Я')) or ((ch>='а') and (ch<='я'))
-    or (ch='Ё') or (ch='ё');
-end;
-
-function IsDigit(const ch: char): boolean;
-begin
-  Result := (ch>='0') and (ch<='9');
-end;
-
-//Если это было не число, пеняйте на себя
-function DigitToInt(const ch: char): byte;
-begin
-  Result := Ord(ch)-Ord('0');
-end;
 
 //Reads a positive number (only digits)
 function EatNumber(var pc: PChar): integer;
@@ -557,100 +349,7 @@ begin
   Result := spancopy(ps,pc);
 end;
 
-//Возвращает индекс символа в списке или 0
-function test_char(const ch: char; const chars: string): integer;
-begin
-  Result := Length(chars);
-  while (Result>0) and (ch<>chars[Result]) do
-    Dec(Result);
-end;
 
-
-{ Сборщик жалоб }
-
-procedure PushComplainContext(const AData: string);
-begin
-  if ComplainContext<>'' then
-    ComplainContext:=ComplainContext+#09+AData
-  else
-    ComplainContext:=AData;
-end;
-
-procedure PopComplainContext;
-var i, j: integer;
-begin
-  i := 0;
-  repeat
-    j := i;
-    i := pos(#09,ComplainContext,j+1);
-  until i<=0;
-  if j=0 then //nothing found
-    ComplainContext := ''
-  else
-    ComplainContext := Copy(ComplainContext,1,j-1);
-end;
-
-procedure Complain(const msg: string);
-begin
-  Inc(Complaints);
-  if ComplainContext<>'' then
-    Warning(#13#10'  '+repl(ComplainContext,#09,#13#10'  ')+#13#10'  '+msg)
-  else
-    Warning(msg);
-end;
-
-procedure Complain(const msg, data: string);
-begin
-  if ComplainContext<>'' then
-    Warning(#13#10'  '+repl(ComplainContext,#09,#13#10'  ')+#13#10'  '+data)
-  else
-    Warning(msg+#13#10'  '+data);
-  Inc(Complaints);
-end;
-
-
-
-{ Заменяет весь обезъяний русский в тексте нормальными русскими буквами. }
-function DecodeRussian(const inp: string): string;
-const
-  eng: string = 'abcdefghijklmnopqrstuvwxyz1234567ABCDEFGHIJKLMNOPQRSTUVWXYZ890!?=+';
-  rus: string = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ';
-var pc, po: PChar;
-  i: integer;
-  found: boolean;
-begin
-  if inp='' then begin
-    Result := '';
-    exit;
-  end;
-
-  Result := '';
-  SetLength(Result, Length(inp)); //not going to be bigger than that
-
-  pc := PChar(@inp[1]);
-  po := PChar(@Result[1]);
-  while pc^<>#00 do begin
-    if pc^='<' then begin
-      Inc(pc);
-      found := false;
-      for i:= 1 to Length(eng) do
-        if eng[i]=pc^ then begin
-          po^ := rus[i];
-          found := true;
-          break;
-        end;
-      if not found then begin
-        po^ := '<';
-        Dec(pc);
-      end;
-    end else
-      po^ := pc^;
-    Inc(pc);
-    Inc(po);
-  end;
-  po^ := #00;
-  SetLength(Result, StrLen(PChar(Result))); //trim
-end;
 
 { Убирает ''кавычки'' по сторонам RusNick }
 function KillQuotes(const inp: string): string;
@@ -834,7 +533,7 @@ begin
   while APos>0 do begin
     Inc(Result);
     if Result>Length(romaji) then break;
-    if (romaji[Result]<>'-') and (romaji[Result]<>'·')
+    if (romaji[Result]<>'-') and (romaji[Result]<>'´')
     and (romaji[Result]<>'[') and (romaji[Result]<>']') then
       Dec(APos);
   end;
@@ -863,20 +562,6 @@ begin
   Result := 0;
   for i := 1 to Length(romaji) do
     if romaji[i]='i' then Inc(Result);
-end;
-
-{ Ромадзи хранится в базе с пробелами и индексируется с их учётом. Перед
- преобразованием в кану пробелы и прочий добавленный нами мусор нужно убирать,
- но из-за того, что на пробелы завязано индексирование, делать это надо уже
- после выкусывания нужно куска. }
-class function TKunReading.cleanRoma(const s: string): string;
-begin
-  Result := s;
-  Result := repl(Result, ' ', '');
-  Result := repl(Result, '-', ''); //это уже мы добавляли, в базе отдельным кодом
-  Result := repl(Result, '·', '')
- //А вот кв. скобки не трогаем, они нужны во всех версиях.
- //Пусть те, кому хочется без них, удаляют их уже из каны/кандзи
 end;
 
 { То же, но для всего ReadingSet }
@@ -997,6 +682,68 @@ procedure FinalizeKunReadingSet(const kanji: string; rset: PKunReadingSet;
   const raw: TRawKunReadingSet); forward;
 function match_targeted_kana_flag(pc: PChar): boolean; forward;
 
+//True, если символ - буква, которая может встречаться в транскрипциях
+function IsTranscriptionChar(const ch: char): boolean;
+begin
+  Result := IsLatin(ch) or (ch=':'){долгота в транскрипциях}
+    or (ch=''''){после буквы n}
+    or (ch='-')
+    or (ch=' ');
+end;
+
+//Читает транскрипцию начиная с текущей буквы
+function EatTranscription(var pc: PChar): string;
+var ps: PChar;
+begin
+  ps := pc;
+  while IsTranscriptionChar(pc^) do
+    Inc(pc);
+  Result := spancopy(ps,pc);
+end;
+
+{ Совмещает основное чтение, производящее кану, с альтернативным - для отображения.
+ Производит общее чтение с пометками собственного формата.
+ rd и alt должны быть непустыми }
+function CombineWithAlternativeReading(const rd: string; const alt: string): string;
+const eBadAlternativeReading = 'Непонятный альтернативный вариант транскрипции: %s (исходный %s)';
+var ps, pa, pb: PChar;
+
+  procedure CommitText;
+  begin
+    if ps>pa then exit;
+    Result := Result + spancopy(ps,pa);
+    ps := pa;
+  end;
+
+begin
+ { Яркси поддерживает только пару ха/ва }
+  Check(Length(rd)=Length(alt));
+
+  Result := '';
+  pa := PChar(rd);
+  pb := PChar(alt);
+  ps := pa;
+  while pa^<>#00 do begin
+    if pa^=pb^ then begin
+      Inc(pa);
+      Inc(pb);
+    end else
+    if (pa^='h') and (pb^='w') then begin
+      CommitText();
+      Inc(pa);
+      Inc(pb);
+      Check((pa^=pb^) and (pa^='a'), eBadAlternativeReading, [alt, rd]);
+      Inc(pa);
+      Inc(pb);
+      Result := Result + 'ha´';
+      ps := pa;
+    end else
+      Die(eBadAlternativeReading, [alt, rd]);
+  end;
+
+  CommitText;
+end;
+
 function ParseKanjiKunReadings(const kanji: string; inp: string): TKunReadings;
 var lead: string;
   rset: PKunReadingSet;
@@ -1008,6 +755,7 @@ var lead: string;
   req_sep: boolean; //require * or EOF as the next char
   i, j: integer;
   raw: TRawKunReadingSet;
+  tmp_str: string;
 
   procedure CloseReading;
   begin
@@ -1090,7 +838,7 @@ begin
       rset.roma_getNthI(j, i, j);
       Check((i>=0) and (i<Length(rset.items)));
       Check((j>=0) and (j<=Length(rset.items[i].romaji)));
-      Insert('·', rset.items[i].romaji, j+1); //insert counts from 1
+      Insert('´', rset.items[i].romaji, j+1); //insert counts from 1
       req_sep := true;
     end else
 
@@ -1151,7 +899,20 @@ begin
      // req_sep := true; //Nope: #837
     end else
 
-    if (pc^='&') or (pc^='=') then begin
+    if pc^='=' then begin
+    { Альтернативное написание - поддерживается только ва/ха, как в Яркси }
+      Check(rd<>nil, 'Нельзя дать альтернативное чтение без главного');
+      Inc(pc);
+      Check(pc^='*'); //можно ослабить и сделать if pc^=='*' then Inc(pc);
+      Inc(pc);
+      tmp_str := EatTranscription(pc);
+      Check(tmp_str<>'');
+      rd.romaji := CombineWithAlternativeReading(rd.romaji, tmp_str);
+
+      req_sep := true;
+    end else
+
+    if pc^='&' then begin
      { Иногда скрытые чтения присоединяются к совсем непохожим (#13). Может
       показаться, что имелся в виду новый блок. Так ли это - надо подумать...
       Во всяком случае, перевода для скрытого варианта нет (Яркси ошибочно
@@ -1252,13 +1013,9 @@ begin
 
    //Просто транскрипция
     begin
-      ps := pc;
-      while IsLatin(pc^) or (pc^=':'){долгота в транскрипциях} or (pc^=''''){после буквы n}
-      or (pc^='-') or (pc^=' ') do
-        Inc(pc);
-
-     //Мы обязаны хоть что-то прочесть, т.к. все флаги мы уже исключили
-      Check(pc>ps, 'Cannot parse this part: '+pc);
+      tmp_str := EatTranscription(pc);
+      //Мы обязаны хоть что-то прочесть, т.к. все флаги мы уже исключили
+      Check(tmp_str<>'', 'Cannot parse this part: '+pc);
 
       if not flag_slash then begin
         NewSet();
@@ -1299,17 +1056,16 @@ begin
         rd.flags := rd.flags + [krUnchecked];
       flag_next_unchecked := false;
 
-      rd.romaji := spancopy(ps,pc);
-      if rd.romaji<>'' then begin
-       //пробелы
-        if (rd.romaji[1]=' ') or (rd.romaji[Length(rd.romaji)]=' ') then begin
-          rd.romaji := Trim(rd.romaji);
-          rd.flags := rd.flags + [krSpaces];
-        end;
+      rd.romaji := tmp_str;
 
-       //большие буквы
-        rd.romaji := LowerCase(rd.romaji);
+     //пробелы
+      if (rd.romaji[1]=' ') or (rd.romaji[Length(rd.romaji)]=' ') then begin
+        rd.romaji := Trim(rd.romaji);
+        rd.flags := rd.flags + [krSpaces];
       end;
+
+     //большие буквы
+      rd.romaji := LowerCase(rd.romaji);
 
      //req_sep := true;  //Nope, возможно, что-то осталось
     end;
@@ -1405,9 +1161,9 @@ begin
   end;
 
   if raw.prefix_chars>0 then begin
-    prefix := KanaTran.RomajiToKana(
-      TKunReading.cleanRoma(copy(rd.romaji, 1, rd.roma_getPos(raw.prefix_chars))),
-      []);
+    prefix := RomajiToKana(clearMarks(
+      copy(rd.romaji, 1, rd.roma_getPos(raw.prefix_chars))
+    ));
   end else
     prefix := '';
 
@@ -1421,7 +1177,7 @@ begin
       add_kanji_tail := add_kanji_tail + ' ';
     add_kanji_tail :=
       copy(add_kanji_tail, 1, ak.pos-2)
-      +TKunReading.cleanRoma(ak.text)
+      +clearMarks(ak.text)
       +copy(add_kanji_tail, ak.pos-1+Length(ak.text)-1, MaxInt);
   end;
 
@@ -1452,9 +1208,9 @@ begin
     kana_tail := '';
   end else begin
    //Обычный хвост
-    kana_tail := KanaTran.RomajiToKana(
-      TKunReading.cleanRoma(copy(rd.romaji, main_chars+1, MaxInt)),
-      []);
+    kana_tail := RomajiToKana(clearMarks(
+        copy(rd.romaji, main_chars+1, MaxInt)
+      ));
   end;
   rset.kanji := rset.kanji + kana_tail;
 
@@ -1475,7 +1231,7 @@ begin
 
  //Остальным просто кану
   for i := 0 to Length(rset.items)-1 do
-    rset.items[i].kana := KanaTran.RomajiToKana(TKunReading.cleanRoma(rset.items[i].romaji), []);
+    rset.items[i].kana := RomajiToKana(clearMarks(rset.items[i].romaji));
 end;
 
 {
@@ -2427,7 +2183,7 @@ begin
      //(влазит ли строка в интерфейсе Яркси). Игнорируем его. Разве что ; добавляем,
      //они не везде перед переносом.
       if (entry.text<>'') and (entry.text[Length(entry.text)]<>';')
-      and (entry.text[Length(entry.text)]<>';') then
+      and (entry.text[Length(entry.text)]<>',') then
         entry.text := entry.text + ';';
       Inc(pc);
      //См. комментарий к разбору () скобок

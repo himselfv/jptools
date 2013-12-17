@@ -46,7 +46,8 @@ var
 { Shortcut functions }
 
 procedure Warning(const msg: string); overload;
-procedure Check(ACondition: boolean; const AErrorText: string = ''); inline;
+procedure Check(ACondition: boolean; const AErrorText: string = ''); overload; inline;
+procedure Check(ACondition: boolean; const AErrorText: string; AArgs: array of const); overload;
 procedure Die(const AErrorText: string = ''); overload; inline;
 procedure Die(const AErrorText: string; AArgs: array of const); overload;
 
@@ -187,6 +188,12 @@ procedure Check(ACondition: boolean; const AErrorText: string = '');
 begin
   if not ACondition then
     Die(AErrorText);
+end;
+
+procedure Check(ACondition: boolean; const AErrorText: string; AArgs: array of const);
+begin
+  if not ACondition then
+    Die(AErrorText, AArgs);
 end;
 
 procedure Die(const AErrorText: string = '');

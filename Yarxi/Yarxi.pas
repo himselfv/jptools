@@ -8,7 +8,7 @@ Usage:
 
 interface
 uses SysUtils, sqlite3, sqlite3ds, uDataSetHelper, UniStrUtils, JWBKanaConv,
-  FastArray, YarxiFmt;
+  FastArray, YarxiStrings, YarxiFmt;
 
 type
   TKanjiRecord = record

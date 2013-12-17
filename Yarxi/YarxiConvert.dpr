@@ -12,7 +12,8 @@ uses
   FastArray,
   Yarxi,
   YarxiFmt,
-  YarxiCore;
+  YarxiCore,
+  YarxiStrings in 'YarxiStrings.pas';
 
 type
   TYarxiConvert = class(TCommandLineApp)
@@ -85,7 +86,7 @@ procedure TYarxiConvert.RunKanji(const field: string);
 var k: TKanjiRecord;
 begin
   writeln(ErrOutput, IntToStr(Yarxi.KanjiCount)+' kanji in DB.');
-  writeln(ErrOutput, IntToStr(YarxiFmt.Complaints)+' complaints.');
+  writeln(ErrOutput, IntToStr(YarxiCore.Complaints)+' complaints.');
   for k in Yarxi.Kanji do
     if field='rawrusnick' then
       Output.WriteLn(k.RawKunYomi)
@@ -189,12 +190,11 @@ begin
         Output.Write('/spaces');
       Output.Write(']');
     end;
+    if ks.latin_tail<>'' then
+      Output.Write(' ~~ '+ks.latin_tail);
     Output.WriteLn('');
 
    //Начальная информация
-    if ks.latin_tail<>'' then
-      Output.WriteLn(lvl+'  ~~ '+ks.latin_tail);
-
     if ks.flags<>[] then begin
       Output.Write(lvl+'  flags: ');
       if ksTranscriptionUnderWord in ks.flags then Output.Write('transcr-under-word ');
@@ -305,7 +305,7 @@ procedure TYarxiConvert.RunTango;
 var k: TTangoRecord;
 begin
   writeln(ErrOutput, IntToStr(Yarxi.TangoCount)+' tango in DB.');
-  writeln(ErrOutput, IntToStr(YarxiFmt.Complaints)+' complaints.');
+  writeln(ErrOutput, IntToStr(YarxiCore.Complaints)+' complaints.');
 
   for k in Yarxi.Tango do
     Output.WriteLn(k.Kana + #09 + k.Reading + #09 + k.Russian);

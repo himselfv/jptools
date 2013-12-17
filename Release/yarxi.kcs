@@ -176,6 +176,9 @@
 3093,30F3,n,н,н
 3093,30F3,n',нъ,н'
 
+
+
+
 ; Conversions to do on KanaToRomaji after applying the main translation
 ; Yarxi accepts both english and russian letters, so we need to do conversions for both
 [KanaToRomaji]
