@@ -8,7 +8,7 @@ Usage:
 
 interface
 uses SysUtils, sqlite3, sqlite3ds, uDataSetHelper, UniStrUtils, JWBKanaConv,
-  FastArray, YarxiStrings, YarxiKanji;
+  FastArray, YarxiStrings, YarxiKanji, YarxiTango;
 
 type
   TKanjiRecord = record
@@ -33,7 +33,8 @@ type
     K1, K2, K3, K4: SmallInt; //can be -1
     RawKana: string;
     Kana: string;
-    Reading: string;
+    RawReadings: string;
+    Readings: TTangoReadings;
     Russian: string;
   end;
   PTangoRecord = ^TTangoRecord;
@@ -67,7 +68,7 @@ type
 function Join(const AArray: TStringArray; const sep: string=', '): string; overload;
 
 implementation
-uses StrUtils, YarxiRefs, YarxiCore, YarxiTango;
+uses StrUtils, YarxiRefs, YarxiCore;
 
 function Join(const AArray: TStringArray; const sep: string=', '): string;
 var i: integer;
@@ -150,7 +151,8 @@ begin
   Result.RawKana := rec.Kana;
   Result.Kana := ParseTangoKana(Result.K1, Result.K2, Result.K3, Result.K4,
     Result.RawKana);
-  Result.Reading := rec.Reading;
+  Result.RawReadings := rec.Reading;
+  Result.Readings := ParseTangoReading(rec.Reading);
   Result.Russian := DecodeRussian(rec.Russian);
 end;
 

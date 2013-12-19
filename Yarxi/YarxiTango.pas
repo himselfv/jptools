@@ -15,12 +15,22 @@ Tango
 
 interface
 
+
 function ParseTangoKana(K1, K2, K3, K4: SmallInt; inp: string): string;
 
-type
-  TTangoReading = string; //тип определён так временно
 
-function ParseTangoReading(inp: string): TTangoReading;
+type
+  TTangoReading = record
+    text: string;
+    rare: boolean;
+    dollar: boolean; //флаг *$* - встречается в небольшом числе случаев, хз что значит
+  end;
+  PTangoReading = ^TTangoReading;
+  TTangoReadings = array of TTangoReading;
+
+function ParseTangoReading(inp: string): TTangoReadings;
+
+
 
 type
   TTangoRussian = string; //тип определён так временно
@@ -32,7 +42,8 @@ function ParseTangoHyphens(reading: TTangoReading; inp: string): TTangoReading; 
 function ParseTangoYo(russian: TTangoRussian; inp: string): TTangoRussian; //может быть лучше будет редактировать на месте, а не возвращать
 
 implementation
-uses SysUtils, WcExceptions, JWBKanaConv, YarxiStrings, YarxiCore, YarxiRefs;
+uses SysUtils, WcExceptions, JWBKanaConv, YarxiStrings, YarxiCore, YarxiRefs,
+  YarxiReadingCommon;
 
 {
 Tango.Kana
@@ -47,8 +58,8 @@ Cлово составляется так:
 Все неиспользованные кандзи добавляются в конец, то есть, можно сделать так:
   0a:kanso: ==> A:KANSO: 1 2
 В кане могут быть вставлены дополнительные кандзи #номер##номер#:
- 13 251 2861 251 2ha4wo#642##1850#6suru                                   #1030
- akkaharyo:kawokuchikusuru
+  13 251 2861 251 2ha4wo#642##1850#6suru                                  #1030
+  akkaharyo:kawokuchikusuru
 
 По умолчанию кана - хирагана; катакана включается так:
   ^a:kanso: ==> A:KANSO: (катаканой)
@@ -183,20 +194,91 @@ begin
 end;
 
 {
-Tango.Reading
-Дополнительные чтения звёздочкой (ставится после каждого):
-  akira*terasu*teru*
-Если дополнительное чтение редкое, ставится двойная звёздочка:
-  akuseku*akusaku**
-Непонятно:
-  aitaibaibai*(*aitai*baibai*
-  0^a:kanso:  a:kanso:shu:*(*a:kanso:*shu:*       >>\\[\штат\]\ Арканзас  アーカンソー州
-  2wo3tsu     aiduchiwoutsu*(*aiduchi*wo*utsu*	  поддакивать
-  то есть, *(* задаёт разбивку выражения на логические части? с помощью *
-  2(4)        aizenmyo:o:*(*myo:o:*aizen*         #\будд.#\Рагараджа\,\божество любви\(\один из богов-охранителей\;\санскр.#\Ragaraja\#)
+Tango.Reading.
+Формат: чтение*чтение**чтение**
+  *     следующий вариант чтения
+  **    прошлое чтение - редкое (напр. #54)
+  *$*   х.з. что, ставлю флаг (#7197)
+  *=*   альтернатива, см. CombineAlternativeReading
+  *(*   далее идёт список вариантов/разбиений на слова
+Список разбиений скрыт, используется только для поиска:
+  agarisagari*(*agari*sagari* (#413) - будет найдено по sagari, но не по saga
+Формат какой-то дебильный и неоднозначный, встречается следующее:
+  aizenmyo:o:*(*myo:o:*aizen*         переставлены местами!
+  eikyu:*towa**tokoshinae**(*eikyu:*towa**tokoshi*na*e***eikyu:*towa**tokoshie*** #5312
+В первом случае куски строки переставлены. Получается, порядок неважен. Нахрена
+тогда во втором дублировать весь базовый набор дважды?
+Логика добавления звёздочек тоже никакому здравому смыслу не подчиняется.
+Но, слава богу, эти разбиения не особо нужны, так что мы их пока просто
+выкидываем. Если кому-то очень хочется, могут разобраться и написать парсер.
 }
-function ParseTangoReading(inp: string): TTangoReading;
+function IsTranscriptionChar(const ch: char): boolean;
 begin
+  Result := IsLatin(ch) or (ch=':'){долгота в транскрипциях}
+    or (ch=''''){после буквы n}
+  ;
+end;
+
+//Читает транскрипцию начиная с текущей буквы
+function EatTranscription(var pc: PChar): string;
+var ps: PChar;
+begin
+  ps := pc;
+  while IsTranscriptionChar(pc^) do
+    Inc(pc);
+  Result := spancopy(ps,pc);
+end;
+
+function ParseTangoReading(inp: string): TTangoReadings;
+var pc: PChar;
+  rd: PTangoReading;
+  tmp_str: string;
+begin
+  SetLength(Result, 0);
+  if inp='' then exit;
+  rd := nil;
+
+  pc := PChar(inp);
+  while pc^<>#00 do begin
+    if pc[0]='(' then begin
+      break; // Да пошло всё в задницу.
+    end else
+    if (pc[0]='*') and (pc[1]='$') then begin
+      Check(rd<>nil);
+      Check(not rd.dollar); //чтоб дважды не допускать
+      rd.dollar := true;
+      Inc(pc, 2);
+    end else
+    if (pc[0]='*') and (pc[1]='*') then begin
+      Check(rd<>nil);
+      Check(not rd.rare); //чтоб дважды не допускать
+      rd.rare := true;
+      Inc(pc, 2);
+    end else
+    if pc^='=' then begin
+    { Альтернативное написание - поддерживается только ва/ха, как в Яркси }
+      Check(rd<>nil, 'Нельзя дать альтернативное чтение без главного');
+      Inc(pc);
+      Check(pc^='*'); //можно ослабить и сделать if pc^=='*' then Inc(pc);
+      Inc(pc);
+      tmp_str := EatTranscription(pc);
+      Check(tmp_str<>'');
+      rd.text := CombineAlternativeReading(rd.text, tmp_str);
+     // req_sep := true;
+    end else
+    if (pc[0]='*') then begin
+      Inc(pc);
+    end else
+   //Обычный текст
+    begin
+      tmp_str := EatTranscription(pc);
+      Check(tmp_str<>'');
+      SetLength(Result, Length(Result)+1);
+      rd := @Result[Length(Result)-1];
+      rd.text := tmp_str;
+      rd.rare := false;
+    end;
+  end;
 
 end;
 
@@ -281,7 +363,8 @@ Tango.Hyphens
 Также встречается, непонятно:
   (4)7            #279 видимо, скобки? проверить
   (6)9*(5)8
-   3-7 9
+  3-7 9
+  **(7)9          #5312 -- звёздочки?
 }
 function ParseTangoHyphens(reading: TTangoReading; inp: string): TTangoReading; //может быть лучше будет редактировать на месте, а не возвращать
 begin

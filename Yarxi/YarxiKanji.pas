@@ -292,7 +292,8 @@ function DumpKanjiCompound(const ACompound: TCompoundEntry): string;
 
 
 implementation
-uses StrUtils, JWBKanaConv, YarxiStrings, YarxiCore, YarxiRefs;
+uses StrUtils, JWBKanaConv, YarxiStrings, YarxiCore, YarxiRefs,
+  YarxiReadingCommon;
 
 {
 Поле Kanji.RusNick:
@@ -678,49 +679,6 @@ begin
   Result := spancopy(ps,pc);
 end;
 
-{ Совмещает основное чтение, производящее кану, с альтернативным - для отображения.
- Производит общее чтение с пометками собственного формата.
- rd и alt должны быть непустыми }
-function CombineWithAlternativeReading(const rd: string; const alt: string): string;
-const eBadAlternativeReading = 'Непонятный альтернативный вариант транскрипции: %s (исходный %s)';
-var ps, pa, pb: PChar;
-
-  procedure CommitText;
-  begin
-    if ps>pa then exit;
-    Result := Result + spancopy(ps,pa);
-    ps := pa;
-  end;
-
-begin
- { Яркси поддерживает только пару ха/ва }
-  Check(Length(rd)=Length(alt));
-
-  Result := '';
-  pa := PChar(rd);
-  pb := PChar(alt);
-  ps := pa;
-  while pa^<>#00 do begin
-    if pa^=pb^ then begin
-      Inc(pa);
-      Inc(pb);
-    end else
-    if (pa^='h') and (pb^='w') then begin
-      CommitText();
-      Inc(pa);
-      Inc(pb);
-      Check((pa^=pb^) and (pa^='a'), eBadAlternativeReading, [alt, rd]);
-      Inc(pa);
-      Inc(pb);
-      Result := Result + 'ha´';
-      ps := pa;
-    end else
-      Die(eBadAlternativeReading, [alt, rd]);
-  end;
-
-  CommitText;
-end;
-
 function ParseKanjiKunReadings(const kanji: string; inp: string): TKunReadings;
 var lead: string;
   rset: PKunReadingSet;
@@ -884,7 +842,7 @@ begin
       Inc(pc);
       tmp_str := EatTranscription(pc);
       Check(tmp_str<>'');
-      rd.romaji := CombineWithAlternativeReading(rd.romaji, tmp_str);
+      rd.romaji := CombineAlternativeReading(rd.romaji, tmp_str);
 
       req_sep := true;
     end else

@@ -37,7 +37,8 @@ uses
   YarxiStrings in 'YarxiStrings.pas',
   YarxiRefs in 'YarxiRefs.pas',
   YarxiKanji in 'YarxiKanji.pas',
-  YarxiTango in 'YarxiTango.pas';
+  YarxiTango in 'YarxiTango.pas',
+  YarxiReadingCommon in 'YarxiReadingCommon.pas';
 
 type
   TYarxiConvert = class(TCommandLineApp)
@@ -330,6 +331,9 @@ begin
       Output.WriteLn(IntToStr(k.K1)+' '+IntToStr(k.K2)+' '+IntToStr(k.K3)+' '
         +IntToStr(k.K4)+' '+k.RawKana)
     else
+    if field='reading' then
+      Output.WriteLn(k.RawReadings)
+    else
     if field='*' then
       DumpTangoFull(k)
     else
@@ -337,8 +341,24 @@ begin
 end;
 
 procedure TYarxiConvert.DumpTangoFull(k: TTangoRecord);
+var i: integer;
 begin
-  Output.WriteLn('['+k.Kana+']');
+ //Первая строчка
+  Output.Write(k.Kana);
+  if Length(k.Readings)>0 then begin
+    Output.Write(' [');
+    for i := 0 to Length(k.Readings)-1 do begin
+      if i>0 then
+        Output.Write(', ');
+      Output.Write(RomajiToKana(k.Readings[i].text));
+      if k.Readings[i].rare then
+        Output.Write('/rare');
+    end;
+    Output.Write(']');
+  end;
+  Output.WriteLn('');
+
+ //Конец записи
   Output.WriteLn('');
 end;
 
