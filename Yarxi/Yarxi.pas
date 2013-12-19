@@ -201,7 +201,7 @@ begin
       Tango[RecCount] := ParseTango(rec);
     Inc(RecCount);
   end;
-  SetLength(Kanji, RecCount); //trim
+  SetLength(Tango, RecCount); //trim
 end;
 
 function TYarxiDB.FindKanjiIndex(const AChar: string): integer;

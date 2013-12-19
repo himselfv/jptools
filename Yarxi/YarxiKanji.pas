@@ -292,7 +292,7 @@ function DumpKanjiCompound(const ACompound: TCompoundEntry): string;
 
 
 implementation
-uses StrUtils, YarxiStrings, YarxiCore, YarxiRefs;
+uses StrUtils, JWBKanaConv, YarxiStrings, YarxiCore, YarxiRefs;
 
 {
 Поле Kanji.RusNick:

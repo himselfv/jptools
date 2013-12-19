@@ -1,7 +1,7 @@
 ﻿unit YarxiCore;
 
 interface
-uses JWBKanaConv;
+uses YarxiStrings, JWBKanaConv;
 
 {
  Данные хранятся в базе Яркси в разновидности кодировки Хэпбёрна. Отделение n
@@ -75,7 +75,7 @@ procedure Complain(const msg, data: string); inline; overload;
 
 
 implementation
-uses SysUtils, WcExceptions, YarxiStrings;
+uses SysUtils, StrUtils, WcExceptions;
 
 function RomajiToKana(const s: string): string;
 begin
