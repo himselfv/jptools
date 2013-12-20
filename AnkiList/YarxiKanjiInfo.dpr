@@ -7,7 +7,7 @@ program YarxiKanjiInfo;
 {$R *.res}
 
 uses
-  SysUtils, ConsoleToolbox, JwbIo, FastArray, Yarxi, YarxiFmt;
+  SysUtils, ConsoleToolbox, JwbIo, FastArray, Yarxi, YarxiKanji, YarxiCore;
 
 type
   TYarxiKanjiInfo = class(TCommandLineApp)
@@ -97,7 +97,7 @@ var inp: TStreamDecoder;
   ln: string;
   kj: TKanjiRecord;
 begin
-  inp := FileReader(AFilename);
+  inp := OpenTextFile(AFilename);
   while inp.ReadChar(ch) do begin
     if not Yarxi.GetKanji(ch, kj) then continue; //no info for kanji
 
@@ -147,7 +147,7 @@ end;
 procedure TYarxiKanjiInfo.YarxiInit;
 begin
   Yarxi := TYarxiDB.Create('yarxi.db');
-  Yarxi.KanaTran.LoadFromFile('yarxi.kcs');
+  KanaTran.LoadFromFile('Hepburn-Yarxi.roma');
 end;
 
 procedure TYarxiKanjiInfo.YarxiFree;

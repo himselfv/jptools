@@ -195,20 +195,14 @@ const
   sUtf16Bom: UniChar = #65520;
 
 procedure TAnkiKanjiList.PrintKanjisFromFile(filename: string);
-var f: TFileStream;
+var f: TStreamDecoder;
   c: char;
 begin
   writeln(ErrOutput, 'Parsing '+filename+'...');
-  f := TFileStream.Create(filename, fmOpenRead);
+  f := OpenTextFile(filename);
   try
-    if f.Read(c, SizeOf(c)) <> SizeOf(c) then exit;
-    if c = sUtf16Bom then begin
-      if f.Read(c, SizeOf(c)) <> SizeOf(c) then exit;
-    end;
-
-    repeat
+    while f.ReadChar(c) do
       PrintKanji(c);
-    until f.Read(c, sizeof(c)) < sizeof(c);
   finally
     FreeAndNil(f);
   end;
