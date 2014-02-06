@@ -1359,7 +1359,10 @@ begin
     if AStream.Read(b1,1)<>1 then break;
 
     if _is(b1,IS_EUC) then begin
-      if AStream.Read(b2,1)<>1 then break;
+      if AStream.Read(b2,1)<>1 then begin
+        AStream.Seek(-1,soFromCurrent);
+        break;
+      end;
       Result[pos] := WideChar(JIS2Unicode((b1*256+b2) and $7f7f));
     end else
       Result[pos] := WideChar(b1);
@@ -1402,7 +1405,10 @@ begin
     if AStream.Read(b1,1)<>1 then break;
 
     if _is(b1,IS_SJIS1) then begin
-      if AStream.Read(b2,1)<>1 then break;
+      if AStream.Read(b2,1)<>1 then begin
+        AStream.Seek(-1,soFromCurrent);
+        break;
+      end;
       if _is(b2,IS_SJIS2) then
         Result[pos] := WideChar(JIS2Unicode(SJIS2JIS(b1*256+b2)))
       else
@@ -1445,7 +1451,10 @@ begin
 
     if b1=JIS_ESC then
     begin
-      if AStream.Read(b2,1)<>1 then break;
+      if AStream.Read(b2,1)<>1 then begin
+        AStream.Seek(-1,soFromCurrent);
+        break;
+      end;
       if (b2=ord('$')) or (b2=ord('(')) then AStream.Read(b1,1); //don't care about the result
       if (b2=ord('K')) or (b2=ord('$')) then inp_intwobyte:=true else inp_intwobyte:=false;
      //Do not exit, continue to the next char
@@ -1453,7 +1462,10 @@ begin
       if (b1=JIS_NL) or (b1=JIS_CR) then
         Result[pos] := WideChar(b1)
       else begin
-        if AStream.Read(b2,1)<>1 then break;
+        if AStream.Read(b2,1)<>1 then begin
+          AStream.Seek(-1,soFromCurrent);
+          break;
+        end;
         if inp_intwobyte then
           Result[pos] := WideChar(JIS2Unicode(b1*256+b2))
         else
@@ -1512,14 +1524,14 @@ end;
 constructor TJISEncoding.Create;
 begin
   inherited;
-  StartMark := Bytes(JIS_ESC, ord('B'), ord('$'));
+  StartMark := Bytes(JIS_ESC, ord('$'), ord('B'));
   EndMark := Bytes(JIS_ESC, ord('('), ord('J'));
 end;
 
 constructor TOldJISEncoding.Create;
 begin
   inherited;
-  StartMark := Bytes(JIS_ESC, ord('@'), ord('$'));
+  StartMark := Bytes(JIS_ESC, ord('$'), ord('@'));
   EndMark := Bytes(JIS_ESC, ord('('), ord('J'));
 end;
 
@@ -1541,7 +1553,10 @@ begin
 
     if (b1>=$a1) and (b1<=$fe) then
     begin
-      if AStream.Read(b2,1)<>1 then break;
+      if AStream.Read(b2,1)<>1 then begin
+        AStream.Seek(-1,soFromCurrent);
+        break;
+      end;
       if (b2>=$a1) and (b2<=$fe) then
         Result[pos] := WideChar(Table_GB[(b1-$a0)*96+(b2-$a0)])
       else
@@ -1592,7 +1607,10 @@ begin
 
     if (b1>=$a1) and (b1<=$fe) then
     begin
-      if AStream.Read(b2,1)<>1 then break;
+      if AStream.Read(b2,1)<>1 then begin
+        AStream.Seek(-1,soFromCurrent);
+        break;
+      end;
       if (b2>=$40) and (b2<=$7f) then
         Result[pos] := WideChar(Table_Big5[(b1-$a0)*160+(b2-$40)])
       else
