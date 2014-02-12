@@ -195,7 +195,7 @@ begin
 end;
 
 procedure TKanjidicEntry.Copy(const ASource: TKanjidicEntry);
-var i, j: integer;
+var i: integer;
 begin
   Self.Reset;
   Self.kanji := ASource.kanji;
