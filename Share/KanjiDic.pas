@@ -160,6 +160,10 @@ end;
 function TKanjiDic.FindEntry(const AChar: UnicodeString): PKanjiDicEntry;
 var item: TBinTreeItem;
 begin
+  if AChar='' then begin
+    Result := nil;
+    exit;
+  end;
   item := FCharTree.SearchData(AChar);
   if item=nil then
     Result := nil

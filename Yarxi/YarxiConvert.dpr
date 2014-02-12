@@ -32,6 +32,8 @@ uses
   ConsoleToolbox,
   JWBIO,
   FastArray,
+  KanjidicReader,
+  Kanjidic,
   Yarxi in 'Yarxi.pas',
   YarxiCore in 'YarxiCore.pas',
   YarxiStrings in 'YarxiStrings.pas',
@@ -63,6 +65,7 @@ type
     procedure Run; override;
     procedure RunKanji(const field: string);
     procedure RunTango(const field: string);
+    procedure RunKanjidic(const field: string);
   end;
 
 procedure TYarxiConvert.ShowUsage;
@@ -71,6 +74,7 @@ begin
   writeln(ErrOutput, 'Supported commands:');
   writeln(ErrOutput, '  kanji = print kanji table fields');
   writeln(ErrOutput, '  tango = print tango table');
+  writeln(ErrOutput, '  kanjidic = build kanjidic')
 end;
 
 function TYarxiConvert.HandleSwitch(const s: string; var i: integer): boolean;
@@ -103,6 +107,9 @@ begin
   else
   if Command='tango' then
     RunTango(Field)
+  else
+  if Command='kanjidic' then
+    RunKanjidic(Field)
   else
     BadUsage('Invalid command: '+Command);
 
@@ -140,6 +147,7 @@ begin
     if field='*' then
       DumpKanjiFull(k)
     else
+
       raise Exception.Create('Unknown field');
 end;
 
@@ -360,6 +368,63 @@ begin
 
  // онец записи
   Output.WriteLn('');
+end;
+
+procedure TYarxiConvert.RunKanjidic(const field: string);
+var kdic: TKanjiDic;
+  kentry: PKanjidicEntry;
+  k: TKanjiRecord;
+  ke: TKanjidicEntry;
+  i, j: integer;
+  kset: PKunReadingSet;
+begin
+  kdic := TKanjidic.Create;
+  try
+    kdic.Load(OpenTextFile('KANJIDIC', TEUCEncoding));
+
+    writeln(ErrOutput, IntToStr(Yarxi.KanjiCount)+' kanji in DB.');
+    writeln(ErrOutput, IntToStr(YarxiCore.Complaints)+' complaints.');
+    for k in Yarxi.Kanji do begin
+      if (k.Nomer=0) or (k.Kanji='') then continue; //не все сумели разобрать
+      ke.Reset;
+      kentry := kdic.FindEntry(k.Kanji);
+      if kentry<>nil then
+        ke.Copy(kentry^);
+
+      if k.RusNicks.Count>0 then begin
+       //Replace meanings
+        ke.meanings.Reset;
+        for i := 0 to k.RusNicks.Count-1 do
+          ke.AddMeaning(k.RusNicks[i]);
+      end;
+
+      for i := 0 to Length(ke.readings)-1 do
+        ke.readings[i].Reset;
+
+      ke.readings[0].key := '';
+      ke.readings[1].key := 'T1';
+
+      for i := 0 to Length(k.OnYomi)-1 do
+        if k.OnYomi[i].rare then
+          ke.readings[1].AddOn(k.OnYomi[i].kana)
+        else
+          ke.readings[0].AddOn(k.OnYomi[i].kana);
+
+      for i := 0 to Length(k.KunYomi.kun)-1 do begin
+        kset := @k.KunYomi.kun[i];
+        for j := 0 to Length(kset.items)-1 do begin
+          if krHidden in kset.items[j].flags then
+            continue;
+          ke.readings[0].AddKun(kset.items[j].kana);
+        end;
+      end;
+
+      Output.WriteLn(ComposeKanjidicLine(@ke));
+    end;
+
+  finally
+    FreeAndNil(kdic);
+  end;
 end;
 
 begin

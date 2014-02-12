@@ -8,7 +8,27 @@ unit FastArray;
  2. Any internal links between parts of the structure will be broken,
    resulting in hard-to-track bugs.
  Use pointer arrays (TArray<PSomeRecord>) instead everywhere except for
- the bottom level (strings, simple records). }
+ the bottom level (strings, simple records).
+
+ Note on copying:
+ 1. "r1 := r2" copies just pointers to any internal arrays etc. Changes in r1
+  will affect r2.
+ 2. "r1 := r2.Copy" will fail, no matter how sophisticated your .Copy() is.
+  When you write:
+    for i := 0 to oldList.Count-1 do
+      newList.Add(oldList[i].Copy)
+  Delphi internally does:
+    var tmp: TListItem;
+    for i := 0 to oldList.Count-1 do begin
+      tmp := oldList[i].Copy;
+      newList.Add(CopyRecord(tmp));
+    end;
+  See that? Your sophisticated copy overwrites tmp again and again, and all
+  its instances in newList are affected (they were copied with simple CopyRecord).
+ 3. The way to copy complicated records is:
+  - Allocate memory
+  - Call Source.Copy(memory) (does the same recursively for any arrays etc)
+}
 
 interface
 

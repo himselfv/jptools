@@ -56,6 +56,7 @@ type
     key: string; //always lowercase
     values: TArray<string>; //all values so far are ansi
     procedure Reset;
+    procedure Copy(const ASource: TFieldEntry);
     procedure AddValue(const value: string); inline;
     function Join(const sep: string): string; inline;
   end;
@@ -66,6 +67,7 @@ type
     ons: TArray<UnicodeString>;
     kuns: TArray<UnicodeString>;
     procedure Reset;
+    procedure Copy(const ASource: TReadingClassEntry);
     procedure AddOn(const value: UnicodeString); inline;
     procedure AddKun(const value: UnicodeString); inline;
     function JoinOns(const sep: UnicodeString): UnicodeString; inline;
@@ -82,6 +84,7 @@ type
     readings: array[0..MaxReadingClasses-1] of TReadingClassEntry;
     meanings: TArray<UnicodeString>; //we support multilingual kanjidics
     procedure Reset;
+    procedure Copy(const ASource: TKanjidicEntry);
     procedure AddField(const key: string; const value: string);
     procedure AddMeaning(const value: UnicodeString); inline;
     function GetField(const key: string): PFieldEntry;
@@ -103,6 +106,9 @@ function IsKanjidicComment(const s: UnicodeString): boolean;
 { Parses a valid non-empty non-comment Kanjidic line and populates the record }
 procedure ParseKanjidicLine(const s: UnicodeString; ed: PKanjidicEntry);
 
+{ Composes Kanjidic line from parsed data }
+function ComposeKanjidicLine(ed: PKanjidicEntry): UnicodeString;
+
 implementation
 
 resourcestring
@@ -119,6 +125,16 @@ begin
   values.Clear;
 end;
 
+procedure TFieldEntry.Copy(const ASource: TFieldEntry);
+var i: integer;
+begin
+  Self.Reset;
+  Self.key := ASource.key;
+  Self.values.Reset;
+  for i := 0 to ASource.values.Count-1 do
+    Self.values.Add(ASource.values[i]);
+end;
+
 procedure TFieldEntry.AddValue(const value: string);
 begin
   values.Add(value);
@@ -133,6 +149,18 @@ procedure TReadingClassEntry.Reset;
 begin
   ons.Clear;
   kuns.Clear;
+end;
+
+procedure TReadingClassEntry.Copy(const ASource: TReadingClassEntry);
+var i: integer;
+begin
+  Self.Reset;
+  Self.key := ASource.key;
+  Self.ons.Reset;
+  for i := 0 to ASource.ons.Count-1 do
+    Self.ons.Add(ASource.ons[i]);
+  for i := 0 to ASource.kuns.Count-1 do
+    Self.kuns.Add(ASource.kuns[i]);
 end;
 
 procedure TReadingClassEntry.AddOn(const value: UnicodeString);
@@ -164,6 +192,21 @@ begin
   meanings.Clear;
   for i := 0 to Length(readings) - 1 do
     readings[i].Reset;
+end;
+
+procedure TKanjidicEntry.Copy(const ASource: TKanjidicEntry);
+var i, j: integer;
+begin
+  Self.Reset;
+  Self.kanji := ASource.kanji;
+  Self.jis := ASource.jis;
+  Self.fields.Reset;
+  for i := 0 to ASource.fields.Count-1 do
+    Self.fields.AddNew^.Copy(ASource.fields[i]);
+  for i := 0 to Length(ASource.readings)-1 do
+    Self.readings[i].Copy(ASource.readings[i]);
+  for i := 0 to ASource.meanings.Count-1 do
+    Self.meanings.Add(ASource.meanings[i]);
 end;
 
 procedure TKanjidicEntry.AddField(const key: string; const value: string);
@@ -368,6 +411,33 @@ begin
         ed.AddField(pref+word[1], copy(word, 2, Length(word)-1));
     end;
   end;
+end;
+
+function ComposeKanjidicLine(ed: PKanjidicEntry): UnicodeString;
+var i, j: integer;
+begin
+  Result := ed.kanji + ' ' + ed.jis;
+
+ //Fields
+  for i := 0 to ed.fields.Count-1 do
+    for j := 0 to ed.fields[i].values.Count-1 do
+      Result := Result + ' ' + ed.fields[i].key+ed.fields[i].values[j];
+
+ //Readings
+  for i := 0 to Length(ed.readings)-1 do begin
+    if (ed.readings[i].ons.Count<=0) and (ed.readings[i].kuns.Count<=0) then
+      continue;
+    if (i>0) then
+      Result := Result + ' T'+IntToStr(i);
+    for j := 0 to ed.readings[i].ons.Count-1 do
+      Result := Result + ' ' + ed.readings[i].ons[j];
+    for j := 0 to ed.readings[i].kuns.Count-1 do
+      Result := Result + ' ' + ed.readings[i].kuns[j];
+  end;
+
+ //Meanings
+  for i := 0 to ed.meanings.Count-1 do
+    Result := Result + ' {' + ed.meanings[i] + '}';
 end;
 
 end.
