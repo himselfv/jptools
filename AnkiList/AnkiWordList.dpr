@@ -22,7 +22,7 @@ program AnkiWordList;
 }
 uses
   SysUtils, Classes, StrUtils, UniStrUtils, ConsoleToolbox, JWBIO,
-  JWBEdictReader, Edict;
+  JWBEdictReader, JWBEdictMarkers, Edict, ActiveX, XmlDoc, XmlIntf;
 
 type
   TAnkiWordList = class(TCommandLineApp)
@@ -31,9 +31,13 @@ type
     EdictFile: string;
     Edict: TEdict;
     OutputFile: string;
+    OutputXml: boolean;
+    XsltFilename: string;
     TabNumber: integer;
+    iInp, iXsl: IXMLDocument;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
+    function XsltTransform(const s: UnicodeString): WideString;
   public
     procedure ShowUsage; override;
     procedure Run; override;
@@ -47,6 +51,8 @@ begin
   writeln('  -o output.file    specify output file (otherwise console)');
   writeln('  -e EDICT          specify EDICT file (otherwise EDICT)');
   writeln('  -tn column        zero-based. Take expressions from this column, if tab-separated');
+  writeln('  -xml              output xml instead of the default plaintext');
+  writeln('  -xslt <filename>  output xml converted by this XSLT schema');
 end;
 
 function TAnkiWordList.HandleSwitch(const s: string; var i: integer): boolean;
@@ -69,6 +75,17 @@ begin
     TabNumber := StrToInt(ParamStr(i));
     Result := true
   end else
+  if s='-xml' then begin
+    OutputXml := true;
+    Result := true
+  end else
+  if s='-xslt' then begin
+    if i>=ParamCount then BadUsage('-xslt needs XSLT schema filename');
+    Inc(i);
+    OutputXml := true;
+    XsltFilename := ParamStr(i);
+    Result := true
+  end else
     Result := inherited;
 end;
 
@@ -84,6 +101,12 @@ var outp: TStreamEncoder;
   i: integer;
 begin
   if Length(Files)<=0 then BadUsage('Specify input files.');
+
+  if XsltFilename<>'' then begin
+    CoInitialize(nil);
+    iInp := TXMLDocument.Create(nil);
+    iXsl := LoadXMLDocument(XsltFilename);
+  end;
 
   writeln(ErrOutput, 'Loading dictionary');
   Edict := TEdict.Create;
@@ -105,6 +128,62 @@ begin
   for i := 0 to Length(Files)-1 do
     ParseFile(Files[i], outp);
   FreeAndNil(outp);
+
+ //Release
+  iXsl := nil;
+  iInp := nil;
+end;
+
+function GenerateXml(entry: PEdictEntry): string;
+var i, j: integer;
+  parts: TStringArray;
+  kanji: PKanjiEntry;
+  kana: PKanaEntry;
+  sense: PSenseEntry;
+begin
+ //Note: Everything must be escaped. "&" often appears in fields.
+
+  Result := '<entry>'
+    +'<ref>'+HtmlEscape(entry.ref)+'</ref>';
+  for i := 0 to Length(entry.kanji)-1 do begin
+    kanji := @entry.kanji[i];
+    Result := Result+'<expr>'+HtmlEscape(kanji.kanji);
+    for j := 1 to Length(kanji.markers) do
+      Result := Result + '<mark>' + HtmlEscape(GetMarkEdict(kanji.markers[j]))+'</mark>';
+    Result := Result + '</expr>';
+  end;
+
+  for i := 0 to Length(entry.kana)-1 do begin
+    kana := @entry.kana[i];
+    Result := Result+'<read>'+HtmlEscape(kana.kana);
+    for j := 1 to Length(kana.markers) do
+      Result := Result + '<mark>' + HtmlEscape(GetMarkEdict(kana.markers[j]))+'</mark>';
+    Result := Result+'</read>';
+  end;
+
+  for i := 0 to Length(entry.senses)-1 do begin
+    sense := @entry.senses[i];
+    Result := Result+'<sense>';
+    parts := StrSplit(PChar(sense.text), '/');
+    for j := 0 to Length(parts)-1 do
+      Result := Result+'<gloss>'+HtmlEscape(Trim(parts[j]))+'</gloss>';
+    for j := 1 to Length(sense.pos) do
+      Result := Result+'<pos>'+HtmlEscape(GetMarkEdict(sense.pos[j]))+'</pos>';
+    for j := 1 to Length(sense.markers) do
+      Result := Result+'<mark>'+HtmlEscape(GetMarkEdict(sense.markers[j]))+'</mark>';
+    Result := Result+'</sense>';
+  end;
+
+  if entry.pop then
+    Result := Result + '<pop />';
+
+  Result := Result + '</entry>';
+end;
+
+function TAnkiWordList.XsltTransform(const s: UnicodeString): WideString;
+begin
+  iInp.LoadFromXML(s);
+  iInp.Node.TransformNode(iXsl.Node,Result);
 end;
 
 //inp is destroyed on exit
@@ -115,6 +194,7 @@ var inp: TStreamDecoder;
   i: integer;
   line_c, expr_c, outp_c: integer;
   entry: PEdictEntry;
+  entry_text: string;
 begin
   writeln(ErrOutput, 'Parsing '+AFilename+'...');
   inp := OpenTextFile(AFilename);
@@ -144,7 +224,16 @@ begin
       if entry=nil then continue;
 
       Inc(outp_c);
-      outp.WriteLn(ln+#09+UniReplaceStr(entry.AllSenses,'/',', '));
+
+      if not OutputXml then
+        entry_text := UniReplaceStr(entry.AllSenses,'/',', ')
+      else begin
+        entry_text := GenerateXml(entry);
+        if iXsl<>nil then
+          entry_text := XsltTransform(entry_text);
+      end;
+
+      outp.WriteLn(ln+#09+entry_text);
     end;
   finally
     FreeAndNil(inp);

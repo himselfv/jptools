@@ -25,6 +25,7 @@ type
    {$ENDIF}
     markers: TMarkers;
   end;
+  PKanaEntry = ^TKanaEntry;
   TSenseEntry = JWBEdictReader.TSenseEntry;
   PSenseEntry = JWBEdictReader.PSenseEntry;
 
