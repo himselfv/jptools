@@ -1,0 +1,106 @@
+﻿#Kunreishiki-romaji
+
+[Romaji]
+ー,-; っ,D,xtu; ん,n,n'; ゎ,xwa; ヵ,xka; ヶ,xke
+あ,a; 	い,i;	う,u;	え,e;	お,o;	や,ya;	ゆ,yu;	よ,yo;	イェ,ye;	イィ,yi;
+ぁ,xa;	ぃ,xi;	ぅ,xu;	ぇ,xe;	ぉ,xo;	ゃ,xya;	ゅ,xyu;	ょ,xyo;
+か,ka;	き,ki;	く,ku;	け,ke;	こ,ko;	きゃ,kya;	きゅ,kyu;	きょ,kyo;	キェ,kye;
+が,ga;	ぎ,gi;	ぐ,gu;	げ,ge;	ご,go;	ぎゃ,gya;	ぎゅ,gyu;	ぎょ,gyo;	ギェ,gye;
+さ,sa;	し,si;	す,su;	せ,se;	そ,so;	しゃ,sya;	しゅ,syu;	しょ,syo;	シェ,sye;	スィ,si;
+ざ,za;	じ,ji;	ず,zu;	ぜ,ze;	ぞ,zo;	じゃ,zya;	じゅ,zyu;	じょ,zyo;	ジェ,zye;	ズィ,zi;
+た,ta;	ち,ti;	つ,tu;	て,te;	と,to;	ちゃ,tya;	ちゅ,tyu;	ちょ,tyo;	チェ,tye;
+だ,da;	ぢ,di;	づ,du;	で,de;	ど,do;	ぢャ,dya;	ぢュ,dyu;	ぢョ,dyo;
+な,na;	に,ni;	ぬ,nu;	ね,ne;	の,no;	にゃ,nya;	にゅ,nyu;	にょ,nyo;	ニェ,nye;
+は,ha;	ひ,hi;	ふ,hu;	へ,he;	ほ,ho;	ひゃ,hya;	ひゅ,hyu;	ひょ,hyo;	ヒェ,hye;
+ば,ba;	び,bi;	ぶ,bu;	べ,be;	ぼ,bo;	びゃ,bya;	びゅ,byu;	びょ,byo;	ビェ,bye;
+ぱ,pa;	ぴ,pi;	ぷ,pu;	ぺ,pe;	ぽ,po;	ぴゃ,pya;	ぴゅ,pyu;	ぴょ,pyo;	ピェ,pye;
+ま,ma;	み,mi;	む,mu;	め,me;	も,mo;	みゃ,mya;	みゅ,myu;	みょ,myo;	ミェ,mye;
+ら,ra;	り,ri;	る,ru;	れ,re;	ろ,ro;	りゃ,rya;	りゅ,ryu;	りょ,ryo;	リェ,rye;
+わ,wa;	ゐ,wi;		ゑ,we;	を,wo;
+ウァ,wa;	ウィ,wi;	ウゥ,wu;	ウェ,we;	ウォ,wo;		ウュ,wyu;
+ヴァ,va;	ヴィ,vi;	ヴ,vu;	ヴェ,ve;	ヴォ,vo;	ヴャ,vya;	ヴュ,vyu;	ヴョ,vyo;	ヴィェ,vye;
+クァ,kwa;	クィ,kwi;		クェ,kwe;	クォ,kwo;
+クヮ,kwa;
+グァ,gwa;	グィ,gwi;		グェ,gwe;	グォ,gwo;
+グヮ,gwa;
+ツァ,tsa;	ツィ,tsi;		ツェ,tse;	ツォ,tso;		ツュ,tsyu;
+	ティ,ti;	トゥ,tu;				テュ,tyu;
+	ディ,di;	ドゥ,du;				デュ,dyu;
+ファ,fa;	フィ,fi;	ホゥ,hu;	フェ,fe;	フォ,fo;	フャ,fya;	フュ,fyu;	フョ,fyo;	フィェ,fye;
+ラ゜,la;	リ゜,li;	ル゜,lu;	レ゜,le;	ロ゜,lo;
+ヷ,va;	ヸ,vi;		ヹ,ve;	ヺ,vo;
+
+[Priority]
+#	i,い;		e,え;	o,お;
+#wa,わ;	wi,ゐ;		we,ゑ;	wo,を;
+#va,ヴァ;	vi,ヴィ;	vu,ヴ;	ve,ヴェ;	vo,ヴォ;
+#kwa,クァ;
+#gwa,グァ;
+
+[KanaToRomaji]
+',
+; Long vowels
+a-,aa
+i-,ii
+u-,uu
+e-,ee
+o-,oo
+; Double consonants
+Dk,kk
+Dg,gg
+Ds,ss
+Dz,zz
+Dt,tt
+Dd,dd
+Dn,nn
+Dh,hh
+Db,bb
+Dp,pp
+Dm,mm
+Dr,rr
+Dy,yy
+Dw,ww
+Dj,jj
+Df,ff
+Dc,cc
+; nmp
+nb,mb
+np,mp
+nm,mm
+
+[RomajiToKana]
+; nmp
+mb=nb
+mp=np
+mm=nm
+; Double consonants
+kk,Dk
+gg,Dg
+ss,Ds
+zz,Dz
+tt,Dt
+dd,Dd
+; nn,Dn
+hh,Dh
+bb,Db
+pp,Dp
+mm,Dm
+rr,Dr
+yy,Dy
+ww,Dw
+jj,Dj
+ff,Df
+cc,Dc
+
+[RomajiToKatakana]
+; Long vowels
+; We only convert to a- form in katakana
+; In hiragana stuff like "aa" is more often written directly.
+aa,a-
+ii,i-
+uu,u-
+ee,e-
+oo,o-
+yaA,ya-
+yuU,yu-
+yoO,yo-
