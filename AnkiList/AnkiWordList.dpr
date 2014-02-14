@@ -1,4 +1,4 @@
-program AnkiWordList;
+﻿program AnkiWordList;
 {$APPTYPE CONSOLE}
 {
  Parses a word/expression list - one expression at a line, possibly
@@ -22,9 +22,19 @@ program AnkiWordList;
 }
 uses
   SysUtils, Classes, StrUtils, UniStrUtils, ConsoleToolbox, JWBIO,
-  JWBEdictReader, JWBEdictMarkers, Edict, ActiveX, XmlDoc, XmlIntf;
+  JWBEdictReader, JWBEdictMarkers, Edict, ActiveX, XmlDoc, XmlIntf,
+  FastArray;
 
 type
+  TOutputEntry = record
+    key: string;
+    expr: string;
+    read: string;
+    text: string;
+    procedure Reset(const AKey: string);
+  end;
+  POutputEntry = ^TOutputEntry;
+
   TAnkiWordList = class(TCommandLineApp)
   protected
     Files: array of string;
@@ -33,11 +43,14 @@ type
     OutputFile: string;
     OutputXml: boolean;
     XsltFilename: string;
-    TabNumber: integer;
+    ExprColumn: integer;
+    ReadingColumn: integer;
     iInp, iXsl: IXMLDocument;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
+    function FindEntries(const AExpr, ARead: string): TArray<PEdictEntry>;
     function XsltTransform(const s: UnicodeString): WideString;
+    procedure AddToOutput(var AOutput: TOutputEntry; const AEntry: PEdictEntry);
   public
     procedure ShowUsage; override;
     procedure Run; override;
@@ -48,11 +61,22 @@ procedure TAnkiWordList.ShowUsage;
 begin
   writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
   writeln('Flags:');
-  writeln('  -o output.file    specify output file (otherwise console)');
   writeln('  -e EDICT          specify EDICT file (otherwise EDICT)');
-  writeln('  -tn column        zero-based. Take expressions from this column, if tab-separated');
+  writeln('');
+  writeln('Input:');
+  writeln('  -tn column        zero-based. Take expressions from this column, if tab-separated (default is 0)');
+  writeln('  -tr column        Take readings from this column, if tab-separated (default is 1, unless -tn is overriden, then no default)');
+  writeln('');
+  writeln('Output:');
+  writeln('  -o output.file    specify output file (otherwise console)');
   writeln('  -xml              output xml instead of the default plaintext');
   writeln('  -xslt <filename>  output xml converted by this XSLT schema');
+  writeln('  -or               add both expression and reading for each entry');
+  writeln('  -match=<mode>     if there are multiple matches:');
+  writeln('    best            output ONE best match');
+  writeln('    multiple        output all matches as a single result');
+  writeln('    split           output multiple matches as multiple results');
+
 end;
 
 function TAnkiWordList.HandleSwitch(const s: string; var i: integer): boolean;
@@ -72,7 +96,13 @@ begin
   if s='-tn' then begin
     if i>=ParamCount then BadUsage('-tn needs column number');
     Inc(i);
-    TabNumber := StrToInt(ParamStr(i));
+    ExprColumn := StrToInt(ParamStr(i));
+    Result := true
+  end else
+  if s='-tr' then begin
+    if i>=ParamCount then BadUsage('-tr needs column number');
+    Inc(i);
+    ReadingColumn := StrToInt(ParamStr(i));
     Result := true
   end else
   if s='-xml' then begin
@@ -134,6 +164,16 @@ begin
   iInp := nil;
 end;
 
+function TAnkiWordList.FindEntries(const AExpr, ARead: string): TArray<PEdictEntry>;
+var entry: PEdictEntry;
+begin
+ //TODO
+  Result.Reset;
+  entry := Edict.FindEntry(AExpr);
+  if entry<>nil then
+    Result.Add(entry);
+end;
+
 function GenerateXml(entry: PEdictEntry): string;
 var i, j: integer;
   parts: TStringArray;
@@ -186,15 +226,55 @@ begin
   iInp.Node.TransformNode(iXsl.Node,Result);
 end;
 
+procedure TOutputEntry.Reset(const AKey: string);
+begin
+  key := AKey;
+  expr := '';
+  read := '';
+  text := '';
+end;
+
+procedure TryAddUnique(var str: string; const part, sep: string);
+begin
+  if pos(sep+part+sep, sep+str+sep)<=0 then
+    if str<>'' then
+      str := str + sep +  part
+    else
+      str := part;
+end;
+
+procedure TAnkiWordList.AddToOutput(var AOutput: TOutputEntry; const AEntry: PEdictEntry);
+var i: integer;
+  entry_text: string;
+begin
+  for i := 0 to Length(AEntry.kanji)-1 do
+    TryAddUnique(AOutput.expr, AEntry.kanji[i].kanji, '、');
+
+  for i := 0 to Length(AEntry.kana)-1 do
+    TryAddUnique(AOutput.read, AEntry.kana[i].kana, '、');
+
+  if not OutputXml then begin
+    entry_text := UniReplaceStr(AEntry.AllSenses,'/',', ');
+    if AOutput.text<>'' then
+      AOutput.text := AOutput.text + '; ' + entry_text;
+  end else begin
+    entry_text := GenerateXml(AEntry);
+    AOutput.text := AOutput.text + entry_text;
+   //will call xslt at the end
+  end;
+end;
+
 //inp is destroyed on exit
 procedure TAnkiWordList.ParseFile(const AFilename: string; outp: TStreamEncoder);
 var inp: TStreamDecoder;
-  ln: string;
+  ln, expr, read: string;
   parts: TStringArray;
   i: integer;
   line_c, expr_c, outp_c: integer;
-  entry: PEdictEntry;
-  entry_text: string;
+  outp_text: string;
+  EdictEntries: TArray<PEdictEntry>;
+  OutputEntries: TArray<TOutputEntry>;
+  outp_e: POutputEntry;
 begin
   writeln(ErrOutput, 'Parsing '+AFilename+'...');
   inp := OpenTextFile(AFilename);
@@ -206,34 +286,40 @@ begin
     while inp.ReadLn(ln) do begin
       Inc(line_c);
 
-      if TabNumber<=0 then begin //common case faster
+      if (ExprColumn<=0) and (ReadingColumn=0) then begin //common case faster
         i := pos(#09, ln);
         if i>0 then
           delete(ln, i, MaxInt);
+        expr := ln;
       end else begin
         parts := StrSplit(PWideChar(ln),#09);
-        if TabNumber>=Length(parts) then
+        if ExprColumn>=Length(parts) then
           continue;
-        ln := parts[TabNumber];
+        expr := parts[ExprColumn];
       end;
 
       Inc(expr_c);
 
-      ln := Trim(ln);
-      entry := Edict.FindEntry(ln);
-      if entry=nil then continue;
+      expr := Trim(expr);
+      EdictEntries := FindEntries(expr, read);
+      if EdictEntries.Count<=0 then continue;
 
-      Inc(outp_c);
+     //Split output as configured
+      OutputEntries.Reset;
+      outp_e := POutputEntry(OutputEntries.AddNew);
+      outp_e.Reset(expr);
+      AddToOutput(outp_e^, EdictEntries[0]);
 
-      if not OutputXml then
-        entry_text := UniReplaceStr(entry.AllSenses,'/',', ')
-      else begin
-        entry_text := GenerateXml(entry);
-        if iXsl<>nil then
-          entry_text := XsltTransform(entry_text);
+     //Output
+      for i := 0 to OutputEntries.Count-1 do begin
+        OutputEntries.GetPointer(i).text := XsltTransform(OutputEntries[i].text);
+        outp_text := OutputEntries[i].key + #09 //key
+         //TODO: additional expr/read if requested
+          + OutputEntries[i].text;
+        outp.WriteLn(outp_text);
+        Inc(outp_c);
       end;
 
-      outp.WriteLn(ln+#09+entry_text);
     end;
   finally
     FreeAndNil(inp);
