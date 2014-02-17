@@ -342,6 +342,7 @@ function FileReader(const AFilename: TFilename): TStreamDecoder; inline; //->Uni
 function AnsiFileWriter(const AFilename: TFilename): TStreamEncoder;
 function UnicodeFileWriter(const AFilename: TFilename): TStreamEncoder;
 function ConsoleWriter(AEncoding: TEncoding = nil): TStreamEncoder;
+function ErrorConsoleWriter(AEncoding: TEncoding = nil): TStreamEncoder;
 function UnicodeStreamWriter(AStream: TStream; AOwnsStream: boolean = false): TStreamEncoder;
 function FileWriter(const AFilename: TFilename): TStreamEncoder; inline; //->Unicode on Unicode, ->Ansi on Ansi
 
@@ -2088,6 +2089,43 @@ begin
    output in, so we use UTF8 as default.
    But if we are sure we're printing to console, we may optimize and use the
    console CP. }
+    if GetFileType(AOutputHandle)=FILE_TYPE_CHAR then
+      AEncoding := TMultibyteEncoding.Create(GetConsoleOutputCP())
+    else
+      AEncoding := TUTF8Encoding.Create();
+  {$ELSE}
+      AEncoding := TUTF8Encoding.Create();
+  {$ENDIF}
+  end;
+
+  Result := TStreamEncoder.Open(
+    AStream,
+    AEncoding,
+    {OwnsStream=}true
+  );
+end;
+
+{ Same, but writes to ErrOutput }
+function ErrorConsoleWriter(AEncoding: TEncoding): TStreamEncoder;
+var AStream: TStream;
+ {$IFDEF MSWINDOWS}
+  AOutputHandle: THandle;
+ {$ENDIF}
+begin
+ {$IFDEF MSWINDOWS}
+  AOutputHandle := GetStdHandle(STD_ERROR_HANDLE);
+  AStream := THandleStream.Create(AOutputHandle);
+ {$ELSE}
+ {$IFDEF FPC}
+  AStream := TIOStream.Create(iosError);
+ {$ELSE}
+  raise Exception.Create('Console writer not supported on this platform/compiler.');
+ {$ENDIF}
+ {$ENDIF}
+
+  if AEncoding=nil then begin
+  {$IFDEF MSWINDOWS}
+  { See comments for ConsoleWriter() }
     if GetFileType(AOutputHandle)=FILE_TYPE_CHAR then
       AEncoding := TMultibyteEncoding.Create(GetConsoleOutputCP())
     else

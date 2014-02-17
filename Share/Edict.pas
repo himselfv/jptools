@@ -11,7 +11,7 @@ unit Edict;
  or adds to memory, and how to mitigate that. }
 
 interface
-uses SysUtils, Classes, JWBIO, JWBEdictReader, JWBEdictMarkers, BalancedTree;
+uses SysUtils, Classes, UniStrUtils, JWBIO, JWBEdictReader, JWBEdictMarkers, BalancedTree;
 
 type
  { We can't use the same entries as EdictReader as those are optimized for reuse
@@ -35,21 +35,27 @@ type
     kana: array of TKanaEntry;
     senses: array of TSenseEntry;
     pop: boolean;
+    function GetKanjiIndex(const AKanji: UnicodeString): integer;
     function FindKanjiEntry(const AKanji: UnicodeString): PKanjiEntry;
+    function GetKanaIndex(const AKana: UnicodeString): integer;
     function AllSenses: string;
   end;
   PEdictEntry = ^TEdictEntry;
 
+  TEdictEntries = array of PEdictEntry;
+
  { FExpr must not be nil. }
   TExprItem = class(TBinTreeItem)
   protected
-    FEntry: PEdictEntry;
+    FEntries: TEdictEntries;
     FExpr: string; //hopefully shared with KanjiEntry
   public
     constructor Create(AEntry: PEdictEntry; const AExpr: string);
     function CompareData(const a):Integer; override;
     function Compare(a:TBinTreeItem):Integer; override;
     procedure Copy(ToA:TBinTreeItem); override;
+    function GetEntryIndex(const AEntry: PEdictEntry): integer;
+    procedure AddEntry(const AEntry: PEdictEntry);
   end;
 
   TSourceFormat = (sfEdict, sfCEdict);
@@ -60,6 +66,7 @@ type
     FExprTree: TBinTree;
     function AllocEntry: PEdictEntry;
     procedure RegisterEntry(const AEntry: PEdictEntry);
+    procedure AddOrSearch(const AEntry: PEdictEntry; AKey: string);
   public
     constructor Create;
     destructor Destroy; override;
@@ -70,19 +77,43 @@ type
       ASourceFormat: TSourceFormat = sfEdict);
     procedure Load(AInput: TStreamDecoder; ASourceFormat: TSourceFormat);
     function FindEntry(const expr: UnicodeString): PEdictEntry;
+    function FindEntries(const expr: UnicodeString): TEdictEntries; overload;
+    function FindEntries(const expr: TStringArray): TEdictEntries; overload;
     property EntryCount: integer read FEntryCount;
   end;
 
 implementation
 uses WideStrUtils;
 
+function TEdictEntry.GetKanjiIndex(const AKanji: UnicodeString): integer;
+var i: integer;
+begin
+  Result := -1;
+  for i := 0 to Length(kanji)-1 do
+    if kanji[i].kanji=AKanji then begin
+      Result := i;
+      break;
+    end;
+end;
+
 function TEdictEntry.FindKanjiEntry(const AKanji: UnicodeString): PKanjiEntry;
 var i: integer;
 begin
   Result := nil;
-  for i := 0 to Length(kanji) do
+  for i := 0 to Length(kanji)-1 do
     if kanji[i].kanji=AKanji then begin
       Result := @kanji[i];
+      break;
+    end;
+end;
+
+function TEdictEntry.GetKanaIndex(const AKana: UnicodeString): integer;
+var i: integer;
+begin
+  Result := -1;
+  for i := 0 to Length(kana)-1 do
+    if kana[i].kana=AKana then begin
+      Result := i;
       break;
     end;
 end;
@@ -106,7 +137,8 @@ end;
 constructor TExprItem.Create(AEntry: PEdictEntry; const AExpr: string);
 begin
   inherited Create;
-  Self.FEntry := AEntry;
+  SetLength(Self.FEntries, 1);
+  Self.FEntries[0] := AEntry;
   Self.FExpr := AExpr;
 end;
 
@@ -123,8 +155,26 @@ end;
 
 procedure TExprItem.Copy(ToA:TBinTreeItem);
 begin
-  TExprItem(ToA).FEntry := Self.FEntry;
+  TExprItem(ToA).FEntries := System.Copy(Self.FEntries);
   TExprItem(ToA).FExpr := Self.FExpr;
+end;
+
+function TExprItem.GetEntryIndex(const AEntry: PEdictEntry): integer;
+var i: integer;
+begin
+  Result := -1;
+  for i := 0 to Length(FEntries)-1 do
+    if FEntries[i]=AEntry then begin
+      Result := i;
+      break;
+    end;
+end;
+
+procedure TExprItem.AddEntry(const AEntry: PEdictEntry);
+begin
+  if GetEntryIndex(AEntry)>=0 then exit;
+  SetLength(FEntries, Length(FEntries)+1);
+  FEntries[Length(FEntries)-1] := AEntry;
 end;
 
 constructor TEdict.Create;
@@ -240,12 +290,23 @@ procedure TEdict.RegisterEntry(const AEntry: PEdictEntry);
 var i: integer;
 begin
   for i := 0 to Length(AEntry.kanji)-1 do
-    FExprTree.Add(TExprItem.Create(AEntry, AEntry.kanji[i].kanji));
+    AddOrSearch(AEntry, AEntry.kanji[i].kanji);
   for i := 0 to Length(AEntry.kana)-1 do
-    FExprTree.Add(TExprItem.Create(AEntry, AEntry.kana[i].kana));
+    AddOrSearch(AEntry, AEntry.kana[i].kana);
 end;
 
-{ Searches for entry through kanji and kana indexes }
+procedure TEdict.AddOrSearch(const AEntry: PEdictEntry; AKey: string);
+var item, exitem: TExprItem;
+begin
+  item := TExprItem.Create(AEntry, AKey);
+  exitem := TExprItem(FExprTree.AddOrSearch(item));
+  if exitem<>item then begin
+    FreeAndNil(item);
+    exitem.AddEntry(AEntry);
+  end;
+end;
+
+{ Searches for the first matching entry through kanji and kana indexes }
 function TEdict.FindEntry(const expr: UnicodeString): PEdictEntry;
 var item: TBinTreeItem;
 begin
@@ -253,7 +314,55 @@ begin
   if item=nil then
     Result := nil
   else
-    Result := TExprItem(item).FEntry;
+    Result := TExprItem(item).FEntries[0]; //guaranteed to have at least one
+end;
+
+{ Searches for all matching entries through kanji and kana indexes }
+function TEdict.FindEntries(const expr: UnicodeString): TEdictEntries;
+var item: TBinTreeItem;
+begin
+  item := FExprTree.SearchData(expr);
+  if item=nil then begin
+    SetLength(Result, 0);
+    exit;
+  end;
+
+  Result := System.Copy(TExprItem(item).FEntries);
+end;
+
+{ Locates given entry index in an array of entries }
+function GetEntryIndex(const entries: TEdictEntries; const entry: PEdictEntry): integer;
+var i: integer;
+begin
+  Result := -1;
+  for i := 0 to Length(entries)-1 do
+    if entries[i]=entry then begin
+      Result := i;
+      break;
+    end;
+end;
+
+procedure MergeEntries(var Entries: TEdictEntries; const NewEntries: TEdictEntries);
+var i: integer;
+begin
+  for i := 0 to Length(NewEntries)-1 do begin
+    if GetEntryIndex(Entries, NewEntries[i])>=0 then
+      continue;
+    SetLength(Entries, Length(Entries)+1);
+    Entries[Length(Entries)-1] := NewEntries[i];
+  end;
+end;
+
+{ Returns all unique entries which match given expression }
+function TEdict.FindEntries(const expr: TStringArray): TEdictEntries;
+var i: integer;
+  entries: TEdictEntries;
+begin
+  SetLength(Result, 0);
+  for i := 0 to Length(expr)-1 do begin
+    entries := FindEntries(expr[i]);
+    MergeEntries(Result, entries);
+  end;
 end;
 
 end.

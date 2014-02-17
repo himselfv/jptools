@@ -23,9 +23,16 @@
 uses
   SysUtils, Classes, StrUtils, UniStrUtils, ConsoleToolbox, JWBIO,
   JWBEdictReader, JWBEdictMarkers, Edict, ActiveX, XmlDoc, XmlIntf,
-  FastArray;
+  FastArray, SearchSort;
 
 type
+  TMatch = record
+    entry: PEdictEntry;
+    score: double;
+  end;
+
+  TMatchMode = (mmBest, mmMultiple, mmSplit);
+
   TOutputEntry = record
     key: string;
     expr: string;
@@ -37,18 +44,28 @@ type
 
   TAnkiWordList = class(TCommandLineApp)
   protected
-    Files: array of string;
+    outp: TStreamEncoder;
+    err: TStreamEncoder; //also has unicode
+  protected
     EdictFile: string;
     Edict: TEdict;
+  protected
+    Files: array of string;
+    ExprColumn: integer;
+    ReadColumn: integer;
+    ExprSep: char;
+    ReadSep: char;
+  protected
     OutputFile: string;
     OutputXml: boolean;
     XsltFilename: string;
-    ExprColumn: integer;
-    ReadingColumn: integer;
     iInp, iXsl: IXMLDocument;
+    MatchMode: TMatchMode;
+    procedure Init; override;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
-    function FindEntries(const AExpr, ARead: string): TArray<PEdictEntry>;
+    function FindMatches(const AExpr, ARead: string): TArray<TMatch>;
+    procedure SortMatches(var AMatches: TArray<TMatch>);
     function XsltTransform(const s: UnicodeString): WideString;
     procedure AddToOutput(var AOutput: TOutputEntry; const AEntry: PEdictEntry);
   public
@@ -64,14 +81,15 @@ begin
   writeln('  -e EDICT          specify EDICT file (otherwise EDICT)');
   writeln('');
   writeln('Input:');
-  writeln('  -tn column        zero-based. Take expressions from this column, if tab-separated (default is 0)');
-  writeln('  -tr column        Take readings from this column, if tab-separated (default is 1, unless -tn is overriden, then no default)');
+  writeln('  -te <column>      zero-based. Take expressions from this column, if tab-separated (default is 0)');
+  writeln('  -tr <column>      Take readings from this column, if tab-separated (default is 1, unless -tn is overriden, then no default)');
+  writeln('  -es <text>        Expression separator. If specified, multiple ways of writing an expression can be listed.');
+  writeln('  -rs <text>        Reading separator. By default expression separator is used.');
   writeln('');
   writeln('Output:');
   writeln('  -o output.file    specify output file (otherwise console)');
   writeln('  -xml              output xml instead of the default plaintext');
   writeln('  -xslt <filename>  output xml converted by this XSLT schema');
-  writeln('  -or               add both expression and reading for each entry');
   writeln('  -match=<mode>     if there are multiple matches:');
   writeln('    best            output ONE best match');
   writeln('    multiple        output all matches as a single result');
@@ -79,22 +97,27 @@ begin
 
 end;
 
-function TAnkiWordList.HandleSwitch(const s: string; var i: integer): boolean;
+procedure TAnkiWordList.Init;
 begin
-  if s='-o' then begin
-    if i>=ParamCount then BadUsage('-o requires file name');
-    Inc(i);
-    OutputFile := ParamStr(i);
-    Result := true;
-  end else
+  ExprColumn := 0;
+  ReadColumn := 1;
+  ExprSep := '、';
+  ReadSep := #00; //same as Expression
+  MatchMode := mmBest;
+end;
+
+function TAnkiWordList.HandleSwitch(const s: string; var i: integer): boolean;
+var tmp: string;
+begin
   if s='-e' then begin
     if i>=ParamCount then BadUsage('-e needs dictionary name');
     Inc(i);
     EdictFile := ParamStr(i);
     Result := true
   end else
-  if s='-tn' then begin
-    if i>=ParamCount then BadUsage('-tn needs column number');
+
+  if s='-te' then begin
+    if i>=ParamCount then BadUsage('-te needs column number');
     Inc(i);
     ExprColumn := StrToInt(ParamStr(i));
     Result := true
@@ -102,8 +125,27 @@ begin
   if s='-tr' then begin
     if i>=ParamCount then BadUsage('-tr needs column number');
     Inc(i);
-    ReadingColumn := StrToInt(ParamStr(i));
+    ReadColumn := StrToInt(ParamStr(i));
     Result := true
+  end else
+  if s='-es' then begin
+    if i>=ParamCount then BadUsage('-es needs separator value');
+    Inc(i);
+    ExprSep := ParamStr(i)[1];
+    Result := true
+  end else
+  if s='-er' then begin
+    if i>=ParamCount then BadUsage('-er needs separator value');
+    Inc(i);
+    ReadSep := ParamStr(i)[1];
+    Result := true
+  end else
+
+  if s='-o' then begin
+    if i>=ParamCount then BadUsage('-o requires file name');
+    Inc(i);
+    OutputFile := ParamStr(i);
+    Result := true;
   end else
   if s='-xml' then begin
     OutputXml := true;
@@ -116,6 +158,20 @@ begin
     XsltFilename := ParamStr(i);
     Result := true
   end else
+  if StartsText('-match=', s) then begin
+    tmp := copy(s, Length('-match=')+1, MaxInt);
+    if tmp='best' then
+      MatchMode := mmBest
+    else
+    if tmp='multiple' then
+      MatchMode := mmMultiple
+    else
+    if tmp='split' then
+      MatchMode := mmSplit
+    else
+      BadUsage('Invalid match mode: '+tmp);
+    Result := true;
+  end else
     Result := inherited;
 end;
 
@@ -127,8 +183,7 @@ begin
 end;
 
 procedure TAnkiWordList.Run;
-var outp: TStreamEncoder;
-  i: integer;
+var i: integer;
 begin
   if Length(Files)<=0 then BadUsage('Specify input files.');
 
@@ -138,7 +193,8 @@ begin
     iXsl := LoadXMLDocument(XsltFilename);
   end;
 
-  writeln(ErrOutput, 'Loading dictionary');
+  err := ErrorConsoleWriter();
+  err.WriteLn('Loading dictionary');
   Edict := TEdict.Create;
   if EdictFile='' then begin
     if FileExists('EDICT2') then
@@ -148,7 +204,7 @@ begin
   end else
     Edict.LoadFromFile(EdictFile);
 
-  writeln(ErrOutput, IntToStr(edict.EntryCount)+' entries loaded.');
+  err.WriteLn(IntToStr(edict.EntryCount)+' entries loaded.');
 
   if OutputFile<>'' then
     outp := UnicodeFileWriter(OutputFile)
@@ -157,26 +213,87 @@ begin
   outp.WriteBom;
   for i := 0 to Length(Files)-1 do
     ParseFile(Files[i], outp);
-  FreeAndNil(outp);
+  FreeAndNil(outp); //flush
+
+  FreeAndNil(err);
 
  //Release
   iXsl := nil;
   iInp := nil;
 end;
 
-function TAnkiWordList.FindEntries(const AExpr, ARead: string): TArray<PEdictEntry>;
-var entry: PEdictEntry;
+function MatchKanji(const AEntry: PEdictEntry; const AKanji: TStringArray): integer;
+var i: integer;
 begin
- //TODO
+  Result := 0;
+  for i := 0 to Length(AKanji)-1 do
+    if AEntry.GetKanjiIndex(AKanji[i])>=0 then
+      Inc(Result);
+end;
+
+function MatchKana(const AEntry: PEdictEntry; const AKana: TStringArray): integer;
+var i: integer;
+begin
+  Result := 0;
+  for i := 0 to Length(AKana)-1 do
+    if AEntry.GetKanaIndex(AKana[i])>=0 then
+      Inc(Result);
+end;
+
+function TAnkiWordList.FindMatches(const AExpr, ARead: string): TArray<TMatch>;
+var expr, read: UniStrUtils.TStringArray;
+  entries: TEdictEntries;
+  i: integer;
+begin
+  if ExprSep<>#00 then
+    expr := StrSplit(PChar(AExpr), ExprSep)
+  else begin
+    SetLength(expr, 1);
+    expr[0] := AExpr;
+  end;
+
+  if ReadSep<>#00 then
+    read := StrSplit(PChar(ARead), ReadSep)
+  else begin
+    SetLength(read, 1);
+    read[0] := ARead;
+  end;
+
   Result.Reset;
-  entry := Edict.FindEntry(AExpr);
-  if entry<>nil then
-    Result.Add(entry);
+  if Length(expr)<=0 then exit; //it's even dangerous as we divide by it later
+
+  entries := Edict.FindEntries(expr);
+  for i := 0 to Length(entries)-1 do
+    with Result.AddNew^ do begin
+      entry := entries[i];
+     //How much of provided kanji/kana it matches
+      score := (MatchKanji(entry, expr) + MatchKana(entry, read)) /
+        (Length(expr) + Length(read));
+    end;
+end;
+
+function MatchCmp(data: pointer; i1, i2: integer): integer;
+begin
+  Result := Trunc((TArray<TMatch>(Data^).FItems[i2].score-TArray<TMatch>(Data^).FItems[i1].score)*1000);
+end;
+
+procedure MatchXch(data: pointer; i1, i2: integer);
+var tmp: TMatch;
+begin
+  tmp := TArray<TMatch>(Data^).FItems[i1];
+  TArray<TMatch>(Data^).FItems[i1] := TArray<TMatch>(Data^).FItems[i2];
+  TArray<TMatch>(Data^).FItems[i2] := tmp;
+end;
+
+{ Sorts matches by relevancy }
+procedure TAnkiWordList.SortMatches(var AMatches: TArray<TMatch>);
+begin
+  QuickSort(@AMatches, 0, AMatches.Count-1, MatchCmp, MatchXch);
 end;
 
 function GenerateXml(entry: PEdictEntry): string;
 var i, j: integer;
-  parts: TStringArray;
+  parts: UniStrUtils.TStringArray;
   kanji: PKanjiEntry;
   kana: PKanaEntry;
   sense: PSenseEntry;
@@ -254,9 +371,11 @@ begin
     TryAddUnique(AOutput.read, AEntry.kana[i].kana, '、');
 
   if not OutputXml then begin
-    entry_text := UniReplaceStr(AEntry.AllSenses,'/',', ');
+    entry_text := UniReplaceStr(AEntry.AllSenses, '/', ', ');
     if AOutput.text<>'' then
-      AOutput.text := AOutput.text + '; ' + entry_text;
+      AOutput.text := AOutput.text + '; ' + entry_text
+    else
+      AOutput.text := entry_text;
   end else begin
     entry_text := GenerateXml(AEntry);
     AOutput.text := AOutput.text + entry_text;
@@ -269,55 +388,70 @@ procedure TAnkiWordList.ParseFile(const AFilename: string; outp: TStreamEncoder)
 var inp: TStreamDecoder;
   ln, expr, read: string;
   parts: TStringArray;
-  i: integer;
-  line_c, expr_c, outp_c: integer;
-  outp_text: string;
-  EdictEntries: TArray<PEdictEntry>;
+  EdictMatches: TArray<TMatch>;
   OutputEntries: TArray<TOutputEntry>;
+  outp_text: string;
   outp_e: POutputEntry;
+  i: integer;
+  st: record
+    lines: integer;
+    expr: integer;
+    outp: integer;
+    multimatch: integer;
+    badmatch: integer;
+  end;
 begin
-  writeln(ErrOutput, 'Parsing '+AFilename+'...');
+  err.WriteLn('Parsing '+AFilename+'...');
   inp := OpenTextFile(AFilename);
   try
-    line_c := 0;
-    expr_c := 0;
-    outp_c := 0;
+    FillChar(st, SizeOf(st), 0);
 
     while inp.ReadLn(ln) do begin
-      Inc(line_c);
+      Inc(st.lines);
 
-      if (ExprColumn<=0) and (ReadingColumn=0) then begin //common case faster
-        i := pos(#09, ln);
-        if i>0 then
-          delete(ln, i, MaxInt);
-        expr := ln;
-      end else begin
-        parts := StrSplit(PWideChar(ln),#09);
-        if ExprColumn>=Length(parts) then
-          continue;
-        expr := parts[ExprColumn];
+      parts := StrSplit(PWideChar(ln),#09);
+      if ExprColumn>=Length(parts) then
+        continue;
+      expr := Trim(parts[ExprColumn]);
+      if (ReadColumn<0) or (ReadColumn=ExprColumn) or (ReadColumn>=Length(parts)) then
+        read := ''
+      else
+        read := Trim(parts[ReadColumn]);
+
+      Inc(st.expr);
+
+      EdictMatches := FindMatches(expr, read);
+      if EdictMatches.Count<=0 then begin
+        err.WriteLn('Not found: '+expr+' ['+read+']');
+        continue;
       end;
 
-      Inc(expr_c);
+      if EdictMatches.Count>1 then begin
+        Inc(st.multimatch);
+        SortMatches(EdictMatches);
+      end;
 
-      expr := Trim(expr);
-      EdictEntries := FindEntries(expr, read);
-      if EdictEntries.Count<=0 then continue;
+      if EdictMatches[0].score<=0.5 then begin
+       //Effectively not a match
+        Inc(st.badmatch);
+      end;
 
      //Split output as configured
       OutputEntries.Reset;
       outp_e := POutputEntry(OutputEntries.AddNew);
       outp_e.Reset(expr);
-      AddToOutput(outp_e^, EdictEntries[0]);
+      AddToOutput(outp_e^, EdictMatches[0].entry);
 
      //Output
       for i := 0 to OutputEntries.Count-1 do begin
-        OutputEntries.GetPointer(i).text := XsltTransform(OutputEntries[i].text);
+        if iXsl<>nil then
+          with OutputEntries.GetPointer(i)^ do
+            text := XsltTransform(text);
         outp_text := OutputEntries[i].key + #09 //key
          //TODO: additional expr/read if requested
           + OutputEntries[i].text;
         outp.WriteLn(outp_text);
-        Inc(outp_c);
+        Inc(st.outp);
       end;
 
     end;
@@ -325,8 +459,10 @@ begin
     FreeAndNil(inp);
   end;
 
-  writeln(AFilename+' stats: '+IntToStr(line_c)+' lines, '
-    +IntToStr(expr_c)+' entries, '+IntToStr(outp_c)+' found.');
+  err.WriteLn(AFilename+' stats: '+IntToStr(st.lines)+' lines, '
+    +IntToStr(st.expr)+' entries, '+IntToStr(st.outp)+' found.');
+  err.WriteLn('Multiple matches: '+IntToStr(st.multimatch));
+  err.WriteLn('Bad matches: '+IntToStr(st.badmatch));
 end;
 
 begin
