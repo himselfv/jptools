@@ -195,6 +195,9 @@ begin
     iXsl := LoadXMLDocument(XsltFilename);
   end;
 
+  if (readSep=#00) and (exprSep<>#00) then
+    readSep := exprSep;
+
   err := ErrorConsoleWriter();
   err.WriteLn('Loading dictionary');
   Edict := TEdict.Create;
