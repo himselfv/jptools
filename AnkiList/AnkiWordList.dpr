@@ -28,8 +28,10 @@ uses
 type
   TMatch = record
     entry: PEdictEntry;
-    score: double;
+    scoreKanji: double;
+    scoreKana: double;
   end;
+  PMatch = ^TMatch;
 
   TMatchMode = (mmBest, mmMultiple, mmSplit);
 
@@ -240,6 +242,36 @@ begin
       Inc(Result);
 end;
 
+{ Expression and reading may contain stuff which needs to be trimmed }
+function TrimExpr(const AExpr: string): string;
+var i: integer;
+begin
+  Result := AExpr;
+
+ //Trim <ruby>kanji<rt>kana</rt></ruby>
+  if StartsText('<ruby>',Result) and EndsText('</ruby>',Result) then begin
+    delete(Result,1,Length('<ruby>'));
+    delete(Result,Length(Result)-Length('<ruby>'),MaxInt);
+  end;
+  i := pos('<rt>',Result);
+  if i>0 then
+    delete(Result, i, MaxInt);
+
+  if copy(Result,1,1)='～' then
+    delete(Result,1,1); //todo: and set postf flag
+  if copy(Result,Length(Result),1)='～' then
+    delete(Result,Length(Result),1); //todo: and set pref flag
+end;
+
+function TrimRead(const ARead: string): string;
+begin
+  Result := ARead;
+  if copy(Result,1,1)='～' then
+    delete(Result,1,1); //todo: and set postf flag
+  if copy(Result,Length(Result),1)='～' then
+    delete(Result,Length(Result),1); //todo: and set pref flag
+end;
+
 function TAnkiWordList.FindMatches(const AExpr, ARead: string): TArray<TMatch>;
 var expr, read: UniStrUtils.TStringArray;
   entries: TEdictEntries;
@@ -252,12 +284,18 @@ begin
     expr[0] := AExpr;
   end;
 
+  for i := 0 to Length(expr)-1 do
+    expr[i] := TrimExpr(expr[i]);
+
   if ReadSep<>#00 then
     read := StrSplit(PChar(ARead), ReadSep)
   else begin
     SetLength(read, 1);
     read[0] := ARead;
   end;
+
+  for i := 0 to Length(read)-1 do
+    read[i] := TrimRead(read[i]);
 
   Result.Reset;
   if Length(expr)<=0 then exit; //it's even dangerous as we divide by it later
@@ -267,14 +305,23 @@ begin
     with Result.AddNew^ do begin
       entry := entries[i];
      //How much of provided kanji/kana it matches
-      score := (MatchKanji(entry, expr) + MatchKana(entry, read)) /
-        (Length(expr) + Length(read));
+      scoreKanji := MatchKanji(entry, expr) / Length(expr);
+      if Length(read)=0 then
+        scoreKana := 1
+      else
+      if Length(entry.kana)<=0 then //kana-only word
+        scoreKana := MatchKanji(entry, read) / Length(read)
+      else
+        scoreKana := MatchKana(entry, read) / Length(read);
     end;
 end;
 
 function MatchCmp(data: pointer; i1, i2: integer): integer;
+var it1, it2: PMatch;
 begin
-  Result := Trunc((TArray<TMatch>(Data^).FItems[i2].score-TArray<TMatch>(Data^).FItems[i1].score)*1000);
+  it1 := @TArray<TMatch>(Data^).FItems[i1];
+  it2 := @TArray<TMatch>(Data^).FItems[i2];
+  Result := Trunc((it2.scoreKanji+it2.scoreKana-it1.scoreKanji-it1.scoreKana)*1000);
 end;
 
 procedure MatchXch(data: pointer; i1, i2: integer);
@@ -431,9 +478,10 @@ begin
         SortMatches(EdictMatches);
       end;
 
-      if EdictMatches[0].score<=0.5 then begin
+      if EdictMatches[0].scoreKana<=0.1 then begin
        //Effectively not a match
         Inc(st.badmatch);
+        err.WriteLn('Bad match: '+expr+' ['+read+']');
       end;
 
      //Split output as configured
