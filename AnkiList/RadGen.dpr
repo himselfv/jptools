@@ -16,7 +16,7 @@ program RadGen;
 
 uses
   SysUtils, Classes, ConsoleToolbox, JwbStrings, JwbIo, RaineRadicals,
-  FastArray, Yarxi, YarxiFmt, KanjidicReader, Kanjidic;
+  FastArray, Yarxi, KanjidicReader, Kanjidic;
 
 type
   TRadGen = class(TCommandLineApp)
