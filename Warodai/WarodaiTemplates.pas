@@ -31,9 +31,11 @@ function IsOpenTemplate(const ln: string): boolean;
  False => в строке нет шаблона }
 function ExtractTemplate(var ln: string; out t: string): boolean;
 
-{ Преобразует слово согласно шаблону. Подходит и для каны, и для кандзи.
- Пустые шаблоны тоже поддерживаются. }
-function ApplyTemplate(const templ: string; const word: string): string;
+{ Преобразует слово согласно шаблону.
+ В принципе шаблон один, но иногда в нём встречается не совсем кана (напр. ～的),
+ и мы это учитываем }
+function ApplyTemplateKanji(const templ: string; const word: string): string;
+function ApplyTemplateKana(const templ: string; const word: string): string;
 
 {
 Некоторые правила содержат несколько шаблонов сразу:
@@ -279,12 +281,20 @@ begin
   tvars^.Add(copy(templ, 1, po-1)+copy(templ,po+1,pc-po-1)+copy(templ,pc+1,Length(templ)-pc))
 end;
 
-function ApplyTemplate(const templ: string; const word: string): string;
+function ApplyTemplateKanji(const templ: string; const word: string): string;
 begin
   if templ='' then
     Result := word
   else
     Result := repl(templ, '～', word);
+end;
+
+function ApplyTemplateKana(const templ: string; const word: string): string;
+var templ_kana: string;
+begin
+ //Бывает, что в темплейте указаны некоторые общие кандзи
+  templ_kana := repl(templ, '的', 'てき');
+  Result := ApplyTemplateKanji(templ_kana, word); //базовая замена
 end;
 
 

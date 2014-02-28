@@ -164,14 +164,14 @@ begin
     for i := 0 to AllKanji.Length - 1 do
       for ti := 0 to ver.tvars.Length-1 do begin
         pkj := art.AddKanji;
-        pkj.k := ApplyTemplate(ver.tvars.items[ti], AllKanji.items[i]);
+        pkj.k := ApplyTemplateKanji(ver.tvars.items[ti], AllKanji.items[i]);
        //TODO: markers, POP
       end;
 
     for i := 0 to hdr.words_used - 1 do
       for ti := 0 to ver.tvars.Length-1 do begin
         pkn := art.AddKana;
-        pkn.k := ApplyTemplate(ver.tvars.items[ti], hdr.words[i].s_reading);
+        pkn.k := ApplyTemplateKana(ver.tvars.items[ti], hdr.words[i].s_reading);
         pkn.AllKanji := AllKanjiUsed[i];
 
         if not art.kana[i].AllKanji then
