@@ -567,7 +567,7 @@ end;
 EDICT2
 }
 
-//Генерирует запись вида кана(кандзи;кандзи) для каны #idx из статьи art
+//Генерирует запись вида кана(кандзи,кандзи) для каны #idx из статьи art
 function TEdict2Writer.KanaToStr(art: PEdictArticle; idx: integer): string;
 var i: integer;
 begin
@@ -577,7 +577,7 @@ begin
 
  { Вообще-то говоря, у каны может не быть отсылок на кандзи, и в таком случае
   единственный способ доступно это записать:
-    кандзи1;кандзи2;КАНА2[кана1(кандзи1;кандзи2);КАНА2(КАНА2)]
+    кандзи1;кандзи2;КАНА2[кана1(кандзи1,кандзи2);КАНА2(КАНА2)]
   То есть, объявить кану отдельной записью. Это будет логично.
 
   Вариант хуже - написать кану с пустыми скобками:
@@ -591,7 +591,7 @@ begin
 
   Result := Result + '(' + art.kanji[art.kana[idx].Kanji[0]].k;
   for i := 1 to art.kana[idx].Kanji_used - 1 do
-    Result := Result + ';' + art.kanji[art.kana[idx].Kanji[i]].k;
+    Result := Result + ',' + art.kanji[art.kana[idx].Kanji[i]].k;
   Result := Result + ')';
 end;
 
