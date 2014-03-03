@@ -19,7 +19,6 @@ uses
   iconv,
   EdictWriter,
   FastArray,
-  WcUtils,
   Warodai in 'Warodai.pas',
   WakanDic in 'WakanDic.pas',
   WarodaiMarkers in 'WarodaiMarkers.pas',

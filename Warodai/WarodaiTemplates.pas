@@ -8,7 +8,7 @@
 }
 
 interface
-uses Warodai, FastArray, WcUtils;
+uses Warodai, FastArray;
 {$INCLUDE 'Warodai.inc'}
 
 { Возвращает номер символа подстановки в шаблоне или 0 }
@@ -112,7 +112,7 @@ const
 function ExtractExample(var ln: string; out expr: string): boolean;
 
 implementation
-uses SysUtils, UniStrUtils;
+uses SysUtils, UniStrUtils, JWBStrings;
 
 function FindTemplate(const ln: string): integer;
 begin
@@ -257,7 +257,7 @@ procedure SplitTemplate(const t: string; out t_p: TTemplateList);
 var parts: TStringArray;
   i: integer;
 begin
-  parts := StrSplit(PWideChar(t), ',');
+  parts := SplitStr(PWideChar(t), ',');
   SetLength(t_p, Length(parts));
   for i := 0 to Length(parts) - 1 do
     t_p[i] := Trim(parts[i]);

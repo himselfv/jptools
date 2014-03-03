@@ -1,7 +1,7 @@
 ﻿unit Warodai;
 
 interface
-uses SysUtils, UniStrUtils, StreamUtils, FastArray, WcUtils, JWBIO;
+uses SysUtils, UniStrUtils, StreamUtils, FastArray, JWBStrings, JWBIO;
 {$INCLUDE 'Warodai.inc'}
 
 var

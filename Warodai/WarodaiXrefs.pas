@@ -10,7 +10,7 @@
 }
 
 interface
-uses Warodai, FastArray, WcUtils, EdictWriter, PerlRegEx, PerlRegExUtils;
+uses JWBStrings, Warodai, FastArray, EdictWriter, PerlRegEx, PerlRegExUtils;
 {$INCLUDE 'Warodai.inc'}
 
 procedure EatXrefs(var ln: string; sn: PEdictSenseEntry);
