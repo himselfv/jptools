@@ -325,6 +325,8 @@ begin
   it1 := @TArray<TMatch>(Data^).FItems[i1];
   it2 := @TArray<TMatch>(Data^).FItems[i2];
   Result := Trunc((it2.scoreKanji+it2.scoreKana-it1.scoreKanji-it1.scoreKana)*1000);
+  if Result=0 then
+    Result := i1-i2; //order of appearance in the dic; sometimes more common words go first
 end;
 
 procedure MatchXch(data: pointer; i1, i2: integer);
