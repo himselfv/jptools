@@ -273,7 +273,7 @@ type
     procedure DetachStream; //clears whatever caches the instance may have for the Stream
    { Since this may require backward seek, try not to TrySkipBom for sources where
     you do not really expect it (i.e. console) }
-    procedure TrySkipBom;
+    function TrySkipBom: boolean;
     procedure Rewind(const ADontSkipBom: boolean = false);
     function EOF: boolean;
     function ReadChar(out ch: WideChar): boolean; overload;
@@ -666,9 +666,9 @@ begin
   to position stream where we logically are (in characters). }
 end;
 
-procedure TStreamDecoder.TrySkipBom;
+function TStreamDecoder.TrySkipBom: boolean;
 begin
-  FEncoding.ReadBom(Stream);
+  Result := FEncoding.ReadBom(Stream);
 end;
 
 procedure TStreamDecoder.Rewind(const ADontSkipBom: boolean);
