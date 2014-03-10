@@ -37,7 +37,7 @@ interface
 uses SysUtils, Classes, StreamUtils{$IFDEF FPC}, iostream{$ENDIF};
 
 {$IF Defined(FPC)}
-//На некоторых компиляторах нет TBytes или некоторых функций, связанных с ним
+//Some compilers don't have TBytes or some related functions
 {$DEFINE OWNBYTES}
 type
   TBytes = array of byte;
