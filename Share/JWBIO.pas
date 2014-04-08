@@ -328,6 +328,7 @@ function AppendToTextFile(const AFilename: TFilename; AEncoding: CEncoding = nil
 
 //Finds a class by it's name. Good to store encoding selection in a permanent way.
 function FindEncoding(const AClassName: string): CEncoding;
+function FindEncodingByName(const AName: string): CEncoding;
 
 //Compares binary data in files
 function CompareStreams(const AStream1, AStream2: TStream): boolean;
@@ -1935,7 +1936,35 @@ begin
     Result := TBIG5Encoding
   else
     Result := nil;
+end;
 
+function FindEncodingByName(const AName: string): CEncoding;
+begin
+  if (AName='utf8') or (AName='utf-8') then
+    Result := TUTF8Encoding
+  else
+  if (AName='utf16') or (AName='utf16-le') or (AName='utf16le') then
+    Result := TUTF16LEEncoding
+  else
+  if (AName='utf16-be') or (AName='utf16be') then
+    Result := TUTF16BEEncoding
+  else
+  if (AName='jis') then
+    Result := TJISEncoding
+  else
+  if (AName='sjis') then
+    Result := TSJISEncoding
+  else
+  if (AName='euc') then
+    Result := TEUCEncoding
+  else
+  if (AName='gb') then
+    Result := TGBEncoding
+  else
+  if (AName='big5') then
+    Result := TBIG5Encoding
+  else
+    Result := nil;
 end;
 
 
