@@ -327,7 +327,8 @@ function CreateTextFile(const AFilename: TFilename; AEncoding: CEncoding): TStre
 function AppendToTextFile(const AFilename: TFilename; AEncoding: CEncoding = nil): TStreamEncoder;
 
 //Finds a class by it's name. Good to store encoding selection in a permanent way.
-function FindEncoding(const AClassName: string): CEncoding;
+function FindEncodingByClassName(const AClassName: string): CEncoding;
+function FindEncodingByName(AName: string): CEncoding;
 
 //Compares binary data in files
 function CompareStreams(const AStream1, AStream2: TStream): boolean;
@@ -1893,7 +1894,7 @@ end;
 
 
 //Finds a class by it's name. Good to store encoding selection in a permanent way.
-function FindEncoding(const AClassName: string): CEncoding;
+function FindEncodingByClassName(const AClassName: string): CEncoding;
 begin
  //Stupid for now
   if AClassName='TAsciiEncoding' then
@@ -1935,7 +1936,48 @@ begin
     Result := TBIG5Encoding
   else
     Result := nil;
+end;
 
+function FindEncodingByName(AName: string): CEncoding;
+begin
+  AName := LowerCase(AName);
+  if AName='ascii' then
+    Result := TAsciiEncoding
+  else
+  if (AName='ansi')
+  or (AName='acp') then
+    Result := TAcpEncoding
+  else
+  if (AName='utf8')
+  or (AName='utf-8') then
+    Result := TUTF8Encoding
+  else
+  if (AName='utf16')
+  or (AName='utf-16')
+  or (AName='utf16le')
+  or (AName='utf16-le') then
+    Result := TUTF16LEEncoding
+  else
+  if (AName='utf16be')
+  or (AName='utf16-be') then
+    Result := TUTF16BEEncoding
+  else
+  if AName='euc' then
+    Result := TEUCEncoding
+  else
+  if AName='jis' then
+    Result := TJISEncoding
+  else
+  if AName='sjis' then
+    Result := TSJISEncoding
+  else
+  if AName='gb' then
+    Result := TGBEncoding
+  else
+  if AName='big5' then
+    Result := TBIG5Encoding
+  else
+    Result := nil;
 end;
 
 
