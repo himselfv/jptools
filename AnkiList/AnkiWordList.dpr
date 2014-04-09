@@ -26,6 +26,19 @@ uses
   FastArray, SearchSort;
 
 type
+  TQuery = record
+   { For now we ignore <ruby>kanji<rt>kana constructs.
+    In the future we need to expand this struct to allow for edict-style
+    kana->kanji  assignments, then parse <ruby> into this structure.
+    All the usual edict rules apply (no explicit kana = all kana etc.) }
+    expr_text: string;
+    expr: TStringArray;
+    read_text: string;
+    read: TStringArray;
+    procedure Reset;
+  end;
+  PQuery = ^TQuery;
+
   TMatch = record
     entry: PEdictEntry;
     scoreKanji: double;
@@ -66,10 +79,11 @@ type
     procedure Init; override;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
-    function FindMatches(const AExpr, ARead: string): TArray<TMatch>;
+    procedure SplitQuery(AExpr, ARead: string; out query: TQuery);
+    function FindMatches(const query: TQuery): TArray<TMatch>;
     procedure SortMatches(var AMatches: TArray<TMatch>);
     function XsltTransform(const s: UnicodeString): WideString;
-    procedure AddToOutput(var AOutput: TOutputEntry; const AEntry: PEdictEntry);
+    procedure AddToOutput(var AOutput: TOutputEntry; AQuery: PQuery; AMatch: PMatch);
   public
     procedure ShowUsage; override;
     procedure Run; override;
@@ -84,7 +98,7 @@ begin
   writeln('');
   writeln('Input:');
   writeln('  -te <column>      zero-based. Take expressions from this column, if tab-separated (default is 0)');
-  writeln('  -tr <column>      Take readings from this column, if tab-separated (default is 1, unless -tn is overriden, then no default)');
+  writeln('  -tr <column>      Take readings from this column, if tab-separated (default is 1, if none available set to -1)');
   writeln('  -es <text>        Expression separator. If specified, multiple ways of writing an expression can be listed.');
   writeln('  -rs <text>        Reading separator. By default expression separator is used.');
   writeln('');
@@ -96,7 +110,6 @@ begin
   writeln('    best            output ONE best match');
   writeln('    multiple        output all matches as a single result');
   writeln('    split           output multiple matches as multiple results');
-
 end;
 
 procedure TAnkiWordList.Init;
@@ -227,22 +240,14 @@ begin
   iInp := nil;
 end;
 
-function MatchKanji(const AEntry: PEdictEntry; const AKanji: TStringArray): integer;
-var i: integer;
-begin
-  Result := 0;
-  for i := 0 to Length(AKanji)-1 do
-    if AEntry.GetKanjiIndex(AKanji[i])>=0 then
-      Inc(Result);
-end;
 
-function MatchKana(const AEntry: PEdictEntry; const AKana: TStringArray): integer;
-var i: integer;
+{ Parse expr/read into a query - a bunch of fully separated expression/reading
+ alternatives }
+
+procedure TQuery.Reset;
 begin
-  Result := 0;
-  for i := 0 to Length(AKana)-1 do
-    if AEntry.GetKanaIndex(AKana[i])>=0 then
-      Inc(Result);
+  SetLength(expr, 0);
+  SetLength(read, 0);
 end;
 
 { Expression and reading may contain stuff which needs to be trimmed }
@@ -251,7 +256,9 @@ var i: integer;
 begin
   Result := AExpr;
 
- //Trim <ruby>kanji<rt>kana</rt></ruby>
+ { For now we don't properly parse <ruby> tags, just strip it. See comments
+  for TQuery }
+ //TODO: Parse <ruby> tags here or in SplitQuery().
   if StartsText('<ruby>',Result) and EndsText('</ruby>',Result) then begin
     delete(Result,1,Length('<ruby>'));
     delete(Result,Length(Result)-Length('<ruby>'),MaxInt);
@@ -259,6 +266,10 @@ begin
   i := pos('<rt>',Result);
   if i>0 then
     delete(Result, i, MaxInt);
+
+ //TODO: Maybe we shouldn't delete these here; we need to try these simplifications
+ //  as we build a list of guesses with a dictionary.
+ //  Simplified guesses should weigh less.
 
   if copy(Result,1,1)='～' then
     delete(Result,1,1); //todo: and set postf flag
@@ -275,56 +286,127 @@ begin
     delete(Result,Length(Result),1); //todo: and set pref flag
 end;
 
-function TAnkiWordList.FindMatches(const AExpr, ARead: string): TArray<TMatch>;
-var expr, read: UniStrUtils.TStringArray;
-  entries: TEdictEntries;
-  i: integer;
+{ Parses Expression and Reading fields from input file and splits it according
+ to all supported markup.
+ Reading may be empty, either due to Reading column not specified, or just
+ reading field missing in this particular record. }
+procedure TAnkiWordList.SplitQuery(AExpr, ARead: string; out query: TQuery);
+var i: integer;
 begin
-  if ExprSep<>#00 then
-    expr := StrSplit(PChar(AExpr), ExprSep)
-  else begin
-    SetLength(expr, 1);
-    expr[0] := AExpr;
-  end;
+  query.Reset;
+  query.expr_text := AExpr;
+  query.read_text := ARead;
 
-  for i := 0 to Length(expr)-1 do
-    expr[i] := TrimExpr(expr[i]);
+  if ExprSep<>#00 then
+    query.expr := StrSplit(PChar(AExpr), ExprSep)
+  else begin
+    SetLength(query.expr, 1);
+    query.expr[0] := AExpr;
+  end;
+  for i := 0 to Length(query.expr)-1 do
+    query.expr[i] := TrimExpr(query.expr[i]);
 
   if ReadSep<>#00 then
-    read := StrSplit(PChar(ARead), ReadSep)
+    query.read := StrSplit(PChar(ARead), ReadSep)
   else begin
-    SetLength(read, 1);
-    read[0] := ARead;
+    SetLength(query.read, 1);
+    query.read[0] := ARead;
   end;
+  for i := 0 to Length(query.read)-1 do
+    query.read[i] := TrimRead(query.read[i]);
+end;
 
-  for i := 0 to Length(read)-1 do
-    read[i] := TrimRead(read[i]);
 
-  Result.Reset;
-  if Length(expr)<=0 then exit; //it's even dangerous as we divide by it later
+//How many AKanji variants AEntry matches.
+function MatchKanji(const AEntry: PEdictEntry; const AKanji: TStringArray): integer;
+var i: integer;
+begin
+  Result := 0;
+  for i := 0 to Length(AKanji)-1 do
+    if AEntry.GetKanjiIndex(AKanji[i])>=0 then
+      Inc(Result);
+end;
 
-  entries := Edict.FindEntries(expr);
-  for i := 0 to Length(entries)-1 do
-    with Result.AddNew^ do begin
-      entry := entries[i];
-     //How much of provided kanji/kana it matches
-      scoreKanji := MatchKanji(entry, expr) / Length(expr);
-      if Length(read)=0 then
-        scoreKana := 1
-      else
-      if Length(entry.kana)<=0 then //kana-only word
-        scoreKana := MatchKanji(entry, read) / Length(read)
-      else
-        scoreKana := MatchKana(entry, read) / Length(read);
+//How many AKana variants AEntry matches.
+function MatchKana(const AEntry: PEdictEntry; const AKana: TStringArray): integer;
+var i: integer;
+begin
+  Result := 0;
+  for i := 0 to Length(AKana)-1 do
+    if AEntry.GetKanaIndex(AKana[i])>=0 then
+      Inc(Result);
+end;
+
+function FindExistingMatch(var AMatches: TArray<TMatch>; AEntry: PEdictEntry): PMatch;
+var i: integer;
+begin
+  Result := nil;
+  for i := 0 to AMatches.Count-1 do
+    if AMatches[i].entry=AEntry then begin
+      Result := PMatch(AMatches.GetPointer(i));
+      break;
     end;
+end;
+
+{ Builds a list of all potential matches, trying to be as inclusive as possible.
+ Filtering comes later }
+function TAnkiWordList.FindMatches(const query: TQuery): TArray<TMatch>;
+var entries: TEdictEntries;
+  i, j: integer;
+  match: PMatch;
+begin
+  Result.Reset;
+  if Length(query.expr)<=0 then exit; //it's even dangerous as we divide by it later
+
+  for i := 0 to Length(query.expr)-1 do begin
+    entries := Edict.FindEntries(query.expr[i]);
+   { FindEntries looks for kanji and kana both.
+    Potentially we can also try to match something else, e.g. trim dubious
+    symbols like "~" and fetch the results with a lower score. }
+
+    for j := 0 to Length(entries)-1 do begin
+      match := FindExistingMatch(Result, entries[j]);
+      if match<>nil then continue; //has already been added+scored
+
+      match := PMatch(Result.AddNew);
+      match.entry := entries[j];
+     //How many of provided kanji/kana entries it matches
+      match.scoreKanji := MatchKanji(match.entry, query.expr) / Length(query.expr);
+
+      if Length(query.read)=0 then begin
+       { If no reading was provided, give preference to the entries which match
+        *both* as kanji and as kana.
+        E.g. prefer しかし [しかし] to 私窩子 [しかし] when matching しかし }
+        if Length(match.entry.kana)<=0 then
+          match.scoreKana := 1
+        else
+        if MatchKana(match.entry, query.expr {sic!})>0 then
+          match.scoreKana := 1
+        else
+          match.scoreKana := 0;
+      end else begin
+        if Length(match.entry.kana)<=0 then //kana-only words store kana in Kanji field
+          match.scoreKana := MatchKanji(match.entry, query.read) / Length(query.read)
+        else
+          match.scoreKana := MatchKana(match.entry, query.read) / Length(query.read);
+      end;
+    end;
+  end;
 end;
 
 function MatchCmp(data: pointer; i1, i2: integer): integer;
 var it1, it2: PMatch;
+  pop1, pop2: integer;
 begin
   it1 := @TArray<TMatch>(Data^).FItems[i1];
   it2 := @TArray<TMatch>(Data^).FItems[i2];
-  Result := Trunc((it2.scoreKanji+it2.scoreKana-it1.scoreKanji-it1.scoreKana)*1000);
+  if it1.entry.pop then pop1 := 1 else pop1 := 0;
+  if it2.entry.pop then pop2 := 1 else pop2 := 0;
+  Result := Trunc(
+    (pop2-pop1)*1000
+    + (it2.scoreKanji-it1.scoreKanji)*1000
+    + (it2.scoreKana-it1.scoreKana)*1000
+  );
   if Result=0 then
     Result := i1-i2; //order of appearance in the dic; sometimes more common words go first
 end;
@@ -407,29 +489,51 @@ procedure TryAddUnique(var str: string; const part, sep: string);
 begin
   if pos(sep+part+sep, sep+str+sep)<=0 then
     if str<>'' then
-      str := str + sep +  part
+      str := str + sep + part
     else
       str := part;
 end;
 
-procedure TAnkiWordList.AddToOutput(var AOutput: TOutputEntry; const AEntry: PEdictEntry);
-var i: integer;
+procedure TAnkiWordList.AddToOutput(var AOutput: TOutputEntry; AQuery: PQuery;
+  AMatch: PMatch);
+var //i: integer;
   entry_text: string;
+  kanji_text,
+  kana_text: string;
 begin
-  for i := 0 to Length(AEntry.kanji)-1 do
-    TryAddUnique(AOutput.expr, AEntry.kanji[i].kanji, '、');
+ //If query mostly matched kana
+  if MatchKana(AMatch.entry, AQuery.expr)>MatchKanji(AMatch.entry, AQuery.expr) then begin
+   //then guess kanji (for now: use first, most popular one)
+    kanji_text := AMatch.entry.kanji[0].kanji;
+    kana_text := AQuery.expr_text;
+   //TODO: More thorough kanji selection (check which kanji can be used with which reading)
+  end else begin
+   //else guess kana
+    kanji_text := AQuery.expr_text;
+    if Length(AMatch.entry.kana)>0 then
+      kana_text := AMatch.entry.kana[0].kana
+    else
+      kana_text := AMatch.entry.kanji[0].kanji; //no kana => kana in kanji
+  end;
 
-  for i := 0 to Length(AEntry.kana)-1 do
-    TryAddUnique(AOutput.read, AEntry.kana[i].kana, '、');
+ //For now we only keep one match
+  AOutput.expr := kanji_text;
+  AOutput.read := kana_text;
+
+{  for i := 0 to Length(AMatch.entry.kanji)-1 do
+    TryAddUnique(AOutput.expr, AMatch.entry.kanji[i].kanji, '、');
+
+  for i := 0 to Length(AMatch.entry.kana)-1 do
+    TryAddUnique(AOutput.read, AMatch.entry.kana[i].kana, '、'); }
 
   if not OutputXml then begin
-    entry_text := UniReplaceStr(AEntry.AllSenses, '/', ', ');
+    entry_text := UniReplaceStr(AMatch.entry.AllSenses, '/', ', ');
     if AOutput.text<>'' then
       AOutput.text := AOutput.text + '; ' + entry_text
     else
       AOutput.text := entry_text;
   end else begin
-    entry_text := GenerateXml(AEntry);
+    entry_text := GenerateXml(AMatch.entry);
     AOutput.text := AOutput.text + entry_text;
    //will call xslt at the end
   end;
@@ -439,6 +543,7 @@ end;
 procedure TAnkiWordList.ParseFile(const AFilename: string; outp: TStreamEncoder);
 var inp: TStreamDecoder;
   ln, expr, read: string;
+  query: TQuery;
   parts: TStringArray;
   EdictMatches: TArray<TMatch>;
   OutputEntries: TArray<TOutputEntry>;
@@ -472,7 +577,9 @@ begin
 
       Inc(st.expr);
 
-      EdictMatches := FindMatches(expr, read);
+      SplitQuery(expr, read, query);
+
+      EdictMatches := FindMatches(query);
       if EdictMatches.Count<=0 then begin
         err.WriteLn('Not found: '+expr+' ['+read+']');
         continue;
@@ -493,7 +600,7 @@ begin
       OutputEntries.Reset;
       outp_e := POutputEntry(OutputEntries.AddNew);
       outp_e.Reset(expr);
-      AddToOutput(outp_e^, EdictMatches[0].entry);
+      AddToOutput(outp_e^, @query, PMatch(EdictMatches.P[0]));
 
      //Output
       for i := 0 to OutputEntries.Count-1 do begin
@@ -501,7 +608,10 @@ begin
           with OutputEntries.GetPointer(i)^ do
             text := XsltTransform(text);
         outp_text := OutputEntries[i].key + #09 //key
-         //TODO: additional expr/read if requested
+         //Output expr and read because we don't know what we matched in each
+         //case.
+          + OutputEntries[i].expr + #09
+          + OutputEntries[i].read + #09
           + OutputEntries[i].text;
         outp.WriteLn(outp_text);
         Inc(st.outp);

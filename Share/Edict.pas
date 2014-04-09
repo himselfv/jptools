@@ -11,7 +11,8 @@ unit Edict;
  or adds to memory, and how to mitigate that. }
 
 interface
-uses SysUtils, Classes, UniStrUtils, JWBIO, JWBEdictReader, JWBEdictMarkers, BalancedTree;
+uses SysUtils, Classes, UniStrUtils, JWBIO, JWBEdictReader, JWBEdictMarkers,
+  BalancedTree;
 
 type
  { We can't use the same entries as EdictReader as those are optimized for reuse
@@ -81,6 +82,8 @@ type
     function FindEntries(const expr: TStringArray): TEdictEntries; overload;
     property EntryCount: integer read FEntryCount;
   end;
+
+procedure MergeEntries(var Entries: TEdictEntries; const NewEntries: TEdictEntries);
 
 implementation
 uses WideStrUtils;
