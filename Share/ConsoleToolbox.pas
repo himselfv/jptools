@@ -63,7 +63,7 @@ begin
     s := Trim(AnsiLowerCase(ParamStr(i)));
     if s='' then continue;
 
-    if s[1]='-' then begin
+    if (s[1]='-') or (s[1]='/') then begin
       if not HandleSwitch(s, i) then
         BadUsage(s+' is not a valid switch.');
     end else
