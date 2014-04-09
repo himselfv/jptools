@@ -1,4 +1,4 @@
-unit WordFreq_MainForm;
+unit WordFreqCoverage_MainForm;
 
 interface
 
