@@ -1,4 +1,17 @@
-program AnkiWordTags;
+program AnkiMergeTags;
+{
+Merges several tag files into one list of words with all tags listed for each.
+cities.txt
+  Moscow
+  New-York
+russia.txt
+  Moscow
+  bears
+=>
+Moscow    cities russia
+New-York  cities
+bears     russia
+}
 
 {$APPTYPE CONSOLE}
 
@@ -9,7 +22,7 @@ uses
   FilenameUtils;
 
 type
-  TAnkiWordTags = class(TCommandLineApp)
+  TMergeTags = class(TCommandLineApp)
   protected
     Files: TFilenameArray;
     OutputFile: string;
@@ -23,17 +36,16 @@ type
     procedure ParseFile(const AFilename: string);
   end;
 
-procedure TAnkiWordTags.ShowUsage;
+procedure TMergeTags.ShowUsage;
 begin
-  writeln('Takes a set of text files, each one listing words marked with '
-    + 'a certain tag, and generates a table which for every word gives '
-    + 'Anki-compatible list of all tags associated with it.');
+  writeln('Merges several tag files into one list of words with all tags '
+    +'listed for each.');
   writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
   writeln('Flags:');
   writeln('  -o output.file    specify output file (otherwise console)');
 end;
 
-function TAnkiWordTags.HandleSwitch(const s: string; var i: integer): boolean;
+function TMergeTags.HandleSwitch(const s: string; var i: integer): boolean;
 begin
   if s='-o' then begin
     if i>=ParamCount then BadUsage('-o requires file name');
@@ -44,7 +56,7 @@ begin
     Result := inherited;
 end;
 
-function TAnkiWordTags.HandleParam(const s: string; var i: integer): boolean;
+function TMergeTags.HandleParam(const s: string; var i: integer): boolean;
 begin
   SetLength(Files, Length(Files)+1);
   Files[Length(Files)-1] := s;
@@ -53,7 +65,7 @@ end;
 
 //Anki tag list format: space separated ("area jlpt2")
 
-procedure TAnkiWordTags.Run;
+procedure TMergeTags.Run;
 var i: integer;
 begin
   if ParamCount<1 then BadUsage();
@@ -78,7 +90,7 @@ begin
   FreeAndNil(Words);
 end;
 
-procedure TAnkiWordTags.ParseFile(const AFilename: string);
+procedure TMergeTags.ParseFile(const AFilename: string);
 var inp: TStreamDecoder;
   tagName, ln, list: string;
   i: integer;
@@ -118,5 +130,5 @@ end;
 
 
 begin
-  RunApp(TAnkiWordTags);
+  RunApp(TMergeTags);
 end.

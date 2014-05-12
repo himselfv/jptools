@@ -1,12 +1,30 @@
-program ParseTagExport;
+program AnkiParseTagExport;
+{
+Parses Anki export file, processes the column with tags and creates a file
+for every tag, listing all characters or expressions marked with it.
+
+Moscow    cities russia
+New-York  cities
+bears     russia
+=>
+cities.txt
+  Moscow
+  New-York
+russia.txt
+  Moscow
+  bears
+
+TODO: Flag to update existing lists instead of overwriting (leaves missing words
+  intact).
+TODO: Flag to add tags from deck to existing tags but not delete the missing ones.
+}
 
 {$APPTYPE CONSOLE}
 
 {$R *.res}
 
 uses
-  SysUtils, Classes, Generics.Collections, UniStrUtils, ConsoleToolbox, JWBIO,
-  TagFile in 'TagFile.pas';
+  SysUtils, Classes, Generics.Collections, UniStrUtils, ConsoleToolbox, JWBIO;
 
 type
   TOutputMode = (omKanji, omWords);
