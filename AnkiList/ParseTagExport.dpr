@@ -51,9 +51,9 @@ end;
 
 procedure TParseTagExport.ShowUsage;
 begin
-  writeln('Parse Anki export file, processes the column with tags and creates ' +
-          'a file for every tag, listing all characters / expressions which were ' +
-          'marked with it.');
+  writeln('Parses Anki export file, processes the column with tags and creates ' +
+          'a file for every tag, listing all characters / expressions marked ' +
+          'with it.');
   writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
   writeln('Flags:');
   writeln('  -o path\folder    specify output folder (required)');

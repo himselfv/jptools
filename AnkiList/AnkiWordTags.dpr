@@ -5,34 +5,32 @@ program AnkiWordTags;
 {$R *.res}
 
 uses
-  SysUtils, ConsoleToolbox, JWBIO;
+  SysUtils, Classes, Generics.Collections, ConsoleToolbox, JWBIO, UniStrUtils,
+  FilenameUtils;
 
 type
   TAnkiWordTags = class(TCommandLineApp)
   protected
-    Files: array of string;
-    ExamplesFile: string;
+    Files: TFilenameArray;
     OutputFile: string;
-    TabNumber: integer;
+    Output: TStreamEncoder;
+    Words: TStringList;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
   public
     procedure ShowUsage; override;
-//    procedure Run; override;
-//    procedure ParseFile(const AFilename: string; outp: TStreamEncoder);
+    procedure Run; override;
+    procedure ParseFile(const AFilename: string);
   end;
-
-{ area jlpt2 }
 
 procedure TAnkiWordTags.ShowUsage;
 begin
-  writeln('Takes a bunch of text files listing japanese words and generates '
-    +'Anki-compatible tag lists for each word.');
+  writeln('Takes a set of text files, each one listing words marked with '
+    + 'a certain tag, and generates a table which for every word gives '
+    + 'Anki-compatible list of all tags associated with it.');
   writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
   writeln('Flags:');
   writeln('  -o output.file    specify output file (otherwise console)');
-  writeln('  -e examples.file  specify examples file (otherwise EXAMPLES)');
-  writeln('  -tn column        zero-based. Take expressions from this column, if tab-separated');
 end;
 
 function TAnkiWordTags.HandleSwitch(const s: string; var i: integer): boolean;
@@ -42,18 +40,6 @@ begin
     Inc(i);
     OutputFile := ParamStr(i);
     Result := true;
-  end else
-  if s='-e' then begin
-    if i>=ParamCount then BadUsage('-e needs examples file name');
-    Inc(i);
-    ExamplesFile := ParamStr(i);
-    Result := true
-  end else
-  if s='-tn' then begin
-    if i>=ParamCount then BadUsage('-tn needs column number');
-    Inc(i);
-    TabNumber := StrToInt(ParamStr(i));
-    Result := true
   end else
     Result := inherited;
 end;
@@ -65,6 +51,70 @@ begin
   Result := true;
 end;
 
+//Anki tag list format: space separated ("area jlpt2")
+
+procedure TAnkiWordTags.Run;
+var i: integer;
+begin
+  if ParamCount<1 then BadUsage();
+  if Length(Files)<1 then BadUsage('Input files not specified');
+
+  Words := TStringList.Create;
+
+  Files := ExpandFileMasks(Files, true);
+  for i := 0 to Length(Files)-1 do
+    ParseFile(Files[i]);
+
+  if OutputFile<>'' then
+    Output := UnicodeFileWriter(OutputFile)
+  else
+    Output := ConsoleWriter;
+  Output.WriteBom;
+
+  for i := 0 to Words.Count-1 do
+    Output.WriteLn(Words.Names[i]+#09+Words.ValueFromIndex[i]);
+
+  FreeAndNil(Output);
+  FreeAndNil(Words);
+end;
+
+procedure TAnkiWordTags.ParseFile(const AFilename: string);
+var inp: TStreamDecoder;
+  tagName, ln, list: string;
+  i: integer;
+begin
+  tagName := ChangeFileExt(ExtractFilename(AFilename), '');
+  inp := OpenTextFile(AFilename);
+  try
+    while inp.ReadLn(ln) do begin
+      ln := Trim(ln);
+      if ln='' then continue;
+
+     //If reading is provided, accept reading, else use empty reading (for consistence)
+      i := pos(' ', ln);
+      if i>0 then
+        ln[i] := #09
+      else
+        ln := ln + #09;
+
+      i := Words.IndexOfName(ln);
+      if i>=0 then begin
+        list := Words.ValueFromIndex[i];
+        if pos(' '+ln+' ', ' '+list+' ')<=0 then
+          list := list + ' ' + tagName;
+      end else
+        list := tagName;
+
+      if i>=0 then
+        Words.ValueFromIndex[i] := list
+      else
+        Words.Add(ln+'='+list);
+    end;
+
+  finally
+    FreeAndNil(inp);
+  end;
+end;
 
 
 begin
