@@ -1,4 +1,4 @@
-program AnkiDerivatives;
+Ôªøprogram AnkiDerivatives;
 {
 Parses a file listing derivative links between words:
   base deriv deriv "comment" deriv "comment"
@@ -17,6 +17,10 @@ E.g.:
   e: From: a (comment); b.
 
 TODO: Dict resolution.
+TODO: <ruby>expr<rt>read, expr[read] etc.
+TODO: "~" etc.
+TODO: XSLT support for expressions, like in WordList
+TODO: Allow matches from up to N dictionaries (ASD -- edict; BSD -- warodai)
 }
 
 {$APPTYPE CONSOLE}
@@ -25,7 +29,7 @@ TODO: Dict resolution.
 
 uses
   SysUtils, Classes, Generics.Collections, Generics.Defaults, ConsoleToolbox,
-  JWBIO, UniStrUtils, FilenameUtils;
+  JWBIO, UniStrUtils, FilenameUtils, Edict, AnkiEdictToText;
 
 type
   TExpressionCard = record
@@ -40,9 +44,12 @@ type
     DictFiles: TFilenameArray;
     OutputFile: string;
     Output: TStreamEncoder;
+    Dicts: TObjectList<TEdict>;
     Words: TDictionary<string, TExpressionCard>;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
+    function FormatEdictEntry(const expr: string; ed: PEdictEntry): string;
+    function FormatEntry(const expr: string): string;
   public
     procedure ShowUsage; override;
     procedure Run; override;
@@ -105,6 +112,7 @@ end;
 
 procedure TAnkiDerivatives.Run;
 var i: integer;
+  dic: TEdict;
   pair: TPair<string, TExpressionCard>;
   ln: string;
 begin
@@ -119,7 +127,12 @@ begin
   );
 
   DictFiles := ExpandFileMasks(DictFiles, true);
- //TODO: Load all, use to resolve words
+  Dicts := TObjectList<TEdict>.Create({OwnsObjects=}true);
+  for i := 0 to Length(DictFiles)-1 do begin
+    dic := TEdict.Create;
+    dic.LoadFromFile(DictFiles[i]);
+    Dicts.Add(dic);
+  end;
 
   Files := ExpandFileMasks(Files, true);
   for i := 0 to Length(Files)-1 do
@@ -134,20 +147,24 @@ begin
   for pair in Words do begin
     Output.Write(pair.Key+#09);
     if pair.Value.base<>'' then
-      ln := 'ŒÚ '+pair.Value.base
+      ln := '–û—Ç '+pair.Value.base
     else
       ln := '';
     if pair.Value.deriv<>'' then begin
       if ln<>'' then
-        ln := ln+'; ÔÓËÁ‚Ó‰Ì˚Â: '
+        ln := ln+'; –ø—Ä–æ–∏–∑–≤–æ–¥–Ω—ã–µ: '
       else
-        ln := 'œÓËÁ‚Ó‰Ì˚Â: ';
+        ln := '–ü—Ä–æ–∏–∑–≤–æ–¥–Ω—ã–µ: ';
       ln := ln + pair.Value.deriv;
     end;
+    if ln<>'' then
+      ln := ln + '.';
+
     Output.WriteLn(ln);
   end;
 
   FreeAndNil(Output);
+  FreeAndNil(Dicts);
   FreeAndNil(Words);
 end;
 
@@ -233,9 +250,41 @@ begin
     end;
 end;
 
-function FormatEntry(const part: string): string;
+function TAnkiDerivatives.FormatEdictEntry(const expr: string; ed: PEdictEntry): string;
+var read: string;
+  i: integer;
 begin
-  Result := part; //TODO: Expand to dict entry
+ //We need reading, but not any reading but matching readings.
+ //TODO: If reading is provided in expr, use that.
+  read := '';
+  if ed.GetKanaIndex(expr)<0 then //else no need for reading since it's kana already
+    for i := 0 to Length(ed.kana)-1 do
+      if ed.kana[i].MatchesKanji(expr) then begin
+        if read<>'' then read := read + '„ÄÅ';
+        read := read + ed.kana[i].kana;
+      end;
+
+  if read<>'' then
+    Result := expr + ' [' + read + '] ' + EdictSensesToText(ed)
+  else
+    Result := expr + ' ' + EdictSensesToText(ed);
+end;
+
+function TAnkiDerivatives.FormatEntry(const expr: string): string;
+var i: integer;
+  ed: PEdictEntry;
+begin
+  Result := '';
+  for i := 0 to Dicts.Count-1 do begin
+    ed := Dicts[i].FindEntry(expr); //TODO: If reading is provided, mind it in lookup
+    if ed<>nil then begin
+      Result := FormatEdictEntry(expr, ed);
+      break;
+    end;
+  end;
+
+  if Result='' then
+    Result := expr;
 end;
 
 procedure TAnkiDerivatives.ParseFile(const AFilename: string);

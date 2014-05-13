@@ -21,7 +21,7 @@ TODO: "text; ~kana text" => separate entries
 
 uses
   SysUtils, Classes, Generics.Collections, Generics.Defaults, ConsoleToolbox,
-  JWBIO, UniStrUtils, FilenameUtils, EdictWriter, RegularExpressions;
+  JWBIO, StrUtils, UniStrUtils, FilenameUtils, EdictWriter, RegularExpressions;
 
 type
   TExpressionCard = record
@@ -181,7 +181,10 @@ var inp: TStreamDecoder;
   ln, expr, read, mean: string;
   p_expr, p_read: TStringArray;
   parts: TStringArray;
+  p_mean: TStringArray;
   ed: TEdictArticle;
+  sense: PEdictSenseEntry;
+  i: integer;
 begin
   inp := OpenTextFile(AFilename);
   try
@@ -201,12 +204,6 @@ begin
       p_expr := StrSplit(PChar(expr), ExprSep); //OK if it's #00
       p_read := StrSplit(PChar(read), ReadSep); //OK if it's #00
 
-      if MeaningColumn>=Length(parts) then
-        continue;
-      mean := parts[MeaningColumn];
-      mean := stripHtml.Replace(mean, '').Replace('/', '\').Replace('; ', '/')
-        .Replace(';', '/');
-
       ed.Reset;
       for expr in p_expr do
         ed.AddKanji^.k := expr;
@@ -215,7 +212,19 @@ begin
           k := read;
           AllKanji := true;
         end;
-      ed.AddSense^.AddGloss(mean);
+
+      if MeaningColumn>=Length(parts) then
+        continue;
+      mean := parts[MeaningColumn];
+      mean := stripHtml.Replace(mean, '');
+
+     //TODO: mind brackets, quotes
+      p_mean := StrSplit(PChar(mean), ';');
+      for i := 0 to Length(p_mean)-1 do begin
+        sense := ed.AddSense;
+        sense.AddGloss(Trim(p_mean[i]).Replace('/', '\')
+          .Replace(', ', '/').Replace(',', '/'));
+      end;
 
       if edict1<>nil then
         edict1.Print(@ed);

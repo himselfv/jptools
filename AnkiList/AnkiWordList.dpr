@@ -22,8 +22,9 @@
 }
 uses
   SysUtils, Classes, StrUtils, UniStrUtils, ConsoleToolbox, JWBIO,
-  JWBEdictReader, JWBEdictMarkers, Edict, ActiveX, XmlDoc, XmlIntf,
-  FastArray, SearchSort;
+  JWBEdictReader, JWBEdictMarkers, Edict, ActiveX, XmlDoc, XmlIntf, FastArray,
+  SearchSort,
+  AnkiEdictToText in 'AnkiEdictToText.pas';
 
 type
   TQuery = record
@@ -411,52 +412,6 @@ begin
   QuickSort(@AMatches, 0, AMatches.Count-1, MatchCmp, MatchXch);
 end;
 
-function GenerateXml(entry: PEdictEntry): string;
-var i, j: integer;
-  parts: UniStrUtils.TStringArray;
-  kanji: PKanjiEntry;
-  kana: PKanaEntry;
-  sense: PSenseEntry;
-begin
- //Note: Everything must be escaped. "&" often appears in fields.
-
-  Result := '<entry>'
-    +'<ref>'+HtmlEscape(entry.ref)+'</ref>';
-  for i := 0 to Length(entry.kanji)-1 do begin
-    kanji := @entry.kanji[i];
-    Result := Result+'<expr>'+HtmlEscape(kanji.kanji);
-    for j := 1 to Length(kanji.markers) do
-      Result := Result + '<mark>' + HtmlEscape(GetMarkEdict(kanji.markers[j]))+'</mark>';
-    Result := Result + '</expr>';
-  end;
-
-  for i := 0 to Length(entry.kana)-1 do begin
-    kana := @entry.kana[i];
-    Result := Result+'<read>'+HtmlEscape(kana.kana);
-    for j := 1 to Length(kana.markers) do
-      Result := Result + '<mark>' + HtmlEscape(GetMarkEdict(kana.markers[j]))+'</mark>';
-    Result := Result+'</read>';
-  end;
-
-  for i := 0 to Length(entry.senses)-1 do begin
-    sense := @entry.senses[i];
-    Result := Result+'<sense>';
-    parts := StrSplit(PChar(sense.text), '/');
-    for j := 0 to Length(parts)-1 do
-      Result := Result+'<gloss>'+HtmlEscape(Trim(parts[j]))+'</gloss>';
-    for j := 1 to Length(sense.pos) do
-      Result := Result+'<pos>'+HtmlEscape(GetMarkEdict(sense.pos[j]))+'</pos>';
-    for j := 1 to Length(sense.markers) do
-      Result := Result+'<mark>'+HtmlEscape(GetMarkEdict(sense.markers[j]))+'</mark>';
-    Result := Result+'</sense>';
-  end;
-
-  if entry.pop then
-    Result := Result + '<pop />';
-
-  Result := Result + '</entry>';
-end;
-
 function TAnkiWordList.XsltTransform(const s: UnicodeString): WideString;
 begin
   iInp.LoadFromXML(s);
@@ -513,13 +468,13 @@ begin
     TryAddUnique(AOutput.read, AMatch.entry.kana[i].kana, '、'); }
 
   if not OutputXml then begin
-    entry_text := UniReplaceStr(AMatch.entry.AllSenses, '/', ', ');
+    entry_text := EdictSensesToText(AMatch.entry);
     if AOutput.text<>'' then
       AOutput.text := AOutput.text + '; ' + entry_text
     else
       AOutput.text := entry_text;
   end else begin
-    entry_text := GenerateXml(AMatch.entry);
+    entry_text := EdictEntryToXml(AMatch.entry);
     AOutput.text := AOutput.text + entry_text;
    //will call xslt at the end
   end;

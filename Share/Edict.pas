@@ -4,7 +4,7 @@ unit Edict;
  For daily use, consider converting EDICT to some sort of database format.
  No deflexion support. }
 
-{$DEFINE NO_KANA_KANJI_LINK}
+//{$DEFINE NO_KANA_KANJI_LINK}
 { Speeds up load and simplifies things, but ignores the info on which kana can
  be used with which kanji.
  I'll maybe delete this option when I figure out if it really slows things down
@@ -25,6 +25,10 @@ type
     kanji: array of PKanjiEntry;
    {$ENDIF}
     markers: TMarkers;
+   {$IFNDEF NO_KANA_KANJI_LINK}
+    function GetKanjiIndex(const AKanji: string): integer;
+    function MatchesKanji(const AKanji: string): boolean;
+   {$ENDIF}
   end;
   PKanaEntry = ^TKanaEntry;
   TSenseEntry = JWBEdictReader.TSenseEntry;
@@ -87,6 +91,24 @@ procedure MergeEntries(var Entries: TEdictEntries; const NewEntries: TEdictEntri
 
 implementation
 uses WideStrUtils;
+
+{$IFNDEF NO_KANA_KANJI_LINK}
+function TKanaEntry.GetKanjiIndex(const AKanji: string): integer;
+var i: integer;
+begin
+  Result := -1;
+  for i := 0 to Length(kanji)-1 do
+    if kanji[i].kanji=AKanji then begin
+      Result := i;
+      break;
+    end;
+end;
+
+function TKanaEntry.MatchesKanji(const AKanji: string): boolean;
+begin
+  Result := (Length(kanji)<=0) or (GetKanjiIndex(AKanji)>=0);
+end;
+{$ENDIF}
 
 function TEdictEntry.GetKanjiIndex(const AKanji: UnicodeString): integer;
 var i: integer;
@@ -229,6 +251,9 @@ var ed: TEdictArticle;
   rec_count: integer;
   c: char;
   i: integer;
+ {$IFNDEF NO_KANA_KANJI_LINK}
+  j: integer;
+ {$ENDIF}
   ln: string;
 begin
   Clear;
