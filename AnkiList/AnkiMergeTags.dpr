@@ -18,8 +18,8 @@ bears     russia
 {$R *.res}
 
 uses
-  SysUtils, Classes, Generics.Collections, ConsoleToolbox, JWBIO, UniStrUtils,
-  FilenameUtils;
+  SysUtils, Classes, Generics.Collections, Generics.Defaults, ConsoleToolbox,
+  JWBIO, UniStrUtils, FilenameUtils;
 
 type
   TMergeTags = class(TCommandLineApp)
@@ -27,7 +27,7 @@ type
     Files: TFilenameArray;
     OutputFile: string;
     Output: TStreamEncoder;
-    Words: TStringList;
+    Words: TDictionary<string, string>;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
   public
@@ -65,13 +65,32 @@ end;
 
 //Anki tag list format: space separated ("area jlpt2")
 
+function _compareString(const Left, Right: string): Boolean;
+begin
+  Result := CompareStr(Left, Right)=0;
+end;
+
+function _hashString(const Value: string): Integer;
+begin
+  if Value='' then
+    Result := 0
+  else
+    Result := BobJenkinsHash(Value[1], Length(Value)*SizeOf(Value[1]), 1234567);
+end;
+
 procedure TMergeTags.Run;
 var i: integer;
+  pair: TPair<string, string>;
 begin
   if ParamCount<1 then BadUsage();
   if Length(Files)<1 then BadUsage('Input files not specified');
 
-  Words := TStringList.Create;
+  Words := TDictionary<string, string>.Create(
+    TDelegatedEqualityComparer<string>.Create(
+      _compareString,
+      _hashString
+    )
+  );
 
   Files := ExpandFileMasks(Files, true);
   for i := 0 to Length(Files)-1 do
@@ -83,8 +102,8 @@ begin
     Output := ConsoleWriter;
   Output.WriteBom;
 
-  for i := 0 to Words.Count-1 do
-    Output.WriteLn(Words.Names[i]+#09+Words.ValueFromIndex[i]);
+  for pair in Words do
+    Output.WriteLn(pair.Key+#09+pair.Value);
 
   FreeAndNil(Output);
   FreeAndNil(Words);
@@ -109,18 +128,12 @@ begin
       else
         ln := ln + #09;
 
-      i := Words.IndexOfName(ln);
-      if i>=0 then begin
-        list := Words.ValueFromIndex[i];
+      if Words.TryGetValue(ln, list) then begin
         if pos(' '+ln+' ', ' '+list+' ')<=0 then
           list := list + ' ' + tagName;
       end else
         list := tagName;
-
-      if i>=0 then
-        Words.ValueFromIndex[i] := list
-      else
-        Words.Add(ln+'='+list);
+      Words.AddOrSetValue(ln, list);
     end;
 
   finally
