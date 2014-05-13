@@ -1,4 +1,4 @@
-program AnkiMergeTags;
+program AnkiDerivatives;
 {
 Parses a file listing derivative links between words:
   base deriv deriv "comment" deriv "comment"

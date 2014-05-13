@@ -296,22 +296,8 @@ begin
   query.Reset;
   query.expr_text := AExpr;
   query.read_text := ARead;
-
-  if ExprSep<>#00 then
-    query.expr := StrSplit(PChar(AExpr), ExprSep)
-  else begin
-    SetLength(query.expr, 1);
-    query.expr[0] := AExpr;
-  end;
-  for i := 0 to Length(query.expr)-1 do
-    query.expr[i] := TrimExpr(query.expr[i]);
-
-  if ReadSep<>#00 then
-    query.read := StrSplit(PChar(ARead), ReadSep)
-  else begin
-    SetLength(query.read, 1);
-    query.read[0] := ARead;
-  end;
+  query.expr := StrSplit(PChar(AExpr), ExprSep); //OK if it's #00
+  query.read := StrSplit(PChar(ARead), ReadSep); //OK if it's #00
   for i := 0 to Length(query.read)-1 do
     query.read[i] := TrimRead(query.read[i]);
 end;

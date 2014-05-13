@@ -136,11 +136,13 @@ type
   TArticleWriter = class
   protected
     outp: TStreamEncoder;
+    FOwnsEncoder: boolean;
     FAddedRecords: integer;
     procedure StartFile; virtual;
     procedure FinalizeFile; virtual;
   public
-    constructor Create(const filename: string);
+    constructor Create(const filename: string); overload;
+    constructor Create(AEncoder: TStreamEncoder; AOwnsEncoder: boolean = false); overload;
     destructor Destroy; override;
     procedure Print(art: PEdictArticle); overload; virtual; abstract;
     property AddedRecords: integer read FAddedRecords;
@@ -353,10 +355,19 @@ ArticleWriter
 }
 
 constructor TArticleWriter.Create(const filename: string);
+var AOutp: TStreamEncoder;
+begin
+  AOutp := CreateTextFile(filename, TUTF16Encoding);
+  AOutp.WriteBom;
+  Create(AOutp, {OwnsEncoder=}true);
+end;
+
+constructor TArticleWriter.Create(AEncoder: TStreamEncoder;
+  AOwnsEncoder: boolean = false);
 begin
   inherited Create;
-  outp := CreateTextFile(filename, TUTF16Encoding);
-  outp.WriteBom;
+  outp := AEncoder;
+  FOwnsEncoder := AOwnsEncoder;
   FAddedRecords := 0;
   StartFile;
 end;
