@@ -2,7 +2,7 @@
 
 interface
 uses Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, EdictWriter,
-  FastArray, PerlRegEx, PerlRegExUtils;
+  FastArray, PerlRegEx, RegExUtils;
 
 {
 Собираем несколько версий статьи, по числу разных шаблонов.
