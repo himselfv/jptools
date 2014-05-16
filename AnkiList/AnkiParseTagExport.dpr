@@ -24,7 +24,13 @@ TODO: Flag to add tags from deck to existing tags but not delete the missing one
 {$R *.res}
 
 uses
-  SysUtils, Classes, Generics.Collections, UniStrUtils, ConsoleToolbox, JWBIO;
+  SysUtils,
+  Classes,
+  Generics.Collections,
+  UniStrUtils,
+  ConsoleToolbox,
+  JWBIO,
+  ExprMatching in 'ExprMatching.pas';
 
 type
   TOutputMode = (omKanji, omWords);
@@ -73,38 +79,31 @@ begin
           'a file for every tag, listing all characters / expressions marked ' +
           'with it.');
   writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
-  writeln('Flags:');
-  writeln('  -o path\folder    specify output folder (required)');
-  writeln('  -mode <mode>      file format to generate:');
-  writeln('    kanji           kanji list (characters one after another)');
-  writeln('    words           word list (one expression a line)');
+  writeln('Input:');
   writeln('  -tn column        take tags from this column, zero-based (required)');
   writeln('  -te column        take expressions from this column, zero-based (optional, default = 0)');
   writeln('  -tr column        take readings from this column, zero-based (optional)');
+  writeln('  -er regex         use this regex (PCRE) to match expressions.');
+  writeln('     In expression mode this can handle reading clarifications such '
+    +'as KANJI[KANA] or KANJI/KANA where a simple expression is expected. Regex '
+    +'must match all possible formats and put results into named groups "expr" '
+    +'and "read".');
+  writeln('     In kanji mode only "expr" group is expected.');
+  writeln('  -rr regex         use this regex (PCRE) to match readings.');
+  writeln('     Only "read" group is expected.');
+
+  writeln('');
+  writeln('Output:');
+  writeln('  -o path\folder    specify output folder (required)');
+  writeln('  -mode <mode>      file format to generate:');
+  writeln('    kanji           kanji list (characters one after another)');
+  writeln('    expresion       word list (one expression a line)');
   writeln('If -tr is specified and "-mode words" is being used, each expression ' +
           'will also have reading listed after a space.');
 end;
 
 function TParseTagExport.HandleSwitch(const s: string; var i: integer): boolean;
 begin
-  if s='-o' then begin
-    if i>=ParamCount then BadUsage('-o requires target path');
-    Inc(i);
-    OutputDir := ParamStr(i);
-    Result := true;
-  end else
-  if s='-mode' then begin
-    if i>=ParamCount then BadUsage('-o requires target path');
-    Inc(i);
-    if SameText(ParamStr(i), 'kanji') then
-      OutputMode := omKanji
-    else
-    if SameText(ParamStr(i), 'words') then
-      OutputMode := omWords
-    else
-      BadUsage('Invalid output mode: '+ParamStr(i));
-    Result := true;
-  end else
   if s='-tn' then begin
     if i>=ParamCount then BadUsage('-tn needs column number');
     Inc(i);
@@ -122,6 +121,38 @@ begin
     Inc(i);
     ReadingColumn := StrToInt(ParamStr(i));
     Result := true
+  end else
+
+  if s='-er' then begin
+    if i>=ParamCount then BadUsage('-er needs regex');
+    Inc(i);
+    SetExpressionPattern(ParamStr(i));
+    Result := true
+  end else
+  if s='-rr' then begin
+    if i>=ParamCount then BadUsage('-rr needs regex');
+    Inc(i);
+    SetReadingPattern(ParamStr(i));
+    Result := true
+  end else
+
+  if s='-o' then begin
+    if i>=ParamCount then BadUsage('-o requires target path');
+    Inc(i);
+    OutputDir := ParamStr(i);
+    Result := true;
+  end else
+  if s='-mode' then begin
+    if i>=ParamCount then BadUsage('-o requires target path');
+    Inc(i);
+    if SameText(ParamStr(i), 'kanji') then
+      OutputMode := omKanji
+    else
+    if SameText(ParamStr(i), 'words') then
+      OutputMode := omWords
+    else
+      BadUsage('Invalid output mode: '+ParamStr(i));
+    Result := true;
   end else
     Result := inherited;
 end;
@@ -160,7 +191,7 @@ end;
 procedure TParseTagExport.ParseFile(const AFilename: string);
 var inp: TStreamDecoder;
   ln: string;
-  key: string;
+  key, read: string;
   parts: TStringArray;
   tags: TStringArray;
   i: integer;
@@ -175,9 +206,24 @@ begin
         continue;
 
       key := Trim(parts[ExpressionColumn]);
-      if (OutputMode=omWords) and (ReadingColumn>=0)
-      and (ReadingColumn<>ExpressionColumn) and (ReadingColumn<Length(parts)) then
-        key := key + ' ' + Trim(parts[ReadingColumn]);
+      MatchExpression(key, read);
+
+      if OutputMode=omWords then begin
+        if read<>'' then //forced reading in key takes precendence
+          key := key + ' ' + read
+        else //take reading from reading column, if set
+        if (ReadingColumn>=0) and (ReadingColumn<>ExpressionColumn)
+        and (ReadingColumn<Length(parts)) then begin
+          read := Trim(parts[ReadingColumn]);
+          MatchReading(read);
+          key := key + ' ' + read;
+        end else //no reading at all
+          key := key;
+
+      end else begin
+       //In kanji mode there's no need for any clarification; kanji are unambiguous.
+       //We have already matched the expression itself.
+      end;
 
       tags := StrSplit(PChar(Trim(parts[TagsColumn])), ' ');
       for i := 0 to Length(tags)-1 do

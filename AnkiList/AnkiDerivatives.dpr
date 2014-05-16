@@ -16,7 +16,6 @@ E.g.:
   c, d: From: a (comment).
   e: From: a (comment); b.
 
-TODO: Dict resolution.
 TODO: <ruby>expr<rt>read, expr[read] etc.
 TODO: "~" etc.
 TODO: XSLT support for expressions, like in WordList
