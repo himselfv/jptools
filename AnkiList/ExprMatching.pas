@@ -53,6 +53,17 @@ type
 function ParseExpressions(const expr: string): TExpressions; overload;
 function ParseExpressions(const expr, read: string): TExpressions; overload;
 
+type
+  TReading = record
+    read: string;
+    expressions: array of integer; //expression indexes
+  end;
+  PReading = ^TReading;
+  TReadings = array of TReading;
+
+//Converts "kanji with attached kana" to "kana with attached kanji"
+function ExpressionsToReadings(const expr: TExpressions): TReadings;
+
 
 implementation
 uses SysUtils, RegularExpressionsCore, RegexUtils;
@@ -138,6 +149,30 @@ begin
     Result := StrSplit(PChar(read), ReadingSeparator);
 end;
 
+function FindReading(const AReadings: TStringArray; const read: string): integer;
+var i: integer;
+begin
+  Result := -1;
+  for i := 0 to Length(AReadings)-1 do
+    if AReadings[i]=read then begin
+      Result := i;
+      break;
+    end;
+end;
+
+//Merges all readings used in expressions to a single list
+function MergeReadings(const expr: TExpressions): TStringArray;
+var i, j: integer;
+begin
+  SetLength(Result, 0);
+  for i := 0 to Length(expr)-1 do
+    for j := 0 to Length(expr[i].readings)-1 do
+      if FindReading(Result, expr[i].readings[j])<0 then begin
+        SetLength(Result, Length(Result)+1);
+        Result[Length(Result)-1] := expr[i].readings[j];
+      end;
+end;
+
 function ParseExpressions(const expr: string): TExpressions;
 var parts: TStringArray;
   i: integer;
@@ -149,12 +184,14 @@ begin
     Result[i].expr := parts[i];
     MatchExpression(Result[i].expr, read);
     if read<>'' then
-      Result[i].readings := SplitReadings(read);
+      Result[i].readings := SplitReadings(read)
+    else
+      SetLength(Result[i].readings, 0);
   end;
 end;
 
 function ParseExpressions(const expr, read: string): TExpressions;
-var readings: TStringArray;
+var readings, r2: TStringArray;
   i: integer;
 begin
   Result := ParseExpressions(expr);
@@ -167,6 +204,32 @@ begin
   for i := 0 to Length(Result)-1 do
     if Result[i].readings=nil then
       Result[i].readings := readings;
+
+ //Check that all the external readings are used or it's a warning
+  r2 := MergeReadings(Result);
+  for i := 0 to Length(r2)-1 do
+    if FindReading(readings, r2[i])<0 then
+      writeln(ErrOutput, 'Warning: reading '+r2[i]+' not assigned to any kanji in "'+expr+' : '+read+'"');
+end;
+
+function ExpressionsToReadings(const expr: TExpressions): TReadings;
+var readings: TStringArray;
+  i, j: integer;
+begin
+  readings := MergeReadings(expr);
+  SetLength(Result, Length(readings));
+
+  for i := 0 to Length(readings)-1 do begin
+    Result[i].read := readings[i];
+    SetLength(Result[i].expressions, 0);
+    for j := 0 to Length(expr)-1 do
+      if FindReading(expr[j].readings, readings[i])>=0 then begin
+        SetLength(Result[i].expressions, Length(Result[i].expressions)+1);
+        Result[i].expressions[Length(Result[i].expressions)-1] := j;
+      end;
+    if Length(Result[i].expressions)=Length(expr) then //all expressions matched
+      SetLength(Result[i].expressions, 0); //informal "all matched"
+  end;
 end;
 
 end.

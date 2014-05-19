@@ -357,6 +357,7 @@ begin
     exit;
   end;
 
+  Result := nil;
   for i := 0 to Length(item.FEntries)-1 do begin
     if item.FEntries[i].GetKanjiIndex(expr)<0 then continue; //no kanji
     ki := item.FEntries[i].GetKanaIndex(read);

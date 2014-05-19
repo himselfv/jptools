@@ -454,6 +454,7 @@ begin
         //is present for some other reason
 
       p_expr := ParseExpressions(s_expr, s_read);
+      p_read := ExpressionsToReadings(p_expr);
 
       regex.Replace2(mean, pDivContents, '\1; ');       //  <div>a</div><div>b</div> --> a; b
       regex.Replace2(mean, ';\s*'+pBr+'\*', '; ');      //  a; <br>b -->  a; b
@@ -464,18 +465,20 @@ begin
       p_mean := SplitMeaning(mean);
       for i := 0 to p_mean.Count-1 do begin
         ed.Reset;
-        //TODO: Finish this
-        for expr in p_expr do begin
+
+        for expr in p_expr do
           ed.AddKanji^.k := ApplyPattern(p_mean[i].pat_expr, expr.expr);
-          for s_read in expr.readings do begin
+
+        for read in p_read do
+          with ed.AddKana^ do begin
             if p_mean[i].pat_read<>'' then
-              s_read := ApplyPattern(p_mean[i].pat_read, s_read)
+              k := ApplyPattern(p_mean[i].pat_read, read.read)
             else
-              s_read := ApplyPattern(p_mean[i].pat_expr, s_read); //perhaps empty
-            j := FindKanaIndex(ed, s_read);
-            if j<0 then
-              ed.AddKana^.k := s_read;
-          end;
+              k := ApplyPattern(p_mean[i].pat_expr, read.read); //perhaps empty
+            AllKanji := Length(read.expressions)=0;
+            if not AllKanji then
+              for j := 0 to Length(read.expressions)-1 do
+                AddKanjiRef(read.expressions[j]);
         end;
 
         for j := 0 to p_mean[i].Senses.Count-1 do begin
