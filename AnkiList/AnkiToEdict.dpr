@@ -9,8 +9,6 @@ features (grammar markers etc).
 
 TODO: <ruby>expr<rt>read etc.
 TODO: "~" etc. in main expression
-TODO: <br /> with ; before it => just remove <br /> (this also solves </div><br><div> problem)
-
 }
 
 {$APPTYPE CONSOLE}
@@ -402,14 +400,6 @@ begin
 end;
 
 
-//Regex patterns
-const
-  pHtmlTags = '<[^>]*>';
-  pBr = '<br\s*(/?)\s*>';
-  pDivContents = '<div>([^<>]*)</div>';
-  pBrBetweenDivs = '(?<=</div>)\s*'+pBr+'\s*(?=<div>)';
-  pHtmlEntity = '&([^;]*);';
-
 
 function TAnkiToEdict.OnHtmlEntity(const Match: TMatch): string;
 var ent: string;
@@ -428,12 +418,18 @@ begin
  //Decode more entities here as needed.
 end;
 
+//Regex patterns
+const
+  pHtmlTags = '<[^>]*>';
+  pBr = '<br\s*(/?)\s*>';
+  pDivContents = '<div>([^<>]*)</div>';
+  pHtmlEntity = '&([^;]*);';
+
 procedure TAnkiToEdict.ParseFile(const AFilename: string);
 var inp: TStreamDecoder;
   ln, expr, read, mean: string;
   p_expr, p_read: TStringArray;
   parts: TStringArray;
-//  p_mean: TStringArray;
   p_mean: TArray<TEntry>;
   ed: TEdictArticle;
   sense: PEdictSenseEntry;
@@ -463,11 +459,11 @@ begin
       if mean='' then continue; //sometimes there's no meaning and the card
         //is present for some other reason
 
-      regex.Replace2(mean, pBrBetweenDivs, '');
-      regex.Replace2(mean, pDivContents, '\1; ');
-      regex.Replace2(mean, pBr, '; '); //a<br />b -->  a; b
+      regex.Replace2(mean, pDivContents, '\1; ');       //  <div>a</div><div>b</div> --> a; b
+      regex.Replace2(mean, ';\s*'+pBr+'\*', '; ');      //  a; <br>b -->  a; b
+      regex.Replace2(mean, '\s*'+pBr+'\*', '; ');       //  a <br>b -->  a; b
       regex.Replace2(mean, pHtmlEntity, OnHtmlEntity);
-      regex.Replace2(mean, pHtmlTags, '');
+      regex.Replace2(mean, pHtmlTags, '');              //  remove all remaining tags
 
       p_mean := SplitMeaning(mean);
       for i := 0 to p_mean.Count-1 do begin
