@@ -23,7 +23,7 @@
 uses
   SysUtils, Classes, StrUtils, UniStrUtils, ConsoleToolbox, JWBIO,
   JWBEdictReader, JWBEdictMarkers, Edict, FastArray, SearchSort,
-  EntryFormatting;
+  EntryFormatting, ExprMatching;
 
 type
   TQuery = record
@@ -113,8 +113,6 @@ procedure TAnkiWordList.Init;
 begin
   ExprColumn := 0;
   ReadColumn := 1;
-  ExprSep := '、';
-  ReadSep := #00; //same as Expression
   MatchMode := mmBest;
 end;
 
@@ -140,16 +138,17 @@ begin
     ReadColumn := StrToInt(ParamStr(i));
     Result := true
   end else
+
   if s='-es' then begin
     if i>=ParamCount then BadUsage('-es needs separator value');
     Inc(i);
-    ExprSep := ParamStr(i)[1];
+    SetExpressionSeparator(ParamStr(i)[1]);
     Result := true
   end else
   if s='-er' then begin
     if i>=ParamCount then BadUsage('-er needs separator value');
     Inc(i);
-    ReadSep := ParamStr(i)[1];
+    SetReadingSeparator(ParamStr(i)[1]);
     Result := true
   end else
 

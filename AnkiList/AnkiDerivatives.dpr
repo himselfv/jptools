@@ -17,8 +17,8 @@ E.g.:
   e: From: a (comment); b.
 
 TODO: "~" etc.
-TODO: Allow matches from up to N dictionaries (ASD -- edict; BSD -- warodai)
 TODO: Allow multiple readings/writings to be provided.
+TODO: Allow matches from up to N dictionaries (ASD -- edict; BSD -- warodai)
 }
 
 {$APPTYPE CONSOLE}
@@ -181,7 +181,7 @@ begin
       ln := '';
     if pair.Value.deriv<>'' then begin
       if ln<>'' then
-        ln := ln+'; производные: '
+        ln := ln+'. Производные: '
       else
         ln := 'Производные: ';
       ln := ln + pair.Value.deriv;

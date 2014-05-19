@@ -2,13 +2,12 @@
 {
 Parses a tab-separated Anki export, strips HTML tags according to a set of rules
 and converts to EDICT-compatible dictionary.
-  base deriv deriv "comment" deriv "comment"
 
 Note that while compatible, this does not give you the full extent of EDICT
 features (grammar markers etc).
 
 TODO: <ruby>expr<rt>read etc.
-TODO: "~" etc. in main expression
+TODO: "~" etc. in main expression (what do we even do with those?)
 }
 
 {$APPTYPE CONSOLE}
@@ -33,8 +32,6 @@ type
     ExprColumn: integer;
     ReadColumn: integer;
     MeaningColumn: integer;
-    ExprSep: char;
-    ReadSep: char;
   protected
     OutputFile: string;
     Output: TStreamEncoder;
@@ -78,8 +75,6 @@ begin
   ExprColumn := 0;
   ReadColumn := 1;
   MeaningColumn := 2;
-  ExprSep := '、';
-  ReadSep := #00; //same as Expression
 end;
 
 function TAnkiToEdict.HandleSwitch(const s: string; var i: integer): boolean;
@@ -102,19 +97,19 @@ begin
     MeaningColumn := StrToInt(ParamStr(i));
     Result := true
   end else
+
   if s='-es' then begin
     if i>=ParamCount then BadUsage('-es needs separator value');
     Inc(i);
-    ExprSep := ParamStr(i)[1];
+    SetExpressionSeparator(ParamStr(i)[1]);
     Result := true
   end else
   if s='-rs' then begin
     if i>=ParamCount then BadUsage('-rs needs separator value');
     Inc(i);
-    ReadSep := ParamStr(i)[1];
+    SetReadingSeparator(ParamStr(i)[1]);
     Result := true
   end else
-
   if s='-er' then begin
     if i>=ParamCount then BadUsage('-er needs regex');
     Inc(i);
@@ -168,7 +163,6 @@ var i: integer;
 begin
   if ParamCount<1 then BadUsage();
   if Length(Files)<1 then BadUsage('Input files not specified');
-  if ReadSep=#00 then ReadSep := ExprSep;
 
   regex := TRegexLib.Create;
 
@@ -427,12 +421,15 @@ const
 
 procedure TAnkiToEdict.ParseFile(const AFilename: string);
 var inp: TStreamDecoder;
-  ln, expr, read, mean: string;
-  p_expr, p_read: TStringArray;
+  ln, s_expr, s_read, mean: string;
   parts: TStringArray;
+  p_expr: TExpressions;
+  p_read: TReadings;
   p_mean: TArray<TEntry>;
   ed: TEdictArticle;
   sense: PEdictSenseEntry;
+  expr: TExpression;
+  read: TReading;
   i, j, k: integer;
 begin
   inp := OpenTextFile(AFilename);
@@ -444,20 +441,19 @@ begin
       parts := StrSplit(PWideChar(ln),#09);
       if ExprColumn>=Length(parts) then
         continue;
-      expr := Trim(parts[ExprColumn]);
+      s_expr := Trim(parts[ExprColumn]);
       if (ReadColumn<0) or (ReadColumn=ExprColumn) or (ReadColumn>=Length(parts)) then
-        read := ''
+        s_read := ''
       else
-        read := Trim(parts[ReadColumn]);
-
-      p_expr := StrSplit(PChar(expr), ExprSep); //OK if it's #00
-      p_read := StrSplit(PChar(read), ReadSep); //OK if it's #00
+        s_read := Trim(parts[ReadColumn]);
 
       if MeaningColumn>=Length(parts) then
         continue;
       mean := parts[MeaningColumn];
       if mean='' then continue; //sometimes there's no meaning and the card
         //is present for some other reason
+
+      p_expr := ParseExpressions(s_expr, s_read);
 
       regex.Replace2(mean, pDivContents, '\1; ');       //  <div>a</div><div>b</div> --> a; b
       regex.Replace2(mean, ';\s*'+pBr+'\*', '; ');      //  a; <br>b -->  a; b
@@ -468,18 +464,19 @@ begin
       p_mean := SplitMeaning(mean);
       for i := 0 to p_mean.Count-1 do begin
         ed.Reset;
-        for expr in p_expr do
-          ed.AddKanji^.k := ApplyPattern(p_mean[i].pat_expr, expr);
-        for read in p_read do
-          with ed.AddKana^ do begin
+        //TODO: Finish this
+        for expr in p_expr do begin
+          ed.AddKanji^.k := ApplyPattern(p_mean[i].pat_expr, expr.expr);
+          for s_read in expr.readings do begin
             if p_mean[i].pat_read<>'' then
-              k := ApplyPattern(p_mean[i].pat_read, read)
+              s_read := ApplyPattern(p_mean[i].pat_read, s_read)
             else
-              k := ApplyPattern(p_mean[i].pat_expr, read); //perhaps empty
-            AllKanji := true;
+              s_read := ApplyPattern(p_mean[i].pat_expr, s_read); //perhaps empty
+            j := FindKanaIndex(ed, s_read);
+            if j<0 then
+              ed.AddKana^.k := s_read;
           end;
-
-        //TODO: Modify kana/kanji according to ~pattern
+        end;
 
         for j := 0 to p_mean[i].Senses.Count-1 do begin
           sense := ed.AddSense;
