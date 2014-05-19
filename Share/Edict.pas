@@ -81,7 +81,8 @@ type
     procedure LoadFromStream(const AStream: TStream;
       ASourceFormat: TSourceFormat = sfEdict);
     procedure Load(AInput: TStreamDecoder; ASourceFormat: TSourceFormat);
-    function FindEntry(const expr: UnicodeString): PEdictEntry;
+    function FindEntry(const expr: UnicodeString): PEdictEntry; overload;
+    function FindEntry(const expr, read: UnicodeString): PEdictEntry; overload;
     function FindEntries(const expr: UnicodeString): TEdictEntries; overload;
     function FindEntries(const expr: TStringArray): TEdictEntries; overload;
     property EntryCount: integer read FEntryCount;
@@ -334,7 +335,7 @@ begin
   end;
 end;
 
-{ Searches for the first matching entry through kanji and kana indexes }
+{ Searches for the first entry matching expr either as kanji or kana }
 function TEdict.FindEntry(const expr: UnicodeString): PEdictEntry;
 var item: TBinTreeItem;
 begin
@@ -345,7 +346,29 @@ begin
     Result := TExprItem(item).FEntries[0]; //guaranteed to have at least one
 end;
 
-{ Searches for all matching entries through kanji and kana indexes }
+{ Searches for the first entry matching exactly this expression and reading }
+function TEdict.FindEntry(const expr, read: UnicodeString): PEdictEntry;
+var item: TExprItem;
+  i, ki: integer;
+begin
+  item := TExprItem(FExprTree.SearchData(expr));
+  if item=nil then begin
+    Result := nil;
+    exit;
+  end;
+
+  for i := 0 to Length(item.FEntries)-1 do begin
+    if item.FEntries[i].GetKanjiIndex(expr)<0 then continue; //no kanji
+    ki := item.FEntries[i].GetKanaIndex(read);
+    if ki<0 then continue; //no kana
+    if not item.FEntries[i].kana[ki].MatchesKanji(expr) then
+      continue; //no kanji-kana match, although this is rare I guess
+    Result := item.FEntries[i];
+    break;
+  end;
+end;
+
+{ Searches for all entries matching expr either as kanji or kana }
 function TEdict.FindEntries(const expr: UnicodeString): TEdictEntries;
 var item: TBinTreeItem;
 begin

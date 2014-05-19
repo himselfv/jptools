@@ -22,9 +22,8 @@
 }
 uses
   SysUtils, Classes, StrUtils, UniStrUtils, ConsoleToolbox, JWBIO,
-  JWBEdictReader, JWBEdictMarkers, Edict, ActiveX, XmlDoc, XmlIntf, FastArray,
-  SearchSort,
-  AnkiEdictToText in 'AnkiEdictToText.pas';
+  JWBEdictReader, JWBEdictMarkers, Edict, FastArray, SearchSort,
+  EntryFormatting;
 
 type
   TQuery = record
@@ -74,8 +73,6 @@ type
   protected
     OutputFile: string;
     OutputXml: boolean;
-    XsltFilename: string;
-    iInp, iXsl: IXMLDocument;
     MatchMode: TMatchMode;
     procedure Init; override;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
@@ -83,7 +80,6 @@ type
     procedure SplitQuery(AExpr, ARead: string; out query: TQuery);
     function FindMatches(const query: TQuery): TArray<TMatch>;
     procedure SortMatches(var AMatches: TArray<TMatch>);
-    function XsltTransform(const s: UnicodeString): WideString;
     procedure AddToOutput(var AOutput: TOutputEntry; AQuery: PQuery; AMatch: PMatch);
   public
     procedure ShowUsage; override;
@@ -106,7 +102,7 @@ begin
   writeln('Output:');
   writeln('  -o output.file    specify output file (otherwise console)');
   writeln('  -xml              output xml instead of the default plaintext');
-  writeln('  -xslt <filename>  output xml converted by this XSLT schema');
+  writeln('  -xslt <filename>  format dictionary entries according to this XSLT schema');
   writeln('  -match=<mode>     if there are multiple matches:');
   writeln('    best            output ONE best match');
   writeln('    multiple        output all matches as a single result');
@@ -171,7 +167,7 @@ begin
     if i>=ParamCount then BadUsage('-xslt needs XSLT schema filename');
     Inc(i);
     OutputXml := true;
-    XsltFilename := ParamStr(i);
+    SetXsltSchema(ParamStr(i));
     Result := true
   end else
   if StartsText('-match=', s) then begin
@@ -203,12 +199,6 @@ var i: integer;
 begin
   if Length(Files)<=0 then BadUsage('Specify input files.');
 
-  if XsltFilename<>'' then begin
-    CoInitialize(nil);
-    iInp := TXMLDocument.Create(nil);
-    iXsl := LoadXMLDocument(XsltFilename);
-  end;
-
   if (readSep=#00) and (exprSep<>#00) then
     readSep := exprSep;
 
@@ -235,10 +225,6 @@ begin
   FreeAndNil(outp); //flush
 
   FreeAndNil(err);
-
- //Release
-  iXsl := nil;
-  iInp := nil;
 end;
 
 
@@ -412,12 +398,6 @@ begin
   QuickSort(@AMatches, 0, AMatches.Count-1, MatchCmp, MatchXch);
 end;
 
-function TAnkiWordList.XsltTransform(const s: UnicodeString): WideString;
-begin
-  iInp.LoadFromXML(s);
-  iInp.Node.TransformNode(iXsl.Node,Result);
-end;
-
 procedure TOutputEntry.Reset(const AKey: string);
 begin
   key := AKey;
@@ -438,7 +418,6 @@ end;
 procedure TAnkiWordList.AddToOutput(var AOutput: TOutputEntry; AQuery: PQuery;
   AMatch: PMatch);
 var //i: integer;
-  entry_text: string;
   kanji_text,
   kana_text: string;
 begin
@@ -467,17 +446,7 @@ begin
   for i := 0 to Length(AMatch.entry.kana)-1 do
     TryAddUnique(AOutput.read, AMatch.entry.kana[i].kana, '、'); }
 
-  if not OutputXml then begin
-    entry_text := EdictSensesToText(AMatch.entry);
-    if AOutput.text<>'' then
-      AOutput.text := AOutput.text + '; ' + entry_text
-    else
-      AOutput.text := entry_text;
-  end else begin
-    entry_text := EdictEntryToXml(AMatch.entry);
-    AOutput.text := AOutput.text + entry_text;
-   //will call xslt at the end
-  end;
+  FormatEntryAdd(AOutput.text, AMatch.entry);
 end;
 
 //inp is destroyed on exit
@@ -545,9 +514,8 @@ begin
 
      //Output
       for i := 0 to OutputEntries.Count-1 do begin
-        if iXsl<>nil then
-          with OutputEntries.GetPointer(i)^ do
-            text := XsltTransform(text);
+        with OutputEntries.GetPointer(i)^ do
+          text := FormatEntryFinalize(text);
         outp_text := OutputEntries[i].key + #09 //key
          //Output expr and read because we don't know what we matched in each
          //case.

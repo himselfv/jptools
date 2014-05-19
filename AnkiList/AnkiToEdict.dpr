@@ -7,11 +7,9 @@ and converts to EDICT-compatible dictionary.
 Note that while compatible, this does not give you the full extent of EDICT
 features (grammar markers etc).
 
-TODO: <ruby>expr<rt>read, expr[read] etc.
+TODO: <ruby>expr<rt>read etc.
 TODO: "~" etc. in main expression
-
 TODO: <br /> with ; before it => just remove <br /> (this also solves </div><br><div> problem)
-TODO: It'd be nice if we could set ~asd [bsd] patterns as regex
 
 }
 
@@ -22,7 +20,7 @@ TODO: It'd be nice if we could set ~asd [bsd] patterns as regex
 uses
   SysUtils, Classes, Generics.Collections, Generics.Defaults, ConsoleToolbox,
   JWBIO, StrUtils, UniStrUtils, FilenameUtils, EdictWriter, RegularExpressions,
-  RegExUtils, FastArray;
+  RegExUtils, FastArray, ExprMatching;
 
 type
   TExpressionCard = record
@@ -47,6 +45,7 @@ type
     procedure Init; override;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
+    function OnHtmlEntity(const Match: TMatch): string;
   public
     procedure ShowUsage; override;
     procedure Run; override;
@@ -69,6 +68,8 @@ begin
   writeln('  -tm <column>      Take meanings (content) from this column (default is 2, if none available set to -1)');
   writeln('  -es <text>        Expression separator. If specified, multiple ways of writing an expression can be listed.');
   writeln('  -rs <text>        Reading separator. By default expression separator is used.');
+  writeln('  -er regex         use this regex (PCRE) to match expressions (return "expr" and "read").');
+  writeln('  -rr regex         use this regex (PCRE) to match readings (return "read").');
   writeln('');
   writeln('Output:');
   writeln('  -o output.file    specify output file (otherwise console, EDICT2 only)');
@@ -109,10 +110,23 @@ begin
     ExprSep := ParamStr(i)[1];
     Result := true
   end else
-  if s='-er' then begin
-    if i>=ParamCount then BadUsage('-er needs separator value');
+  if s='-rs' then begin
+    if i>=ParamCount then BadUsage('-rs needs separator value');
     Inc(i);
     ReadSep := ParamStr(i)[1];
+    Result := true
+  end else
+
+  if s='-er' then begin
+    if i>=ParamCount then BadUsage('-er needs regex');
+    Inc(i);
+    SetExpressionPattern(ParamStr(i));
+    Result := true
+  end else
+  if s='-rr' then begin
+    if i>=ParamCount then BadUsage('-rr needs regex');
+    Inc(i);
+    SetReadingPattern(ParamStr(i));
     Result := true
   end else
 
@@ -196,16 +210,29 @@ Supports:
 type
   TSense = record
     glosses: TArray<string>;
+    procedure Reset;
   end;
   PSense = ^TSense;
   TEntry = record
     pat_expr, pat_read: string;
     senses: TArray<TSense>;
+    procedure Reset;
   end;
   PEntry = ^TEntry;
 
-//Matches patterns of type: ～権 [～けん]
+procedure TSense.Reset;
+begin
+  glosses.Reset;
+end;
 
+procedure TEntry.Reset;
+begin
+  pat_expr := '';
+  pat_read := '';
+  senses.Reset;
+end;
+
+//Matches patterns of type: ～権 [～けん]
 //True if this was a pattern (basically all CJK + had ~ anywhere) + moves
 //pointer to the end of it
 
@@ -261,7 +288,7 @@ end;
 //All HTML tags need to be removed/replaced with linear markup before calling,
 //htmlentities decoded.
 function SplitMeaning(ln: string): TArray<TEntry>;
-var ps, pc: PChar;
+var ps, pc, pt: PChar;
   entry: PEntry;
   sense: PSense;
   quotes: string; //stack of quotes
@@ -293,11 +320,11 @@ var ps, pc: PChar;
     end;
     if entry=nil then begin
       entry := PEntry(Result.AddNew);
-      entry.senses.Reset;
+      entry.Reset;
     end;
     if sense=nil then begin
       sense := PSense(entry.senses.AddNew);
-      sense.glosses.Reset;
+      sense.Reset;
     end;
     sense.glosses.Add(text);
     ps := pc;
@@ -337,6 +364,7 @@ begin
   pc := @ln[1];
   ps := pc;
   while pc^<>#00 do begin
+    pt := pc;
     if ((lastQuote='"') and (pc^='"'))
     or ((lastQuote='''') and (pc^=''''))
     or ((lastQuote='(') and (pc^=')'))
@@ -357,9 +385,12 @@ begin
       CommitSense;
       Inc(ps);
     end else
-    if TryEatPattern(pc, pat_expr, pat_read) then
-      NewEntry(pat_expr, pat_read)
-    else
+    if TryEatPattern(pt, pat_expr, pat_read) then begin
+      CommitSense; //with old value of pc
+      NewEntry(pat_expr, pat_read);
+      pc := pt; //after pattern
+      ps := pt;
+    end else
     begin
      //Normal char
     end;
@@ -377,6 +408,25 @@ const
   pBr = '<br\s*(/?)\s*>';
   pDivContents = '<div>([^<>]*)</div>';
   pBrBetweenDivs = '(?<=</div>)\s*'+pBr+'\s*(?=<div>)';
+  pHtmlEntity = '&([^;]*);';
+
+
+function TAnkiToEdict.OnHtmlEntity(const Match: TMatch): string;
+var ent: string;
+begin
+  if Match.Groups.Count<2 then begin
+    Result := Match.Value;
+    exit;
+  end;
+  ent := Match.Groups[1].Value;
+  if ent='lt' then Result := '<' else
+  if ent='gt' then Result := '>' else
+  if ent='amp' then Result := '&' else
+  if ent='quot' then Result := '"' else
+  if ent='nbsp' then Result := ' ' else
+  Result := Match.Value; //not handled
+ //Decode more entities here as needed.
+end;
 
 procedure TAnkiToEdict.ParseFile(const AFilename: string);
 var inp: TStreamDecoder;
@@ -416,9 +466,8 @@ begin
       regex.Replace2(mean, pBrBetweenDivs, '');
       regex.Replace2(mean, pDivContents, '\1; ');
       regex.Replace2(mean, pBr, '; '); //a<br />b -->  a; b
+      regex.Replace2(mean, pHtmlEntity, OnHtmlEntity);
       regex.Replace2(mean, pHtmlTags, '');
-
-     //TODO: Decode HTML's &amp; &nbsp; etc.
 
       p_mean := SplitMeaning(mean);
       for i := 0 to p_mean.Count-1 do begin

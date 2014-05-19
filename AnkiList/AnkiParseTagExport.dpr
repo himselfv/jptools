@@ -14,9 +14,13 @@ russia.txt
   Moscow
   bears
 
-TODO: Flag to update existing lists instead of overwriting (leaves missing words
-  intact).
-TODO: Flag to add tags from deck to existing tags but not delete the missing ones.
+All mentioned tag files are rewrited from the scratch.
+
+TODO: Some sort of "update mode".
+1. Ignore/update unmentioned tags.
+2. Ignore/delete unmentioned expressions.
+3. Keep/delete mentioned expressions from tags they no longer have.
+Too much possibilities, will think this through when there's a need.
 }
 
 {$APPTYPE CONSOLE}
@@ -24,13 +28,8 @@ TODO: Flag to add tags from deck to existing tags but not delete the missing one
 {$R *.res}
 
 uses
-  SysUtils,
-  Classes,
-  Generics.Collections,
-  UniStrUtils,
-  ConsoleToolbox,
-  JWBIO,
-  ExprMatching in 'ExprMatching.pas';
+  SysUtils, Classes, Generics.Collections, UniStrUtils, ConsoleToolbox,
+  JWBIO, ExprMatching;
 
 type
   TOutputMode = (omKanji, omWords);
@@ -83,14 +82,9 @@ begin
   writeln('  -tn column        take tags from this column, zero-based (required)');
   writeln('  -te column        take expressions from this column, zero-based (optional, default = 0)');
   writeln('  -tr column        take readings from this column, zero-based (optional)');
-  writeln('  -er regex         use this regex (PCRE) to match expressions.');
-  writeln('     In expression mode this can handle reading clarifications such '
-    +'as KANJI[KANA] or KANJI/KANA where a simple expression is expected. Regex '
-    +'must match all possible formats and put results into named groups "expr" '
-    +'and "read".');
-  writeln('     In kanji mode only "expr" group is expected.');
-  writeln('  -rr regex         use this regex (PCRE) to match readings.');
-  writeln('     Only "read" group is expected.');
+  writeln('  -er regex         use this regex (PCRE) to match expressions (return "expr" and "read").');
+  writeln('  -rr regex         use this regex (PCRE) to match readings (return "read").');
+  writeln('  -u                update existing tag files instead of rewriting');
 
   writeln('');
   writeln('Output:');

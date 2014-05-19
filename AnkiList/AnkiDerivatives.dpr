@@ -16,10 +16,9 @@ E.g.:
   c, d: From: a (comment).
   e: From: a (comment); b.
 
-TODO: <ruby>expr<rt>read, expr[read] etc.
 TODO: "~" etc.
-TODO: XSLT support for expressions, like in WordList
 TODO: Allow matches from up to N dictionaries (ASD -- edict; BSD -- warodai)
+TODO: Allow multiple readings/writings to be provided.
 }
 
 {$APPTYPE CONSOLE}
@@ -28,7 +27,7 @@ TODO: Allow matches from up to N dictionaries (ASD -- edict; BSD -- warodai)
 
 uses
   SysUtils, Classes, Generics.Collections, Generics.Defaults, ConsoleToolbox,
-  JWBIO, UniStrUtils, FilenameUtils, Edict, AnkiEdictToText;
+  JWBIO, UniStrUtils, FilenameUtils, Edict, ExprMatching, EntryFormatting;
 
 type
   TExpressionCard = record
@@ -47,7 +46,7 @@ type
     Words: TDictionary<string, TExpressionCard>;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
-    function FormatEdictEntry(const expr: string; ed: PEdictEntry): string;
+    function FormatEdictEntry(ed: PEdictEntry; _expr, _read: string): string;
     function FormatEntry(const expr: string): string;
   public
     procedure ShowUsage; override;
@@ -60,25 +59,56 @@ begin
   writeln('Generates derivate cross references for an Anki tag from derivative '
     +'list files.');
   writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
-  writeln('Flags:');
+  writeln('Input:');
   writeln('  -d dictionary     specify dictionary file (multiple -d is allowed,'
     +' in the priority order)');
+  writeln('  -er regex         use this regex (PCRE) to match expressions (return "expr" and "read").');
+  writeln('  -rr regex         use this regex (PCRE) to match readings (return "read").');
+writeln('');
+  writeln('Output:');
   writeln('  -o output.file    specify output file (otherwise console)');
+  writeln('  -xml              output xml instead of the default plaintext');
+  writeln('  -xslt <filename>  format dictionary entries according to this XSLT schema');
 end;
 
 function TAnkiDerivatives.HandleSwitch(const s: string; var i: integer): boolean;
 begin
+  if s='-er' then begin
+    if i>=ParamCount then BadUsage('-er needs regex');
+    Inc(i);
+    SetExpressionPattern(ParamStr(i));
+    Result := true
+  end else
+  if s='-rr' then begin
+    if i>=ParamCount then BadUsage('-rr needs regex');
+    Inc(i);
+    SetReadingPattern(ParamStr(i));
+    Result := true
+  end else
+
+  if s='-d' then begin
+    if i>=ParamCount then BadUsage('-d requires dictionary file name');
+    Inc(i);
+    AddFile(DictFiles, ParamStr(i));
+    Result := true;
+  end else
+
   if s='-o' then begin
     if i>=ParamCount then BadUsage('-o requires file name');
     Inc(i);
     OutputFile := ParamStr(i);
     Result := true;
   end else
-  if s='-d' then begin
-    if i>=ParamCount then BadUsage('-d requires dictionary file name');
+  if s='-xml' then begin
+    OutputXml := true;
+    Result := true
+  end else
+  if s='-xslt' then begin
+    if i>=ParamCount then BadUsage('-xslt needs XSLT schema filename');
     Inc(i);
-    AddFile(DictFiles, ParamStr(i));
-    Result := true;
+    OutputXml := true;
+    SetXsltSchema(ParamStr(i));
+    Result := true
   end else
     Result := inherited;
 end;
@@ -249,35 +279,43 @@ begin
     end;
 end;
 
-function TAnkiDerivatives.FormatEdictEntry(const expr: string; ed: PEdictEntry): string;
-var read: string;
-  i: integer;
+//Formats the specified EDICT entry in a standard way. If _expr and/or _read
+//is provided, lists only matching readings from the dictionary.
+function TAnkiDerivatives.FormatEdictEntry(ed: PEdictEntry; _expr, _read: string): string;
+var i: integer;
 begin
- //We need reading, but not any reading but matching readings.
- //TODO: If reading is provided in expr, use that.
-  read := '';
-  if ed.GetKanaIndex(expr)<0 then //else no need for reading since it's kana already
-    for i := 0 to Length(ed.kana)-1 do
-      if ed.kana[i].MatchesKanji(expr) then begin
-        if read<>'' then read := read + '、';
-        read := read + ed.kana[i].kana;
-      end;
+  if _read='' then begin
+   //Take matching readings from the dictionary
+    if ed.GetKanaIndex(_expr)<0 then //else no need for reading since it's kana already
+      for i := 0 to Length(ed.kana)-1 do
+        if ed.kana[i].MatchesKanji(_expr) then begin
+          if _read<>'' then _read := _read + '、';
+          _read := _read + ed.kana[i].kana;
+        end;
+  end;
 
-  if read<>'' then
-    Result := expr + ' [' + read + '] ' + EdictSensesToText(ed)
+  if _read=_expr then _read := ''; //we don't want "read [read]"
+  if _read<>'' then
+    Result := _expr + ' [' + _read + '] ' + EntryFormatting.FormatEntry(ed)
   else
-    Result := expr + ' ' + EdictSensesToText(ed);
+    Result := _expr + ' ' + EntryFormatting.FormatEntry(ed);
 end;
 
 function TAnkiDerivatives.FormatEntry(const expr: string): string;
 var i: integer;
   ed: PEdictEntry;
+  _expr, _read: string;
 begin
   Result := '';
+  _expr := expr;
+  MatchExpression(_expr, _read);
   for i := 0 to Dicts.Count-1 do begin
-    ed := Dicts[i].FindEntry(expr); //TODO: If reading is provided, mind it in lookup
+    if _read<>'' then
+      ed := Dicts[i].FindEntry(_expr, _read)
+    else
+      ed := Dicts[i].FindEntry(_expr);
     if ed<>nil then begin
-      Result := FormatEdictEntry(expr, ed);
+      Result := FormatEdictEntry(ed, _expr, _read);
       break;
     end;
   end;
@@ -300,7 +338,7 @@ begin
       parts := SplitDerivLine(Trim(ln));
       if Length(parts)<=0 then continue;
 
-     //Base word
+     //Write base word
       if not Words.TryGetValue(parts[0], card) then
         card.Reset;
       for i := 1 to Length(parts)-1 do begin
@@ -323,7 +361,7 @@ begin
       end;
       Words.AddOrSetValue(parts[0], card);
 
-     //Derivatives
+     //Write derivatives
       next_comment := FindNextComment(parts, 1);
       for i := 1 to Length(parts)-1 do begin
         if IsComment(parts[i]) then begin

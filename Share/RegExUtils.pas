@@ -35,7 +35,9 @@ type
     constructor Create;
     function Get(const regex: string): TRegex;
     function Replace(const subj, regex, repl: string): string;
-    procedure Replace2(var subj: string; const regex, repl: string);
+    procedure Replace2(var subj: string; const regex, repl: string); overload;
+    procedure Replace2(var subj: string; const regex: string;
+      const AEvaluator: TMatchEvaluator); overload;
     property Items[const Index: string]: TRegex read Get; default;
   end;
 
@@ -116,6 +118,14 @@ var obj: TRegex;
 begin
   obj := Get(regex);
   subj := obj.Replace(subj, repl);
+end;
+
+procedure TRegexLib.Replace2(var subj: string; const regex: string;
+  const AEvaluator: TMatchEvaluator);
+var obj: TRegex;
+begin
+  obj := Get(regex);
+  subj := obj.Replace(subj, AEvaluator);
 end;
 
 end.
