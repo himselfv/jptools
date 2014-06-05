@@ -5,9 +5,6 @@ and converts to EDICT-compatible dictionary.
 
 Note that while compatible, this does not give you the full extent of EDICT
 features (grammar markers etc).
-
-TODO: <ruby>expr<rt>read etc.
-TODO: "~" etc. in main expression (what do we even do with those?)
 }
 
 {$APPTYPE CONSOLE}

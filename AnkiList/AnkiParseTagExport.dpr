@@ -21,6 +21,9 @@ TODO: Some sort of "update mode".
 2. Ignore/delete unmentioned expressions.
 3. Keep/delete mentioned expressions from tags they no longer have.
 Too much possibilities, will think this through when there's a need.
+
+TODO: Multiple expressions/readings support (expr/read-separator).
+  This can happen in reality. We probably need to tag all pairs of (expr-read).
 }
 
 {$APPTYPE CONSOLE}

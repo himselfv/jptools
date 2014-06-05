@@ -1,25 +1,27 @@
 ﻿program AnkiWordList;
-{$APPTYPE CONSOLE}
 {
- Parses a word/expression list - one expression at a line, possibly
- tab-separated table with other unrelated fields.
+Parses a word/expression list - one expression at a line, possibly
+tab-separated table with other unrelated fields.
 
- Builds a card list in a format suitable for importing to Anki:
-   expression      translations
+Builds a card list in a format suitable for importing to Anki:
+  expression      translations
 
- Intended usage:
-   1. Make a word list for studying either manually or by other means.
-   2. Generate Anki cards with this tool.
-   3. Import to Anki.
+Intended usage:
+ 1. Make a word list for studying either manually or by other means.
+ 2. Generate Anki cards with this tool.
+ 3. Import to Anki.
 
- To update existing deck with translations from another dictionary:
-   1. Export the notes into tab-separated text file.
-   2. Run this tool and generate another tab-separated file with translations.
-   3. Create additional note field in Anki.
-   4. Import new file, pasting translations into the new field.
+To update existing deck with translations from another dictionary:
+ 1. Export the notes into tab-separated text file.
+ 2. Run this tool and generate another tab-separated file with translations.
+ 3. Create additional note field in Anki.
+ 4. Import new file, pasting translations into the new field.
 
- Requires any EDICT-compatible dictionary.
+Requires any EDICT-compatible dictionary.
 }
+
+{$APPTYPE CONSOLE}
+
 uses
   SysUtils, Classes, StrUtils, UniStrUtils, ConsoleToolbox, JWBIO,
   JWBEdictReader, JWBEdictMarkers, Edict, FastArray, SearchSort,
@@ -98,6 +100,8 @@ begin
   writeln('  -tr <column>      Take readings from this column, if tab-separated (default is 1, if none available set to -1)');
   writeln('  -es <text>        Expression separator. If specified, multiple ways of writing an expression can be listed.');
   writeln('  -rs <text>        Reading separator. By default expression separator is used.');
+  writeln('  -er regex         use this regex (PCRE) to match expressions (return "expr" and "read").');
+  writeln('  -rr regex         use this regex (PCRE) to match readings (return "read").');
   writeln('');
   writeln('Output:');
   writeln('  -o output.file    specify output file (otherwise console)');
@@ -149,6 +153,18 @@ begin
     if i>=ParamCount then BadUsage('-er needs separator value');
     Inc(i);
     SetReadingSeparator(ParamStr(i)[1]);
+    Result := true
+  end else
+  if s='-er' then begin
+    if i>=ParamCount then BadUsage('-er needs regex');
+    Inc(i);
+    SetExpressionPattern(ParamStr(i));
+    Result := true
+  end else
+  if s='-rr' then begin
+    if i>=ParamCount then BadUsage('-rr needs regex');
+    Inc(i);
+    SetReadingPattern(ParamStr(i));
     Result := true
   end else
 
