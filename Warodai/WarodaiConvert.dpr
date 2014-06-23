@@ -27,7 +27,6 @@ uses
   WarodaiTemplates in 'WarodaiTemplates.pas',
   WcExceptions,
   EdictConverter in 'EdictConverter.pas',
-  RegExUtils in 'RegExUtils.pas',
   WarodaiXrefs in 'WarodaiXrefs.pas';
 
 {$INCLUDE 'Warodai.inc'}

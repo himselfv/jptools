@@ -2,7 +2,7 @@
 
 interface
 uses Warodai, WarodaiHeader, WarodaiBody, WarodaiTemplates, EdictWriter,
-  FastArray, PerlRegEx, RegExUtils;
+  FastArray, PerlRegEx;
 
 {
 Собираем несколько версий статьи, по числу разных шаблонов.
@@ -38,7 +38,7 @@ type
 procedure ProcessEntry(hdr: PEntryHeader; body: PEntryBody; mg: PTemplateMgr; examples: PExampleList);
 
 implementation
-uses SysUtils, UniStrUtils, WarodaiMarkers, WarodaiXrefs;
+uses SysUtils, UniStrUtils, WarodaiMarkers, WarodaiXrefs, RegexUtils;
 
 procedure TTemplateVersion.Reset;
 begin

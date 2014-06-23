@@ -10,7 +10,7 @@
 }
 
 interface
-uses JWBStrings, Warodai, FastArray, EdictWriter, PerlRegEx, RegExUtils;
+uses JWBStrings, Warodai, FastArray, EdictWriter, PerlRegEx;
 {$INCLUDE 'Warodai.inc'}
 
 procedure EatXrefs(var ln: string; sn: PEdictSenseEntry);
@@ -34,7 +34,7 @@ var
 procedure MatchHrefs(const ln: string);
 
 implementation
-uses SysUtils, UniStrUtils, WarodaiHeader;
+uses SysUtils, UniStrUtils, WarodaiHeader, RegexUtils;
 
 {
 Форма ссылки:
