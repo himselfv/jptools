@@ -11,14 +11,13 @@ unit Edict;
  or adds to memory, and how to mitigate that. }
 
 interface
-uses SysUtils, Classes, UniStrUtils, JWBIO, JWBEdictReader, JWBEdictMarkers,
-  BalancedTree;
+uses SysUtils, Classes, UniStrUtils, JWBIO, EdictReader, BalancedTree;
 
 type
  { We can't use the same entries as EdictReader as those are optimized for reuse
   and very memory heavy }
-  TKanjiEntry = JWBEdictReader.TKanjiEntry; //this one is ok
-  PKanjiEntry = JWBEdictReader.PKanjiEntry;
+  TKanjiEntry = EdictReader.TKanjiEntry; //this one is ok
+  PKanjiEntry = EdictReader.PKanjiEntry;
   TKanaEntry = record
     kana: UnicodeString;
    {$IFNDEF NO_KANA_KANJI_LINK}
@@ -31,8 +30,8 @@ type
    {$ENDIF}
   end;
   PKanaEntry = ^TKanaEntry;
-  TSenseEntry = JWBEdictReader.TSenseEntry;
-  PSenseEntry = JWBEdictReader.PSenseEntry;
+  TSenseEntry = EdictReader.TSenseEntry;
+  PSenseEntry = EdictReader.PSenseEntry;
 
   TEdictEntry = record
     ref: string;

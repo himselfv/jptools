@@ -19,7 +19,7 @@ type
   end;
 
 implementation
-uses Windows, KanjidicReader, Kanjidic, JWBEdictReader, Edict;
+uses Windows, KanjidicReader, Kanjidic, EdictReader, Edict;
 
 const
   KANJIDIC_ITER_CNT: integer = 20;

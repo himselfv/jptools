@@ -103,7 +103,7 @@ begin
     exit;
   end;
 
-  kana := roma_t.KanaToRomaji(kana, [rfConvertLatin,rfConvertPunctuation]);
+  kana := roma_t.KanaToRomaji(kana, []);
 
   if kanji<>'' then
     cdic.LookupKanji(kanji)

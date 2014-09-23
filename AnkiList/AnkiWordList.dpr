@@ -24,8 +24,7 @@ Requires any EDICT-compatible dictionary.
 
 uses
   SysUtils, Classes, StrUtils, UniStrUtils, ConsoleToolbox, JWBIO,
-  JWBEdictReader, JWBEdictMarkers, Edict, FastArray, SearchSort,
-  EntryFormatting, ExprMatching;
+  EdictReader, Edict, FastArray, SearchSort, EntryFormatting, ExprMatching;
 
 type
   TQuery = record

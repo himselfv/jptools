@@ -25,7 +25,7 @@ function FormatEntryFinalize(const AText: string): string;
 
 
 implementation
-uses SysUtils, StrUtils, ActiveX, XmlDoc, XmlIntf, JWBEdictMarkers;
+uses SysUtils, StrUtils, ActiveX, XmlDoc, XmlIntf, EdictReader;
 
 function EdictSensesToText(entry: PEdictEntry): string; forward;
 function EdictEntryToXml(entry: PEdictEntry): string; forward;
@@ -50,7 +50,7 @@ begin
     kanji := @entry.kanji[i];
     Result := Result+'<expr>'+HtmlEscape(kanji.kanji);
     for j := 1 to Length(kanji.markers) do
-      Result := Result + '<mark>' + HtmlEscape(GetMarkEdict(kanji.markers[j]))+'</mark>';
+      Result := Result + '<mark>' + HtmlEscape(GetMarkerText(kanji.markers[j]))+'</mark>';
     Result := Result + '</expr>';
   end;
 
@@ -58,7 +58,7 @@ begin
     kana := @entry.kana[i];
     Result := Result+'<read>'+HtmlEscape(kana.kana);
     for j := 1 to Length(kana.markers) do
-      Result := Result + '<mark>' + HtmlEscape(GetMarkEdict(kana.markers[j]))+'</mark>';
+      Result := Result + '<mark>' + HtmlEscape(GetMarkerText(kana.markers[j]))+'</mark>';
     Result := Result+'</read>';
   end;
 
@@ -69,9 +69,9 @@ begin
     for j := 0 to Length(parts)-1 do
       Result := Result+'<gloss>'+HtmlEscape(Trim(parts[j]))+'</gloss>';
     for j := 1 to Length(sense.pos) do
-      Result := Result+'<pos>'+HtmlEscape(GetMarkEdict(sense.pos[j]))+'</pos>';
+      Result := Result+'<pos>'+HtmlEscape(GetMarkerText(sense.pos[j]))+'</pos>';
     for j := 1 to Length(sense.markers) do
-      Result := Result+'<mark>'+HtmlEscape(GetMarkEdict(sense.markers[j]))+'</mark>';
+      Result := Result+'<mark>'+HtmlEscape(GetMarkerText(sense.markers[j]))+'</mark>';
     Result := Result+'</sense>';
   end;
 

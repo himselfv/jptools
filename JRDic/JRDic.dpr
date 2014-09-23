@@ -4,7 +4,7 @@
 Утилиты для работы с JRDic/web.
 }
 
-//{$DEFINE NOWAKAN}
+{$DEFINE NOWAKAN}
 { Отключить функции программы, требующие при компиляции модулей из Вакана }
 
 {$IF Defined(DCC) and Defined(MSWINDOWS)}
