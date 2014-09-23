@@ -16,7 +16,7 @@ program RadGen;
 
 uses
   SysUtils, Classes, ConsoleToolbox, JwbStrings, JwbIo, RaineRadicals,
-  FastArray, Yarxi, KanjidicReader, Kanjidic;
+  FastArray, Yarxi, YarxiCore, KanjidicReader, Kanjidic;
 
 type
   TRadGen = class(TCommandLineApp)
@@ -203,7 +203,7 @@ end;
 procedure TRadGen.YarxiInit;
 begin
   Yarxi := TYarxiDB.Create('yarxi.db');
-  Yarxi.KanaTran.LoadFromFile('yarxi.kcs');
+  YarxiCore.KanaTran.LoadFromFile('yarxi.kcs');
 end;
 
 procedure TRadGen.YarxiFree;

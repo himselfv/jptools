@@ -40,7 +40,6 @@ begin
   writeln('Flags:');
   writeln('  -i input.file     add input file (otherwise console)');
   writeln('  -o output.file    specify output file (otherwise console)');
-  writeln('  -l                convert latin letters wide<->normal');
   writeln('  -d                delete invalid chars')
 end;
 
@@ -57,10 +56,6 @@ begin
     if i>=ParamCount then BadUsage('-o requires file name');
     Inc(i);
     OutputFile := ParamStr(i);
-    Result := true;
-  end else
-  if s='-l' then begin
-    AFlags := AFlags + [rfConvertLatin, rfConvertPunctuation];
     Result := true;
   end else
   if s='-d' then begin
