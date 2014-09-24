@@ -10,12 +10,17 @@ See precise format description in comments below.
 //NOTE: Both EDICT2 and CC-EDICT parsers misreplace / with ; in cases like AC/DC
 //  Nothing I can do about it.
 
+{$DEFINE CASE_SENSITIVE_MARKERS}
+{ Markers inside one dic are insensitive, but EDICT's (P) is not ENAMDICT's (p).
+ If this breaks anything or when there's case-euqivalent dupes, we'll implement better way }
+
 interface
 uses SysUtils;
 
 { EDICT and ENAMDIC support markers such as (P) or (adj-na). They have different
  sets of markers but we support a union for simplicity.
  If other EDICT-style dictionaries have other markers we'll see what we can do. }
+
 type
  //We support up to 255 markers for now.
   TMarker = AnsiChar;
@@ -254,7 +259,11 @@ var i: integer;
 begin
   Result := #00;
   for i := Low(Markers) to High(Markers) do
+   {$IFDEF CASE_SENSITIVE_MARKERS}
+    if SysUtils.SameStr(markers[i].m, m) then begin
+   {$ELSE}
     if markers[i].m = m then begin
+   {$ENDIF}
       Result := AnsiChar(i);
       break;
     end;
