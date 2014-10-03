@@ -262,7 +262,7 @@ begin
   writeln(setlocale(LC_ALL, PAnsiChar(loc)));
   inp := TWarodaiReader.Open(TFileStream.Create(InputFile, fmOpenRead),
     TUTF16Encoding.Create, true);
-  com := CreateTextFile('commng.txt', TUTF16Encoding);
+  com := CreateTextFile(OutputFile+'.errors.txt', TUTF16Encoding);
   edict1 := TEdict1Writer.Create(OutputFile+'.edict1');
   edict2 := TEdict2Writer.Create(OutputFile+'.edict2');
   jmdict := TJmDictWriter.Create(OutputFile+'.jmdict');

@@ -2,7 +2,7 @@ unit WcExceptions;
 { Exception/warning logging routines for complicated cases where you have lots
  of parsing and lots of exceptions }
 
-{$DEFINE JCLDEBUG}
+//{$DEFINE JCLDEBUG}
 { Use JclDebug to add stack traces where appropriate. Requires detailed map file. }
 
 interface
@@ -28,14 +28,17 @@ type
 
   TExceptionStats = class(TList<PExceptionStatRecord>)
   protected
-    function AddNew(E: Exception): PExceptionStatRecord;
-    function Find(E: Exception): PExceptionStatRecord;
+    function AddNew(E: Exception): PExceptionStatRecord; overload;
+    function Find(E: Exception): PExceptionStatRecord; overload;
+    function AddNew(E: TClass; Msg: string): PExceptionStatRecord; overload;
+    function Find(E: TClass; Msg: string): PExceptionStatRecord; overload;
     procedure Notify(const Item: PExceptionStatRecord; Action: TCollectionNotification); override;
   protected
     function CountTotal: integer;
     function CountTypeTotal(AType: TClass; idx: integer = 0): integer;
   public
     procedure RegisterException(E: Exception);
+    procedure RegisterWarning(AText: string);
     procedure PrintStats;
   end;
 
@@ -69,6 +72,15 @@ begin
   Add(Result);
 end;
 
+function TExceptionStats.AddNew(E: TClass; Msg: string): PExceptionStatRecord;
+begin
+  New(Result);
+  Result._type := E;
+  Result.msg := Msg;
+  Result.count := 0;
+  Add(Result);
+end;
+
 function TExceptionStats.Find(E: Exception): PExceptionStatRecord;
 var i: integer;
 begin
@@ -81,12 +93,36 @@ begin
     end;
 end;
 
+function TExceptionStats.Find(E: TClass; Msg: string): PExceptionStatRecord;
+var i: integer;
+begin
+  Result := nil;
+  for i := 0 to Self.Count - 1 do
+    if (items[i]._type=E)
+    and (AnsiSameText(items[i].msg, Msg)) then begin
+      Result := items[i];
+      break;
+    end;
+end;
+
 procedure TExceptionStats.RegisterException(E: Exception);
 var pr: PExceptionStatRecord;
 begin
   pr := Find(E);
   if pr=nil then
     pr := AddNew(E);
+  Inc(pr.count);
+end;
+
+type
+  EWarning = class(Exception);
+
+procedure TExceptionStats.RegisterWarning(AText: string);
+var pr: PExceptionStatRecord;
+begin
+  pr := Find(EWarning, AText);
+  if pr=nil then
+    pr := AddNew(EWarning, AText);
   Inc(pr.count);
 end;
 
@@ -174,15 +210,15 @@ end;
 procedure Warning(const msg: string);
 {$IFDEF JCLDEBUG}
 var info: TJclLocationInfo;
+{$ENDIF}
 begin
+{$IFDEF JCLDEBUG}
   info := GetLocationInfo(Caller(1));
   writeln(ErrOutput, info.ProcedureName+':'+IntToStr(info.LineNumber)+': '+msg)
-end;
 {$ELSE}
-begin
-  writeln(ErrOutput, +msg);
-end;
+  writeln(ErrOutput, msg);
 {$ENDIF}
+end;
 
 procedure Check(ACondition: boolean; const AErrorText: string = '');
 begin

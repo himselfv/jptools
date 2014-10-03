@@ -26,10 +26,27 @@ function FindTemplate(const ln: string): integer;
 }
 function IsOpenTemplate(const ln: string): boolean;
 
-{ Находит в строке шаблон или список шаблонов, удаляет его и возвращает отдельно.
- Заодно проверяет, что строка - действительно локальная строка шаблона в правильной форме.
- False => в строке нет шаблона }
-function ExtractTemplate(var ln: string; out t: string): boolean;
+type
+  TTemplateList = array of string;
+
+{
+Находит в строке шаблон или список шаблонов, удаляет их и возвращает отдельно.
+False => в строке нет шаблона.
+
+Некоторые правила содержат несколько шаблонов сразу:
+  ～たる, ～とした <i>см.</i> <a href="#1-046-1-45">ばくばく</a>.
+Предпочтительнее для разных (грам.) слов иметь разные статьи, поэтому мы считаем
+это за два раздельных шаблона.
+
+Правила могут содержать опциональные блоки:
+  ～[の] абстрактный;
+Или альтернативные блоки:
+  ～とした(とし)
+Бывает даже несколько вариантов в блоке:
+  […を, …に]～する томиться, тосковать, вздыхать [о ком-чём-л.].
+Всё это мы считаем за разновидности одного шаблона - см. ниже GenerateTemplateVariants()
+}
+function ExtractTemplate(var ln: string; out t_p: TTemplateList): boolean;
 
 { Преобразует слово согласно шаблону.
  В принципе шаблон один, но иногда в нём встречается не совсем кана (напр. ～的),
@@ -38,23 +55,7 @@ function ApplyTemplateKanji(const templ: string; const word: string): string;
 function ApplyTemplateKana(const templ: string; const word: string): string;
 
 {
-Некоторые правила содержат несколько шаблонов сразу:
-  ～たる, ～とした <i>см.</i> <a href="#1-046-1-45">ばくばく</a>.
-Предпочтительнее для разных (грам.) слов иметь разные статьи, поэтому мы считаем это
-за два раздельных шаблона.
-}
-
-type
-  TTemplateList = array of string;
-
-procedure SplitTemplate(const t: string; out t_p: TTemplateList);
-
-{
-Правила могут содержать опциональные блоки:
-  ～[の] абстрактный;
-Или альтернативные блоки:
-  ～とした(とし)
-Поэтому из одного шаблона мы генерируем список его фиксированных вариантов.
+Из одного шаблона мы генерируем список его фиксированных вариантов.
 Для шаблона будет создана отдельная статья, в которой будут указаны все
 получившиеся комбинации всех вариантов кандзи и каны статьи с вариантами шаблона.
 
@@ -112,7 +113,11 @@ const
 function ExtractExample(var ln: string; out expr: string): boolean;
 
 implementation
-uses SysUtils, UniStrUtils, JWBStrings;
+uses SysUtils, UniStrUtils, JWBStrings, WcExceptions;
+
+{
+Разбор шаблонов.
+}
 
 function FindTemplate(const ln: string): integer;
 begin
@@ -135,7 +140,8 @@ begin
        (ch='[') or (ch=']') //необязательные части шаблона
     or (ch='(') or (ch=')') //альтернативные варианты шаблона
     or (ch='…')  //обозначает "какое-нибудь слово"
-    or (ch=',');
+    or (ch=',')  //перечисление [a, b], хотя и не поддерживаем пока
+    or (ch='!');
 end;
 
 function IsTemplateChar(const ch: char): boolean;
@@ -158,16 +164,18 @@ begin
   Result := (ln[i]=#00);
 end;
 
-function ExtractTemplate(var ln: string; out t: string): boolean;
+function ExtractTemplate(var ln: string; out t_p: TTemplateList): boolean;
 var i_start, i_end, i_tmp: integer;
   w_true: boolean;
+  t: string;
+  br_round,
+  br_square: integer;
 begin
   i_start := FindTemplate(ln);
   if i_start<=0 then begin
     Result := false;
     exit;
   end;
-  i_end := i_start;
 
  //Находим начало шаблона
  //Тут мы не будем особо аккуратными, т.к. в целом шаблоны должны идти с начала строки.
@@ -177,15 +185,49 @@ begin
     Dec(i_start);
   Inc(i_start);
 
- //Находим конец шаблона. Тут нужно быть осторожными. Откусываем по словам.
-  Inc(i_end);
+  if i_start>1 then begin
+   //Иногда матчатся вещи типа "см. асдбсд~". Это не темплейты, но и падать не надо.
+    Result := false;
+    exit;
+  end;
+
+  br_round := 0; //глубина круглых скобок -- поддерживаем не больше 1 любых
+  br_square := 0; //глубина квадратных
+
+  i_end := i_start;
+  while ln[i_end]=' ' do Inc(i_end);
   repeat
    //i_end указывает на первый непробельный символ слова
 
-   //Проматываем следующее слово
+   //Проматываем следующий блок до пробела или совсем стрёмного символа
     w_true := false;
     i_tmp := i_end;
     repeat
+      if ln[i_tmp]='[' then begin
+        if (br_round>0) or (br_square>0) then
+          raise ETemplateParsingException.Create('Broken brackets');
+        Inc(br_square);
+      end else
+      if ln[i_tmp]=']' then begin
+        if (br_round>0) or (br_square<1) then
+          raise ETemplateParsingException.Create('Broken brackets');
+        Dec(br_square);
+      end else
+      if ln[i_tmp]='(' then begin
+        if (br_round>0) or (br_square>0) then
+          raise ETemplateParsingException.Create('Broken brackets');
+        Inc(br_round);
+      end else
+      if ln[i_tmp]=')' then begin
+        if (br_round<0) or (br_square>0) then
+          raise ETemplateParsingException.Create('Broken brackets');
+        Dec(br_round);
+      end else
+      if (ln[i_tmp]=',') or (ln[i_tmp]=' ') then begin
+        if (br_round<=0) and (br_square<=0) then
+          break;
+       //else treat as a normal supplemental char
+      end else
       if IsTrueTemplateChar(ln[i_tmp]) then
         w_true := true
       else
@@ -194,30 +236,62 @@ begin
       Inc(i_tmp);
     until false;
 
-   //Теперь мы либо на пробеле, либо на первом символе слова, который не относится к шаблону
+   //Теперь мы либо на запятой, либо на первом символе слова, который не относится к шаблону
    //Хотя вообще говоря, шаблон со словом стыковаться не должен.
     if not w_true then //шаблонные символы не были найдены -- слово разрывает шаблон
       break;
 
-   //Единственный символ, которому допускается прерывать нас - пробел
-    if ln[i_tmp]<>' ' then begin
+   //Все скобки в пределах годного блока должны быть закрыты
+    if br_round > 0 then
+      raise ETemplateParsingException.Create('Non-matched () brackets');
+    if br_square > 0 then
+      raise ETemplateParsingException.Create('Non-matched [] brackets');
+
+    if ln[i_tmp]=',' then begin
+      Inc(i_tmp);
+      if ln[i_tmp]<>' ' then
+       //По идее должно быть
+        raise ETemplateParsingException.Create('No space after comma');
+      Dec(i_tmp);
+    end else
+    if ln[i_tmp]=' ' then begin
+     //nothing
+    end else begin
      //Шаблон стыкуется со словом! В очередном слове шаблонные символы найдены,
      //но потом найдены и разрывающие шаблон.
      //Сделаем-ка для порядка ошибку. Так не должно быть.
       raise ETemplateParsingException.Create('Template word merged with normal word');
     end;
 
+   //Копируем и проверяем найденное
+    t := copy(ln, i_end, i_tmp-i_end);
+    if FindTemplate(t)<=0 then
+      raise ETemplateParsingException.Create('No ~ in a template block');
+
+   //Эти вещи пока не поддерживаем, так что лучше в корявом виде в словарь их не класть
+    if pos('(',t)>0 then
+      raise ETemplateParsingException.Create('Alternative template parts -- unsupported');
+    if countc(t,'[')>1 then //поддерживаем макс. 1
+      raise ETemplateParsingException.Create('Multiple optional template parts -- unsupported');
+
+   //Троеточие на данный момент с краёв убираем, а в центре заменяем на ~,
+   //а вообще надо посмотреть, как это сделано в стандартном едикте
+    case pos('…',t) of
+      0: begin end;
+      1: delete(t,1,1);
+    //else raise ETemplateParsingException.Create('Partial expression templates > 1 -- unsupported'); //TODO: restore
+    end;
+
+   //Добавляем
+    SetLength(t_p, Length(t_p)+1);
+    t_p[Length(t_p)-1] := t;
+
    //Проматываем пробелы
     i_end := i_tmp;
+    if ln[i_end]=',' then //макс. 1 запятую (обработанную)
+      Inc(i_end);
     while ln[i_end]=' ' do Inc(i_end);
-
   until false;
-  Dec(i_end); //вернулись на последний пробел
-
- //Отматываем пробелы и копируем
-  i_tmp := i_end;
-  while (ln[i_tmp]=' ') do Dec(i_tmp);
-  t := copy(ln, i_start, i_tmp-i_start+1);
 
  //Удаляем вместе с пробелами по обе стороны
   Dec(i_start);
@@ -232,7 +306,7 @@ begin
   end;
 
  //А в i_end пробелы и так промотаны
-  delete(ln, i_start, i_end-i_start+1);
+  delete(ln, i_start, i_end-i_start);
 
  {
   Не делаем этого, т.к. кандзи и кана могут остаться в строке легальным образом -- например, в форме "см. также".
@@ -241,14 +315,6 @@ begin
   if EvalChars(ln) and (EV_KANA or EV_KANJI) <> 0 then
     raise EKanjiKanaLeft.Create('Kanji or kana left in string after doing ExtractTemplate');
  }
-
- //Эти вещи пока не поддерживаем, так что лучше в корявом виде в словарь их не класть
-  if pos('(',t)>0 then
-    raise ETemplateParsingException.Create('Alternative template parts -- unsupported');
-  if countc(t,'[')>1 then //поддерживаем макс. 1
-    raise ETemplateParsingException.Create('Multiple optional template parts -- unsupported');
-  if pos('…',t)>0 then
-    raise ETemplateParsingException.Create('Partial expression templates -- unsupported');
 
   Result := true;
 end;
@@ -277,6 +343,9 @@ begin
   pc := pos(']', templ);
   Assert(pc>po);
 
+  if pos(',', copy(templ,po+1,pc-po-1))>0 then
+    raise ETemplateParsingException.Create('Multiple options for a template part -- unsupported');
+
   tvars^.Add(copy(templ, 1, po-1)+copy(templ,pc+1,Length(templ)-pc));
   tvars^.Add(copy(templ, 1, po-1)+copy(templ,po+1,pc-po-1)+copy(templ,pc+1,Length(templ)-pc))
 end;
@@ -300,14 +369,21 @@ end;
 
 {
 Примеры.
-1. Примеры могут содержать японскую пунктуацию:
+1. Могут содержать японскую пунктуацию:
   あっ、鍵を忘れた ах, я забыл ключ!;
 
-2. Примеры могут содержать подсказки по чтению:
+2. Могут содержать подсказки по чтению:
   あっという間/マ/に в мгновение ока; не успел и ахнуть, как…
 
-3. Примеров может быть несколько с одним переводом
+3. Может быть несколько с одним переводом
   ああいった, ああした такой;
+
+4. Могут содержать латинские буквы, цифры:
+  A君の死を聞き哀惜措く能わず
+
+5. Могут предваряться словом "связ.:" или ромбиком:
+  связ.: ああいった, ああした такой;
+  ◇ああいった, ああした такой;
 }
 
 { True, если наличие указанного символа относит слово к шаблону }
@@ -326,7 +402,9 @@ begin
        (ch=',')
     or (ch='/') //с помощью этих символов пишется чтение
     or (ch='[') or (ch=']') //необязательные части шаблона
-    or (ch='(') or (ch=')'); //альтернативный вариант записи
+    or (ch='(') or (ch=')') //альтернативный вариант записи
+    or CharIsLatinSymbol(ch)
+    or IsDigit(ch);
 end;
 
 { True, если указанный символ не разрывает шаблона. }
@@ -340,8 +418,19 @@ end;
 function ExtractExample(var ln: string; out expr: string): boolean;
 var i_start, i_end, i_tmp: integer;
   w_true: boolean;
+  intro_len: integer; //длина удаляемого известного вступления в начале
 begin
   i_start := 1;
+
+ //В начале бывает мусорное "связ.:", которое всё портит
+  if copy(ln, i_start, 6)='связ.:' then begin
+    Inc(i_start, 6);
+    while (i_start<=Length(ln)) and (ln[i_start]=' ') do
+      Inc(i_start);
+  end;
+
+ //Всё, что было до этого - вводная
+  intro_len := i_start-1;
   i_end := i_start-1;
 
  //Находим конец шаблона. Тут нужно быть осторожными. Откусываем по словам.
@@ -391,9 +480,9 @@ begin
   while (ln[i_tmp]=' ') do Dec(i_tmp);
   expr := copy(ln, i_start, i_tmp-i_start+1);
 
- { В начале примеров иногда встречаются мусорные ромбики }
+ //В начале примеров иногда встречаются мусорные ромбики
   if (Length(expr)>0) and (expr[1]='◇') then
-    delete(expr,1,1);
+    delete(expr, 1, 1);
 
  //Удаляем вместе с пробелами по обе стороны
   Dec(i_start);
@@ -401,14 +490,14 @@ begin
     Dec(i_start);
   Inc(i_start);
 
-  if i_start<>1 then begin
+  if i_start>1+intro_len {can be less, if we overeat spaces} then begin
     raise EInsideTemplate.Create('Example is not the first thing in the line');
     Result:=false;
     exit;
   end;
 
  //А в i_end пробелы и так промотаны
-  delete(ln, i_start, i_end-i_start+1);
+  delete(ln, 1, i_end-i_start+1);
 
  {
   Не делаем этого -- см. комментарий в ExtractTemplate.

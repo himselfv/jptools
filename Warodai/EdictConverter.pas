@@ -24,7 +24,7 @@ type
   end;
   PTemplateVersion = ^TTemplateVersion;
   TTemplateMgr = record
-    versions: array[0..8] of TTemplateVersion;
+    versions: array[0..10] of TTemplateVersion;
     version_cnt: integer;
     procedure Reset;
     function Get(_templ: string): PEdictArticle;
@@ -358,8 +358,7 @@ begin
       raise EColonAfterTl.Create('Colon after TL');
 
    //Template
-    if ExtractTemplate(tmp, templ) then begin
-      SplitTemplate(templ, t_p);
+    if ExtractTemplate(tmp, t_p) then begin
       if Length(t_p)>1 then
         Inc(WarodaiStats.MultiTemplates);
      //Добавляем все в соотв. записи
