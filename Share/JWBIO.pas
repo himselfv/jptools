@@ -1968,7 +1968,9 @@ begin
   if AName='jis' then
     Result := TJISEncoding
   else
-  if AName='sjis' then
+  if (AName='sjis')
+  or (AName='shiftjis')
+  or (AName='shift-jis') then
     Result := TSJISEncoding
   else
   if AName='gb' then
