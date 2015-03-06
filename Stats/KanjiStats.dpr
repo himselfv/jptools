@@ -2,7 +2,8 @@ program KanjiStats;
 {$APPTYPE CONSOLE}
 
 uses
-  SysUtils, Classes, ConsoleToolbox, UniStrUtils, StreamUtils, SearchSort, JWBIO;
+  SysUtils, Classes, ConsoleToolbox, UniStrUtils, StreamUtils, SearchSort, JWBIO,
+  FilenameUtils;
 
 type
   TKanjiStatEntry = record
@@ -14,13 +15,22 @@ type
   TKanjiStatList = array of TKanjiStatEntry;
   PKanjiStatList = ^TKanjiStatList;
 
+  TFileStats = record
+    TotalChars: integer;
+    TotalKanji: integer;
+  end;
+
   TKanjiStats = class(TCommandLineApp)
   protected
-    InputFiles: array of string;
+    InputFiles: TFilenameArray;
+    ScanSubdirs: boolean;
     KanjiFiles: array of string;
     OutputFile: string;
     VerboseOutput: boolean;
     OutputStream: TStreamEncoder;
+    DefaultEncodingName: string;
+    DefaultEncoding: CEncoding;
+    DisplayProgress: boolean;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
     procedure OutputChar(const ks: TKanjiStatEntry);
@@ -33,7 +43,7 @@ type
   protected
     Stats: TKanjiStatList;
     function GetKanjiStats(c: char): PKanjiStatEntry;
-    procedure ParseFile(filename: string);
+    procedure ParseFile(filename: string; out AFileStats: TFileStats);
     procedure SortResults;
   public
     procedure ShowUsage; override;
@@ -44,15 +54,24 @@ type
 procedure TKanjiStats.ShowUsage;
 begin
   writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
+  writeln('  <file1>           Files or file masks to parse');
   writeln('Flags:');
-  writeln('  -k known_kanji    ');
+  writeln('  -s                Scan subdirectories too');
+  writeln('  -k known_kanji    List of characters to ignore (lets you scan for e.g. only characters yet unlearned)');
   writeln('  -o output file    (otherwise console)');
-  writeln('  -v                verbose output (kanji=count)');
+  writeln('  -e <encoding>     Assume this encoding (otherwise guess)');
+  writeln('  -p                Display progress on error console');
+  writeln('  -v                Verbose output (kanji=count)');
 end;
 
 function TKanjiStats.HandleSwitch(const s: string; var i: integer): boolean;
 begin
   Result := false;
+
+  if SameText(s, '-s') then begin
+    ScanSubdirs := true;
+    Result := true;
+  end else
 
   if SameText(s, '-k') then begin
     if i=ParamCount then
@@ -77,28 +96,61 @@ begin
         +'cannot set to '+ParamStr(i)+'.');
     OutputFile := ParamStr(i);
     Result := true;
+  end else
+
+  if SameText(s, '-e') then begin
+    if i=ParamCount then
+      BadUsage('-e requires encoding name');
+    Inc(i);
+    DefaultEncodingName := ParamStr(i);
+    Result := true;
+  end else
+
+  if SameText(s, '-p') then begin
+    DisplayProgress := true;
+    Result := true;
   end;
 end;
 
 function TKanjiStats.HandleParam(const s: string; var i: integer): boolean;
 begin
-  SetLength(InputFiles, Length(InputFiles)+1);
-  InputFiles[Length(InputFiles)-1] := s;
+  AddFile(InputFiles, s);
   Result := true;
 end;
 
 procedure TKanjiStats.Run;
-var i: integer;
+var i, total: integer;
+  fstats: TFileStats;
 begin
   if Length(InputFiles)<1 then
     BadUsage('You have to specify an input file');
+
+  if DefaultEncodingName <> '' then begin
+    DefaultEncoding := FindEncodingByName(DefaultEncodingName);
+    if DefaultEncoding = nil then
+      BadUsage('Unrecognized encoding: '+DefaultEncodingName);
+  end;
+
+  if DisplayProgress then
+    writeln(ErrOutput, 'Scanning for files...');
+
+  InputFiles := ExpandFileMasks(InputFiles, ScanSubdirs);
+
+  if DisplayProgress then
+    writeln(ErrOutput, IntToStr(Length(InputFiles))+' files total.');
+  total := Length(InputFiles);
 
   SetLength(KnownKanjis, 0);
   SetLength(Stats, 0);
   for i := 0 to Length(KanjiFiles) - 1 do
     LoadKnownKanjiFile(KanjiFiles[i]);
-  for I := 0 to Length(InputFiles) - 1 do
-    ParseFile(InputFiles[i]);
+  for i := 0 to Length(InputFiles) - 1 do begin
+    if DisplayProgress then
+      write(ErrOutput, CurrToStr(100 * i / total)+'%: '+InputFiles[i]+'... ');
+    ParseFile(InputFiles[i], fstats);
+    if DisplayProgress then
+      writeln(ErrOutput, IntToStr(fstats.TotalChars)+' ch / '+IntToStr(fstats.TotalKanji)+' kj');
+  end;
   SortResults;
   OutputResults;
 end;
@@ -134,9 +186,27 @@ begin
   end;
 end;
 
+{$DEFINE BINSEARCH}
+
+{$IFDEF BINSEARCH}
+function Cmp_KanjiStats(Data: pointer; I: integer; Item: pointer): integer;
+begin
+  Result := integer(TKanjiStatList(Data)[I].Kanji) - integer(Item);
+end;
+{$ENDIF}
+
 function TKanjiStats.GetKanjiStats(c: char): PKanjiStatEntry;
 var i: integer;
 begin
+{$IFDEF BINSEARCH}
+  if not BinSearch(Pointer(Stats), Length(Stats), Pointer(c), Cmp_KanjiStats, i) then begin
+    SetLength(Stats, Length(Stats)+1);
+    Move(Stats[i], Stats[i+1], (Length(Stats)-i-1)*SizeOf(Stats[i]));
+    Stats[i].Kanji := c;
+    Stats[i].Count := 0;
+  end;
+  Result := @Stats[i]
+{$ELSE}
   for i := 0 to Length(Stats) - 1 do
     if Stats[i].Kanji=c then begin
       Result := @Stats[i];
@@ -147,19 +217,26 @@ begin
   Stats[Length(Stats)-1].Kanji := c;
   Stats[Length(Stats)-1].Count := 0;
   Result := @Stats[Length(Stats)-1];
+{$ENDIF}
 end;
 
 //Kanjis have been loaded, dict initialized, we're parsing files one by one
-procedure TKanjiStats.ParseFile(filename: string);
+procedure TKanjiStats.ParseFile(filename: string; out AFileStats: TFileStats);
 var r: TStreamDecoder;
   c: char;
 begin
-  r := OpenTextFile(filename, TUTF16Encoding);
+  FillChar(AFileStats, SizeOf(AFileStats), 0);
+  r := OpenTextFile(filename, DefaultEncoding);
   try
-    while r.ReadChar(c) do
-      if IsKanji(c) and (FindKnownKanji(c)<0) then
-        with GetKanjiStats(c)^ do
-          Count := Count + 1;
+    while r.ReadChar(c) do begin
+      Inc(AFileStats.TotalChars);
+      if IsKanji(c) then begin
+        if FindKnownKanji(c) < 0 then
+          with GetKanjiStats(c)^ do
+            Count := Count + 1;
+        Inc(AFileStats.TotalKanji);
+      end;
+    end;
   finally
     FreeAndNil(r);
   end;
