@@ -40,7 +40,7 @@ type
 procedure TKanjiList.ShowUsage;
 begin
   writeln('Usage: ');
-  writeln('  '+ProgramName+'<command> [additional files] [flags]');
+  writeln('  '+ProgramName+' <command> [additional files] [flags]');
   writeln('Takes a list of input files, performs some transformations and outputs the result');
   writeln('Supported input files:');
   writeln('  ordered bag of kanji');
