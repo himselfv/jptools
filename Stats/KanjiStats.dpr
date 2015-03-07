@@ -56,7 +56,7 @@ begin
   writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
   writeln('  <file1>           Files or file masks to parse');
   writeln('Flags:');
-  writeln('  -s                Scan subdirectories too');
+  writeln('  -s                Scan subdirectories');
   writeln('  -k known_kanji    List of characters to ignore (lets you scan for e.g. only characters yet unlearned)');
   writeln('  -o output file    (otherwise console)');
   writeln('  -e <encoding>     Assume this encoding (otherwise guess)');

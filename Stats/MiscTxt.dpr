@@ -21,7 +21,7 @@ type
 procedure TMiscTxt.ShowUsage;
 begin
   writeln('Usage: ');
-  writeln('  '+ExtractFileName(paramstr(0))+'<command> <filename> <output file>');
+  writeln('  '+ProgramName+'<command> <filename> <output file>');
   writeln('If no output specified, console will be used.');
   writeln('Supported commands:');
   writeln('  trim = removes empty lines');

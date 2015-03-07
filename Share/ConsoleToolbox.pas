@@ -11,7 +11,7 @@ type
 
 procedure BadUsage(const AMessage: string = '');
 
-{ Returns the name of a current program }
+{ Returns the filename of the current program }
 function ProgramName: string;
 
 type

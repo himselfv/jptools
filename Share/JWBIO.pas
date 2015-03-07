@@ -282,6 +282,7 @@ type
     function ReadLn(out ln: UnicodeString): boolean; overload;
     function ReadChar: WideChar; overload; //#0000 if no char
     function ReadLn: UnicodeString; overload; //empty string if no string
+    function ReadAll: UnicodeString;
    { Or should these raise exceptions? }
     property Stream: TStream read FStream;
     property OwnsStream: boolean read FOwnsStream;
@@ -738,6 +739,14 @@ function TStreamDecoder.ReadLn: UnicodeString;
 begin
   if not ReadLn(Result) then
     Result := '';
+end;
+
+function TStreamDecoder.ReadAll: UnicodeString;
+var ch: WideChar;
+begin
+  Result := '';
+  while ReadChar(ch) do
+    Result := Result + ch;
 end;
 
 
