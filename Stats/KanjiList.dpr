@@ -33,6 +33,7 @@ type
     procedure DoMerge(inp: TStreamDecoder; outp: TStreamEncoder);
     procedure DoFilter(inp: TStreamDecoder; outp: TStreamEncoder);
     procedure DoDiff(inp: TStreamDecoder; outp: TStreamEncoder);
+    procedure DoOrderOf(inp: TStreamDecoder; outp: TStreamEncoder);
 
   end;
 
@@ -45,7 +46,7 @@ begin
   writeln('  ordered bag of kanji');
   writeln('  ordered one-kanji-one-line');
   writeln('  ordered kanji=value');
-  writeln('Supported commands:');
+  writeln('Commands:');
   writeln('  count = output number of entries');
   writeln('  clip <N/-N> = leaves only N first / all except N last kanji');
   writeln('  skip <N/-N> = removes N first / all except N last kanji');
@@ -53,6 +54,7 @@ begin
   writeln('  merge = produces a union of unique kanji from all files');
   writeln('  filter = produces a union of kanji present in all files');
   writeln('  diff = produces a union of all kanji from input missing in any additional files');
+  writeln('  orderof = produces a kanji-value file assigning each kanji its position number in the input file');
   writeln('Unsupported commands:');
   writeln('  trim = removes empty lines');
   writeln('  add <file1> [file2] [...] = joins several files without deduplication');
@@ -123,7 +125,7 @@ begin
   end else
     outp := ConsoleWriter();
 
-  if (Length(InputFilenames) > 0) and (Command <> 'merge') and (Command <> 'overlap')
+  if (Length(InputFilenames) > 0) and (Command <> 'merge') and (Command <> 'filter')
   and (Command <> 'diff') then
     BadUsage('Too many input files for this command.');
 
@@ -148,6 +150,9 @@ begin
     else
     if Command='diff' then
       Self.DoDiff(inp, outp)
+    else
+    if Command='orderof' then
+      Self.DoOrderOf(inp, outp)
     else
       BadUsage('Unrecognized command: '+Command);
   finally
@@ -309,15 +314,19 @@ end;
 //Prints kanji from inp which are present in all secondary files
 procedure TKanjiList.DoFilter(inp: TStreamDecoder; outp: TStreamEncoder);
 var data: string;
+  lines: TStringArray;
+  haveLines: boolean;
   fname: string;
   f: TStreamDecoder;
   fdata: string;
-  i: integer;
+  i, offs: integer;
 begin
   data := inp.ReadAll();
- //For simplicity, force everything to bag-of-kanji here.
-  if not IsBagOfKanji(data) then
-    data := ToBagOfKanji(data);
+  if not IsBagOfKanji(data) then begin
+    lines := SplitLineByLine(data);
+    haveLines := true;
+  end else
+    haveLines := false;
 
   for fname in InputFilenames do begin
     f := OpenTextFile(fname);
@@ -327,15 +336,44 @@ begin
      //secondary lists details are not important
       if not IsBagOfKanji(fdata) then
         fdata := ToBagOfKanji(fdata);
-      i := 1;
-      while i <= Length(data) do
-        if pos(data[i], fdata) <= 0 then
-          delete(data, i, 1)
-        else
-          Inc(i);
+
+      if haveLines then begin
+
+        for i := 0 to Length(lines)-1 do
+          if (lines[i]<>'') and (pos(lines[i][1], fdata) <= 0) then
+            lines[i] := '';
+
+      end else begin
+
+        i := 1;
+        while i <= Length(data) do
+          if pos(data[i], fdata) <= 0 then
+            delete(data, i, 1)
+          else
+            Inc(i);
+
+      end;
+
     finally
       FreeAndNil(f);
     end;
+  end;
+
+  if haveLines then begin
+   //Remove all empty or emptied lines
+    i := 0;
+    offs := 0;
+    while i+offs < Length(lines) do
+      if lines[i+offs]='' then
+        Inc(offs)
+      else begin
+        if offs > 0 then
+          lines[i] := lines[i+offs];
+        Inc(i);
+      end;
+    SetLength(lines, i);
+
+    data := JoinLineByLine(lines);
   end;
 
   outp.Write(data);
@@ -382,7 +420,8 @@ begin
     if missing[i+offs-1] <= 0 then
       Inc(offs)
     else begin
-      data[i] := data[i+offs];
+      if offs > 0 then
+        data[i] := data[i+offs];
       Inc(i);
     end;
   SetLength(data, i-1);
@@ -390,6 +429,26 @@ begin
   outp.Write(data);
 end;
 
+{ Assigns each kanji its position number in the input file explicitly.
+E.g. input:
+  a=unrelated_data
+  b=more_data
+Output:
+  a=1
+  b=2
+Useful when you need to pass kanji order somewhere explicitly }
+procedure TKanjiList.DoOrderOf(inp: TStreamDecoder; outp: TStreamEncoder);
+var data: string;
+  i: integer;
+begin
+  data := inp.ReadAll();
+ //We only care about order
+  if not IsBagOfKanji(data) then
+    data := ToBagOfKanji(data);
+
+  for i := 1 to Length(data) do
+    outp.WriteLn(data[i]+'='+IntToStr(i));
+end;
 
 begin
   RunApp(TKanjiList);

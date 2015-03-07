@@ -13,6 +13,7 @@ procedure BadUsage(const AMessage: string = '');
 
 { Returns the filename of the current program }
 function ProgramName: string;
+function ProgramFolder: string;
 
 type
   TCommandLineApp = class
@@ -46,6 +47,11 @@ end;
 function ProgramName: string;
 begin
   Result := ExtractFilename(ParamStr(0));
+end;
+
+function ProgramFolder: string;
+begin
+  Result := ExtractFilePath(ParamStr(0));
 end;
 
 { Override to initialize any variables }

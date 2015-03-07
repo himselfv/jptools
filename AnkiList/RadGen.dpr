@@ -64,11 +64,11 @@ end;
 procedure TRadGen.Init;
 begin
  //Enable the sources which are available, by default
-  if FileExists('yarxi.db') and FileExists('yarxi.kcs') then
+  if FileExists('yarxi.db') or FileExists(ProgramFolder+'\yarxi.db') then
     YarxiDescCount := 1
   else
     YarxiDescCount := 0;
-  if FileExists('kanjidic') then
+  if FileExists('kanjidic') or FileExists(ProgramFolder+'\kanjidic') then
     KanjidicDescCount := 1
   else
     KanjidicDescCount := 0;
@@ -111,7 +111,10 @@ begin
     BadUsage('No files given.');
 
   RaineRadicals := TRaineRadicals.Create;
-  RaineRadicals.LoadFromRadKFile('RADKFILE');
+  if FileExists('radkfile') then
+    RaineRadicals.LoadFromRadKFile('radkfile')
+  else
+    RaineRadicals.LoadFromRadKFile(ProgramFolder+'\radkfile');
 
   if YarxiDescCount>0 then
     YarxiInit;
@@ -202,8 +205,15 @@ end;
 
 procedure TRadGen.YarxiInit;
 begin
-  Yarxi := TYarxiDB.Create('yarxi.db');
-  YarxiCore.KanaTran.LoadFromFile('yarxi.kcs');
+  if FileExists('yarxi.db') then
+    Yarxi := TYarxiDB.Create('yarxi.db')
+  else
+    Yarxi := TYarxiDB.Create(ProgramFolder+'\yarxi.db');
+
+  if FileExists('Hepburn-Yarxi.roma') then
+    KanaTran.LoadFromFile('Hepburn-Yarxi.roma')
+  else
+    KanaTran.LoadFromFile(ProgramFolder+'\Hepburn-Yarxi.roma');
 end;
 
 procedure TRadGen.YarxiFree;

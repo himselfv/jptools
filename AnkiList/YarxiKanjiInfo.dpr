@@ -144,10 +144,17 @@ begin
     Result := RareOnYomi;
 end;
 
-procedure TYarxiKanjiInfo.YarxiInit;
+procedure TYarxiKanjiInfo.YarxiInit();
 begin
-  Yarxi := TYarxiDB.Create('yarxi.db');
-  KanaTran.LoadFromFile('Hepburn-Yarxi.roma');
+  if FileExists('yarxi.db') then
+    Yarxi := TYarxiDB.Create('yarxi.db')
+  else
+    Yarxi := TYarxiDB.Create(ProgramFolder+'\yarxi.db');
+
+  if FileExists('Hepburn-Yarxi.roma') then
+    KanaTran.LoadFromFile('Hepburn-Yarxi.roma')
+  else
+    KanaTran.LoadFromFile(ProgramFolder+'\Hepburn-Yarxi.roma');
 end;
 
 procedure TYarxiKanjiInfo.YarxiFree;

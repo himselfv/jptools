@@ -30,12 +30,12 @@ type
   protected
     Files: array of string;
     OutputFile: UnicodeString;
+    Output: TStreamEncoder;
     KanjidicFile: UnicodeString;
     ReadingLevel: integer;
     WrapRareReadings: boolean;
     KDic: array of TKanjidicRecord;
     KDicLen: integer;
-    Output: TStreamEncoder;
     function NewKDicCell: PKanjidicRecord;
     procedure AddEntry(entry: PKanjidicEntry);
     procedure LoadKanjidic(filename: string);
@@ -54,7 +54,7 @@ begin
   writeln('Flags:');
   writeln('  -o output.file    specify output file (otherwise console)');
   writeln('  -k kanjidic.file  specify kanjidic file (otherwise KANJIDIC)');
-  writeln('  -t 0/1/2          paste readings up to this rarity (default is 0)');
+  writeln('  -t 0/1/2          paste readings up to this T level (see KANJIDIC docs, default is 0)');
   writeln('  -ts               use html <s> tag for rare readings');
 end;
 
@@ -218,7 +218,10 @@ begin
   if KanjidicFile<>'' then
     LoadKanjidic(KanjidicFile)
   else
-    LoadKanjidic('kanjidic');
+    if FileExists('kanjidic') then
+      LoadKanjidic('kanjidic')
+    else
+      LoadKanjidic(ProgramFolder+'\kanjidic');
 
   if OutputFile<>'' then
     Output := UnicodeFileWriter(OutputFile)
