@@ -182,8 +182,10 @@ begin
         if KDic[i].Kuns[j]<>'' then
           s_kun := s_kun + Wrap(KDic[i].Kuns[j], j)+' ';
       end;
-      SetLength(s_on, Length(s_on)-1);
-      SetLength(s_on, Length(s_on)-1);
+      if Length(s_on) > 0 then
+        SetLength(s_on, Length(s_on)-1);
+      if Length(s_kun) > 0 then
+        SetLength(s_kun, Length(s_kun)-1);
 
       Output.Write(k + #09 + s_on + #09 + s_kun + #09
         + KDic[i].Meaning + #09 + flags + #13#10);
