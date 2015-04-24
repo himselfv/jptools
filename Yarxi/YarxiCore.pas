@@ -21,6 +21,7 @@ uses YarxiStrings, JWBKanaConv;
 }
 
 var
+  YarxiSilent: boolean = false;
   KanaTran: TRomajiTranslator;
 
 //Короткие ссылки
@@ -187,6 +188,7 @@ end;
 procedure Complain(const msg: string);
 begin
   Inc(Complaints);
+  if YarxiSilent then exit;
   if ComplainContext<>'' then
     Warning(#13#10'  '+repl(ComplainContext,#09,#13#10'  ')+#13#10'  '+msg)
   else
@@ -195,11 +197,12 @@ end;
 
 procedure Complain(const msg, data: string);
 begin
+  Inc(Complaints);
+  if YarxiSilent then exit;
   if ComplainContext<>'' then
     Warning(#13#10'  '+repl(ComplainContext,#09,#13#10'  ')+#13#10'  '+data)
   else
     Warning(msg+#13#10'  '+data);
-  Inc(Complaints);
 end;
 
 

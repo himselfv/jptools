@@ -23,7 +23,10 @@ type
   protected
     Files: array of string;
     OutputFile: UnicodeString;
+    RadkfileFile: string;
+    KanjidicFile: string;
     KanjidicDescCount: integer;
+    YarxiFile: string;
     YarxiDescCount: integer;
     MaxDescCount: integer;
     Output: TStreamEncoder;
@@ -57,12 +60,19 @@ begin
   writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
   writeln('Flags:');
   writeln('  -o output.file    specify output file (otherwise console)');
+  writeln('  -rf radkfile      specify radkfile file (otherwise RADKFILE)');
+  writeln('  -kf kanjidic      specify kanjidic file (otherwise Kanjidic)');
   writeln('  -k 0/1/2          paste up to this number of descriptions from Kanjidic');
+  writeln('  -yf yarxi.db      specify yarxi database (otherwise yarxi.db)');
   writeln('  -y 0/1/2          paste up to this number of descriptions from Yarxi');
+  writeln('  -ys               keep yarxi parser silent, ignore warnings');
 end;
 
 procedure TRadGen.Init;
 begin
+  RadkfileFile := '';
+  KanjidicFile := '';
+  YarxiFile := '';
  //Enable the sources which are available, by default
   if FileExists('yarxi.db') or FileExists(ProgramFolder+'\yarxi.db') then
     YarxiDescCount := 1
@@ -82,16 +92,38 @@ begin
     OutputFile := ParamStr(i);
     Result := true;
   end else
+  if s='-rf' then begin
+    if i>=ParamCount then BadUsage('-rf requires file name');
+    Inc(i);
+    RadkfileFile := ParamStr(i);
+    Result := true;
+  end else
+  if s='-kf' then begin
+    if i>=ParamCount then BadUsage('-kf requires file name');
+    Inc(i);
+    KanjidicFile := ParamStr(i);
+    Result := true;
+  end else
   if s='-k' then begin
     if i>=ParamCount then BadUsage('-k requires description count');
     Inc(i);
     KanjidicDescCount := StrToInt(ParamStr(i));
     Result := true;
   end else
+  if s='-yf' then begin
+    if i>=ParamCount then BadUsage('-yf requires file name');
+    Inc(i);
+    YarxiFile := ParamStr(i);
+    Result := true;
+  end else
   if s='-y' then begin
     if i>=ParamCount then BadUsage('-y requires description count');
     Inc(i);
     YarxiDescCount := StrToInt(ParamStr(i));
+    Result := true;
+  end else
+  if s='-ys' then begin
+    YarxiSilent := true;
     Result := true;
   end else
     Result := inherited;
@@ -111,6 +143,9 @@ begin
     BadUsage('No files given.');
 
   RaineRadicals := TRaineRadicals.Create;
+  if RadkfileFile <> '' then
+    RaineRadicals.LoadFromRadKFile(RadkfileFile)
+  else
   if FileExists('radkfile') then
     RaineRadicals.LoadFromRadKFile('radkfile')
   else
@@ -180,7 +215,13 @@ end;
 procedure TRadGen.KanjidicInit;
 begin
   Kanjidic := TKanjidic.Create;
-  Kanjidic.LoadFromFile('kanjidic');
+  if KanjidicFile <> '' then
+    Kanjidic.LoadFromFile(KanjidicFile)
+  else
+  if FileExists('kanjidic') then
+    Kanjidic.LoadFromFile('kanjidic')
+  else
+    Kanjidic.LoadFromFile(ProgramFolder+'\kanjidic');
 end;
 
 procedure TRadGen.KanjidicFree;
@@ -205,6 +246,9 @@ end;
 
 procedure TRadGen.YarxiInit;
 begin
+  if YarxiFile <> '' then
+    Yarxi := TYarxiDB.Create(YarxiFile)
+  else
   if FileExists('yarxi.db') then
     Yarxi := TYarxiDB.Create('yarxi.db')
   else

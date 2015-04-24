@@ -15,6 +15,7 @@ type
     Files: array of string;
     OutputFile: UnicodeString;
     Output: TStreamEncoder;
+    YarxiFile: string;
     ReadingLevel: integer;
     WrapRareReadings: boolean;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
@@ -38,6 +39,8 @@ begin
   writeln('Usage: '+ProgramName+' <file1> [file2] ... [-flags]');
   writeln('Flags:');
   writeln('  -o output.file    specify output file (otherwise console)');
+  writeln('  -yf yarxi.db      specify yarxi database (otherwise yarxi.db)');
+  writeln('  -ys               keep yarxi parser silent, ignore warnings');
   writeln('  -t 0/1/2          paste readings up to this rarity (default is 0)');
   writeln('  -ts               use html <s> tag for rare readings');
 end;
@@ -48,6 +51,16 @@ begin
     if i>=ParamCount then BadUsage('-o requires file name');
     Inc(i);
     OutputFile := ParamStr(i);
+    Result := true;
+  end else
+  if s='-yf' then begin
+    if i>=ParamCount then BadUsage('-yf requires file name');
+    Inc(i);
+    YarxiFile := ParamStr(i);
+    Result := true;
+  end else
+  if s='-ys' then begin
+    YarxiSilent := true;
     Result := true;
   end else
   if s='-t' then begin
@@ -146,6 +159,9 @@ end;
 
 procedure TYarxiKanjiInfo.YarxiInit();
 begin
+  if YarxiFile <> '' then
+    Yarxi := TYarxiDB.Create(YarxiFile)
+  else
   if FileExists('yarxi.db') then
     Yarxi := TYarxiDB.Create('yarxi.db')
   else
