@@ -166,12 +166,16 @@ function IsBagOfKanji(const AData: string): boolean; inline;
 begin
  //Simply checking for #13 would give wrong results on a singe-entry line-by-line file.
  //   kanji=asd
-  Result := (pos(#13, AData) <= 0) and (pos('=', AData) <= 0);
+  Result := (pos(#13, AData) <= 0) and (pos(#10, AData) <= 0) and (pos('=', AData) <= 0);
 end;
 
 function SplitLineByLine(const AData: string): TStringArray; inline;
+var tmp: string;
 begin
-  Result := SepSplit(ReplaceStr(AData, #10, ''), #13);
+ //Linebreak can be either CR, LF or CRLF
+  tmp := ReplaceStr(AData, #13#10, #13);
+  tmp := ReplaceStr(tmp, #10, #13);
+  Result := SepSplit(tmp, #13);
 end;
 
 function JoinLineByLine(const ALines: TStringArray): string; inline;
