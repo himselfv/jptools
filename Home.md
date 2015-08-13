@@ -1,42 +1,45 @@
-# Welcome
-
-Welcome to your wiki! This is the default page we've installed for your convenience. Go ahead and edit it.
-
-## Wiki features
-
-This wiki uses the [Markdown](http://daringfireball.net/projects/markdown/) syntax.
-
-The wiki itself is actually a mercurial repository, which means you can clone it, edit it locally/offline, add images or any other file type, and push it back to us. It will be live immediately.
-
-Go ahead and try:
-
-```
-$ hg clone https://himselfv@bitbucket.org/himselfv/jp-tools/wiki
-```
-
-Wiki pages are normal files, with the .md extension. You can edit them locally, as well as creating new ones.
-
-## Syntax highlighting
+This set contains several command-line tools intended to help those studying kanji and Japanese language, and some libraries/units for Delphi to parse/write file formats commonly encountered when working with Japanese text.
 
 
-You can also highlight snippets of text (we use the excellent [Pygments][] library).
+# AnkiList
+These tools generate tab-separated files suitable for importing into Anki or updating some fields of your Anki deck.
 
-[Pygments]: http://pygments.org/
+  * [AnkiKanjiList](AnkiKanjiList.md) - converts raw kanji list to tab-separated list with ons/kuns/meanings (uses KANJIDIC compatible dictionary).
 
+  * [AnkiWordList](AnkiWordList.md) - converts word/expression list to tab-separated list of words and translations (uses EDICT/CEDICT compatible dictionary)
 
-Here's an example of some Python code:
-
-```
-#!python
-
-def wiki_rocks(text):
-    formatter = lambda t: "funky"+t
-    return formatter(text)
-```
+  * [AnkiExampleList](AnkiList.md) - converts word/expression list to tab-separated list of words and example sentences (uses Tanaka corpus compatible corpus)
 
 
-You can check out the source of this page to see how that's done, and make sure to bookmark [the vast library of Pygment lexers][lexers], we accept the 'short name' or the 'mimetype' of anything in there.
-[lexers]: http://pygments.org/docs/lexers/
+# [Warodai Convertor](Warodai.md)
+
+Converts [Warodai](http://e-lib.ua/dic/) (big classical JP->RU dictionary) into EDICT2 and JMDict-style dictionaries which you can use in any program.
+
+The translation is far from perfect yet but it **does** work in a way, and the resulting dictionary is usable with more than 100 000 entries.
+
+How to use:
+
+  * Download [warodai in a TXT format](http://e-lib.ua/dic/download/)
+  * Download WarodaiConv
+  * Run WarodaiConv
+
+Or download converted dictionary:
+
+  * [EDICT1 format](http://googledrive.com/host/0B0jSbSrihj-ySFZVdV9lem05cmc/warodai.edict1.zip)
+
+  * **[EDICT2 format](http://googledrive.com/host/0B0jSbSrihj-ySFZVdV9lem05cmc/warodai.edict2.zip)** (recommended)
+
+  * [JMDict XML format](http://googledrive.com/host/0B0jSbSrihj-ySFZVdV9lem05cmc/warodai.jmdict.zip)
 
 
-Have fun!
+# Miscellaneous
+
+  * KanjiStats: list kanji by frequency in a given text.
+
+  * **[kanjistats\_4Gb](kanjistats_4Gb.md)**: kanji sorted by frequency, as they appeared in 21000 of books in Japanese
+
+  * KanjiList: manipulate kanji lists (trim/merge/intersect/etc)
+
+  * AozoraTxt: strips Aozora-Ruby from the text or gives some statistical info about it.
+
+  * MiscTxt: gives some common statistical info about a text (# of kana, kanji, char and line count)
