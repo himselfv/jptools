@@ -55,7 +55,7 @@ Libraries in Delphi for common CJK-related tasks.
 
   * [JWBIO](/himselfv/jp-tools/src/tip/Share/JWBIO.pas) - fast stream reader/writer with encoding detection and a bunch of encodings out of the box, including JIS/Shift-JIS, GB, UTF16/8 and other common japanese ones.
   * [KanjidicReader](/himselfv/jp-tools/src/tip/Share/KanjiDicReader.pas): KANJIDIC style dictionary parser + [basic in-memory representation](/himselfv/jp-tools/src/tip/Share/KanjiDic.pas) ("load and use")
-  * [EdictReader](/himselfv/jp-tools/src/tip/Share/EdictReader.pas?at=default): EDICT/CCEDICT dictionary format parser (very forgiving to deviations in formats) +  [in-memory representation](/himselfv/jp-tools/src/tip/Share/Edict.pas)
+  * [EdictReader](/himselfv/jp-tools/src/tip/Share/EdictReader.pas): EDICT/CCEDICT dictionary format parser (very forgiving to deviations in formats) +  [in-memory representation](/himselfv/jp-tools/src/tip/Share/Edict.pas)
   * [EdictWriter](/himselfv/jp-tools/src/tip/Share/EdictWriter.pas) - programmer friendly EDICT1/EDICT2/JMDICT file generator.
   * [AozoraTxt](/himselfv/jp-tools/src/tip/AozoraTxt/) parser: - parses text files in Aozora Bunko format
   * [UnihanReader](/himselfv/jp-tools/src/tip/Share/UnihanReader.pas) - simple [Unihan database](http://unicode.org/charts/unihan.html) parser.
