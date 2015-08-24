@@ -53,14 +53,14 @@ These tools may be usable by itself or as an example when working with their und
 
 Libraries in Delphi for common CJK-related tasks.
 
-  * [JWBIO](/src/tip/Share/JWBIO.pas?at=default) - fast stream reader/writer with encoding detection and a bunch of encodings out of the box, including JIS/Shift-JIS, GB, UTF16/8 and other common japanese ones.
-  * [KanjidicReader](/src/tip/Share/KanjiDicReader.pas?at=default): KANJIDIC style dictionary parser + [basic in-memory representation](/src/tip/Share/KanjiDic.pas?at=default) ("load and use")
-  * [EdictReader](/src/tip/Share/EdictReader.pas?at=default): EDICT/CCEDICT dictionary format parser (very forgiving to deviations in formats) +  [in-memory representation](/src/tip/Share/Edict.pas?at=default)
-  * [EdictWriter](/src/tip/Share/EdictWriter.pas?at=default) - programmer friendly EDICT1/EDICT2/JMDICT file generator.
-  * [AozoraTxt](/src/tip/AozoraTxt/?at=default) parser: - parses text files in Aozora Bunko format
-  * [UnihanReader](/src/tip/Share/UnihanReader.pas?at=default) - simple [Unihan database](http://unicode.org/charts/unihan.html) parser.
+  * [JWBIO](/himselfv/jp-tools/src/tip/Share/JWBIO.pas) - fast stream reader/writer with encoding detection and a bunch of encodings out of the box, including JIS/Shift-JIS, GB, UTF16/8 and other common japanese ones.
+  * [KanjidicReader](/himselfv/jp-tools/src/tip/Share/KanjiDicReader.pas): KANJIDIC style dictionary parser + [basic in-memory representation](/himselfv/jp-tools/src/tip/Share/KanjiDic.pas) ("load and use")
+  * [EdictReader](/himselfv/jp-tools/src/tip/Share/EdictReader.pas?at=default): EDICT/CCEDICT dictionary format parser (very forgiving to deviations in formats) +  [in-memory representation](/himselfv/jp-tools/src/tip/Share/Edict.pas)
+  * [EdictWriter](/himselfv/jp-tools/src/tip/Share/EdictWriter.pas) - programmer friendly EDICT1/EDICT2/JMDICT file generator.
+  * [AozoraTxt](/himselfv/jp-tools/src/tip/AozoraTxt/) parser: - parses text files in Aozora Bunko format
+  * [UnihanReader](/himselfv/jp-tools/src/tip/Share/UnihanReader.pas) - simple [Unihan database](http://unicode.org/charts/unihan.html) parser.
   * KanaConv - romaji-katakana-hiragana conversions, supports common and custom romaji schemes, using multiple at once --- not yet moved here from Wakan project.
-  * [YarxiReader](YarxiReader)
+  * YarxiReader
 
 
 
