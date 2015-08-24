@@ -1,21 +1,21 @@
-  * [Overview](Overview.md)
+  * [Overview](Overview)
   * Utilities
-    * [AozoraTxt](AozoraTxt.md)
-    * [AnkiKanjiList](AnkiKanjiList.md)
-    * [AnkiWordList](AnkiWordList.md)
-    * [KanjiStats](KanjiStats.md)
-    * [KanjiList](KanjiList.md)
-    * [MiscTxt](MiscTxt.md)
-    * [YarxiKanjiInfo](YarxiKanjiInfo.md)
-    * [Warodai](Warodai.md)
+    * [AozoraTxt](AozoraTxt)
+    * [AnkiKanjiList](AnkiKanjiList)
+    * [AnkiWordList](AnkiWordList)
+    * [KanjiStats](KanjiStats)
+    * [KanjiList](KanjiList)
+    * [MiscTxt](MiscTxt)
+    * [YarxiKanjiInfo](YarxiKanjiInfo)
+    * [Warodai](Warodai)
   * Libraries
-    * [AozoraTxt](AozoraTxt.md) parser
-    * [KanjidicReader](KanjidicReader.md)
-    * [EdictReader](EdictReader.md)
-    * [EdictWriter](EdictWriter.md)
-    * [UnihanReader](UnihanReader.md)
-    * [KanaConv](KanaConv.md)
-    * [YarxiReader](YarxiReader.md)
+    * [AozoraTxt](AozoraTxt) parser
+    * [KanjidicReader](KanjidicReader)
+    * [EdictReader](EdictReader)
+    * [EdictWriter](EdictWriter)
+    * [UnihanReader](UnihanReader)
+    * [KanaConv](KanaConv)
+    * [YarxiReader](YarxiReader)
   * Data
-    * [Warodai dictionary](Warodai.md) in EDICT format
-    * [kanjistats\_4Gb](kanjistats_4Gb.md)
+    * [Warodai dictionary](Warodai) in EDICT format
+    * [kanjistats\_4Gb](kanjistats_4Gb)
