@@ -43,3 +43,9 @@ Or download converted dictionary:
   * AozoraTxt: strips Aozora-Ruby from the text or gives some statistical info about it.
 
   * MiscTxt: gives some common statistical info about a text (# of kana, kanji, char and line count)
+
+# Downloads
+
+**[Latest jptools.zip](https://docs.google.com/uc?export=download&id=0B0jSbSrihj-yOXVOcnZ2ekRQYlE) (AnkiKanjiList/WordList, AozoraTxt, KanjiStats and more)**
+
+**[All downloads](https://drive.google.com/folderview?id=0B0jSbSrihj-ya0NOdEFiZmRTNkk&usp=sharing#list)**
