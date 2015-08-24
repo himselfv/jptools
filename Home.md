@@ -34,15 +34,35 @@ Or download converted dictionary:
 
 # Miscellaneous
 
-  * KanjiStats: list kanji by frequency in a given text.
+These tools may be usable by itself or as an example when working with their underlying libraries.
+
+  * [KanjiStats](KanjiStats): list kanji by frequency in a given text.
 
   * **[kanjistats\_4Gb](kanjistats_4Gb)**: kanji sorted by frequency, as they appeared in 21000 of books in Japanese
 
-  * KanjiList: manipulate kanji lists (trim/merge/intersect/etc)
+  * [KanjiList](KanjiList): manipulate kanji lists (trim/merge/intersect/etc)
 
-  * AozoraTxt: strips Aozora-Ruby from the text or gives some statistical info about it.
+  * [AozoraTxt](AozoraTxt): strips Aozora-Ruby from the text or gives some statistical info about it.
 
-  * MiscTxt: gives some common statistical info about a text (# of kana, kanji, char and line count)
+  * [MiscTxt](MiscTxt): gives some common statistical info about a text (# of kana, kanji, char and line count)
+
+  * [YarxiKanjiInfo](YarxiKanjiInfo): uses Yarxi database parser to extract kanji information.
+
+
+# Libraries
+
+Libraries in Delphi for common CJK-related tasks.
+
+  * [JWBIO](/src/tip/Share/JWBIO.pas?at=default) - fast stream reader/writer with encoding detection and a bunch of encodings out of the box, including JIS/Shift-JIS, GB, UTF16/8 and other common japanese ones.
+  * [KanjidicReader](/src/tip/Share/KanjiDicReader.pas?at=default): KANJIDIC style dictionary parser + [basic in-memory representation](/src/tip/Share/KanjiDic.pas?at=default) ("load and use")
+  * [EdictReader](/src/tip/Share/EdictReader.pas?at=default): EDICT/CCEDICT dictionary format parser (very forgiving to deviations in formats) +  [in-memory representation](/src/tip/Share/Edict.pas?at=default)
+  * [EdictWriter](/src/tip/Share/EdictWriter.pas?at=default) - programmer friendly EDICT1/EDICT2/JMDICT file generator.
+  * [AozoraTxt](/src/tip/AozoraTxt/?at=default) parser: - parses text files in Aozora Bunko format
+  * [UnihanReader](/src/tip/Share/UnihanReader.pas?at=default) - simple [Unihan database](http://unicode.org/charts/unihan.html) parser.
+  * KanaConv - romaji-katakana-hiragana conversions, supports common and custom romaji schemes, using multiple at once --- not yet moved here from Wakan project.
+  * [YarxiReader](YarxiReader)
+
+
 
 # Downloads
 
