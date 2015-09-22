@@ -1,8 +1,9 @@
 TXT files in this folder will be tried with automatic encoding detection; the result must then match their second extension (one before txt).
 
 E.g.
-  edict.euc.txt
-  test.utf8.txt
+  
+    edict.euc.txt
+    test.utf8.txt
 
 Put any misidentified snippets of text here after you fix the identification routine. Add any comments at the end of the snippet.
 
