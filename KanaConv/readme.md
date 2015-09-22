@@ -7,7 +7,7 @@ Usage:
     romaji := conv.KanaToRomaji('ひらがなカタカナ');
     kana := conv.RomajiToKana('hiragana katakana', [rfDeleteInvalidChars]);
 
-Common romaji schemes are included, see Release\*.roma.
+Common romaji schemes are included, see Release\\*.roma.
 
 Bopomofo translator:
 
@@ -15,7 +15,7 @@ Bopomofo translator:
     conv.LoadFromFile('PinYin.rpy');
     bopomofo := conv.RomajiToKana('pin3yin4');
 
-For common pinyin schemes see Release\*.rpy.
+For common pinyin schemes see Release\\*.rpy.
 
 Converting between katakana and hiragana:
 
