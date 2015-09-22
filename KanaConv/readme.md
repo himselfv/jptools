@@ -19,8 +19,12 @@ For common pinyin schemes see Release\*.rpy.
 
 Converting between katakana and hiragana:
 
-   hiragana := ToHiragana(katakana);
+    hiragana := ToHiragana(katakana);
 
 Converting between different ways of writing pinyin tones ( pin4yin4<->pínín )
 
-   tone2 := ConvertPinYin(tone1);
+    tone2 := ConvertPinYin(tone1);
+
+See KanaConv.pas for more.
+
+KanaTest.dpr is a tool to aid in developing and testing romaji schemes.
