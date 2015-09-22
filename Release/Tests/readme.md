@@ -1,0 +1,1 @@
+Data for automated testing. Read details in each folder.

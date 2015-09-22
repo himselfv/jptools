@@ -60,6 +60,23 @@ type
     procedure SurrogateLinefeed;
   end;
 
+  TEncodingDetectionSuite = class(TTestSuite)
+  protected
+    FFilename: string;
+  public
+    constructor Create(TestClass: TTestCaseClass; AFilename: string);
+    procedure AddTest(ATest: ITest); override;
+  end;
+
+  TEncodingDetectionTest = class(TTestCase)
+  protected
+    FFilename: string;
+  public
+    class function Suite(const AFilename: string): ITestSuite; reintroduce; overload;
+  published
+    procedure DetectEncoding;
+  end;
+
  { Writes ~11Mb through the encoder, outputs the time to Status().
   You need console test runner to see it. }
   TReadWriteSpeedTestCase = class(TTestCase)
@@ -356,6 +373,65 @@ begin
 end;
 
 
+{ Encoding detection }
+
+constructor TEncodingDetectionSuite.Create(TestClass: TTestCaseClass;
+  AFilename: string);
+begin
+  Self.FFilename := AFilename;
+  inherited Create(ChangeFileExt(ExtractFilename(AFilename),''));
+  AddTests(testClass);
+end;
+
+procedure TEncodingDetectionSuite.AddTest(ATest: ITest);
+begin
+  inherited;
+ //Parametrize
+  if ATest is TEncodingDetectionTest then
+    (ATest as TEncodingDetectionTest).FFilename := FFilename;
+end;
+
+class function TEncodingDetectionTest.Suite(const AFilename: string): ITestSuite;
+begin
+  Result := TEncodingDetectionSuite.Create(Self, AFilename);
+end;
+
+procedure TEncodingDetectionTest.DetectEncoding;
+var enc: CEncoding;
+  bareFilename: string;
+  encName: string;
+begin
+  JWBIO.Conv_DetectType(Self.FFilename, enc);
+  Check(enc <> nil, 'Cannot detect encoding');
+
+  bareFilename := ChangeFileExt(FFilename, ''); //strip .txt
+  encName := ExtractFileExt(bareFilename); //read encoding name (second extension)
+  if encName.StartsWith('.') then
+    delete(encName, 1, 1);
+  Check(FindEncodingByName(encName) = enc, 'Detected: '+enc.Classname+', expected: '+encName);
+end;
+
+function EncodingDetectionSuite: ITestSuite;
+var ASuite: TTestSuite;
+  basePath: string;
+  sr: TSearchRec;
+  res: integer;
+begin
+  ASuite := TTestSuite.create('Encoding detection');
+
+  basePath := AppFolder+'\Tests\encoding-detection';
+  res := FindFirst(basePath+'\*.txt', faAnyFile and not faDirectory, sr);
+  while res = 0 do begin
+    ASuite.AddTest(TEncodingDetectionTest.Suite(basePath+'\'+sr.Name));
+    res := FindNext(sr);
+  end;
+  SysUtils.FindClose(sr);
+
+  Result := ASuite;
+end;
+
+
+
 { Speed tests }
 
 procedure TReadWriteSpeedTestCase.TestSpeed(AEncoding: CEncoding);
@@ -467,6 +543,7 @@ begin
   ASuite.addTest(TEncodingTestCase.Suite);
   ASuite.addTest(TMiscEncodingTests.Suite);
   ASuite.addTest(TReadWriteSpeedTestCase.Suite);
+  ASuite.AddTest(EncodingDetectionSuite);
   Result := ASuite;
 end;
 

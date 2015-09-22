@@ -1,0 +1,22 @@
+所U [げつ] /(n) (arch) (obsc) (See 所_) cutting off the leg at the knee (form of punishment in ancient China)/EntL2542160/
+所_ [あしきり] /(n) (arch) (See 五刑) cutting off the leg at the knee (form of punishment in ancient China)/EntL2542150/
+所q [はなきり] /(n) (arch) (See 五刑) cutting off the nose (form of punishment in ancient China)/EntL2542140/
+所､;半挿 [はそう;はぞう] /(n) (1) (esp. ) wide-mouthed ceramic vessel having a small hole in its spherical base (into which bamboo was probably inserted to pour liquids)/(2) (See 半挿・はんぞう・1) teapot-like object made typically of lacquerware and used to pour hot and cold liquids/EntL2791750/
+暑H哩(ateji) [カレー(P);カリー] /(n) (1) (uk) curry/(2) (abbr) (uk) (See カレーライス) rice and curry/(P)/EntL1039140X/
+暑剩X;そ嚢 [そのう] /(n) bird's crop/bird's craw/EntL2542030/
+暑ｩ囃;そう囃 [そうざつ] /(n,vs) (obsc) (暑ｩ囃 is sometimes read むねやけ) (See 胸焼け) heartburn/sour stomach/EntL2542040/
+暑ｽ暑ｽ [あくあく] /(n) (uk) (on-mim) bird's chirping sound/EntL2542060/
+暑ﾎ;暑ﾎ気;噫気;暑ﾎ木(iK) [おくび(暑ﾎ,暑ﾎ気);あいき(暑ﾎ気,噫気,暑ﾎ木)] /(n) (uk) belch/eructation/burp/EntL2007450X/
+曙z;安土;堋 [あずち] /(n) mound on which targets are placed (in archery)/firing mound/EntL2542010/
+曙ﾒ;曙ｳ [けん] /(n) (arch) (obsc) xun (ancient Chinese musical instrument resembling a clay ocarina)/EntL2542170/
+曙纐P鏡;き鳳鏡 [きほうきょう] /(n) (obsc) (See 鳳凰) intricately inscribed ancient bronze or iron mirror featuring a pair of firebirds/EntL2564350/
+曙纐P文;き鳳文 [きほうもん] /(n) (obsc) (See 文様) inscription of a fantastic birdlike creature found on Yin and Zhou dynasty bronze ware, etc./EntL2564360/
+渚ｵ歌 [かがい] /(n) (arch) (See 歌垣) ritual singing and dancing gathering of young men and women/EntL2566320/
+庶・R(oK) [きぜん] /(adv-to,adj-t) (arch) soaring highly/towering greatly/EntL2542110/
+署�癲�oK) [せせる] /(v5r) (uk) to perform a small motion repetitively (i.e. picking or poking something)/EntL2138660X/
+署・ｮ(oK) [もぐ] /(v5g) (uk) to pluck (usually from a tree)/to pick (e.g. apples)/(P)/EntL1562790X/
+署・ｰる [もげる] /(v1,vi) (uk) to be torn off/to come off/EntL1983190X/
+署・・oK) [もぎり] /(n) (uk) ticket-collector/collecting tickets/EntL1983340X/
+署・・oK) [もぎる] /(v5r,vt) (uk) to pluck (e.g. a fruit, a leaf)/to pick/to tear off (e.g. a ticket stub, a branch from a tree)/EntL2454770/
+
+This was being misidentified as Shift-JIS due to 3-byte EUC sequence not being handled in detection.
