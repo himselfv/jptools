@@ -29,7 +29,8 @@ uses
   TextTestRunner,
   SpeedTests in 'SpeedTests.pas',
   FastArray in '..\Share\FastArray.pas',
-  JWBIOTests in '..\Share\JWBIOTests.pas';
+  JWBIOTests in '..\Share\JWBIOTests.pas',
+  KanaConvTests in '..\KanaConv\KanaConvTests.pas';
 
 {$R *.RES}
 
