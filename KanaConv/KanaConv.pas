@@ -942,18 +942,6 @@ var bn: TBinTreeItem;
   pt: PUnicodeChar;
  {$ENDIF}
 begin
-  if ps^='-' then begin
-    Inc(ps);
-    Result := '-';
-    exit;
-  end;
-
-  if ps^='_' then begin
-    Inc(ps);
-    Result := '_';
-    exit;
-  end;
-
  {$IFDEF KATA_AT_SEARCH}
   chira[0] := ToHiragana(ps^);
   pt := @chira[0];
@@ -1091,14 +1079,6 @@ begin
     fn:='';
     l:=0;
 
-    if s2[1]='_' then begin
-      fn:='_';
-      l:=1;
-    end else
-    if s2[1]='-' then begin
-      fn:='-';
-      l:=1;
-    end else
     if s2[1]='H' then begin
       kata:=0;
       l:=1;
