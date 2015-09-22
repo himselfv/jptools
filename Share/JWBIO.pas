@@ -194,6 +194,7 @@ type
     procedure Write(AStream: TStream; const AData: UnicodeString); override;
   end;
 
+ //https://en.wikipedia.org/wiki/Extended_Unix_Code
   TEUCEncoding = class(TEncoding)
     function Read(AStream: TStream; MaxChars: integer): UnicodeString; override;
     procedure Write(AStream: TStream; const AData: UnicodeString); override;
@@ -1190,10 +1191,12 @@ const IS_EUC=1;
       IS_MARU=5;
       IS_NIGORI=6;
       IS_JIS=7;
-      JIS_NL=10;          // New Line char.
-      JIS_CR=13;         // Carrage Return.
-      JIS_ESC=27;          // Escape.
-      JIS_SS2=142;         // Half-width katakana marker.
+      JIS_NL=10;        // New Line char.
+      JIS_CR=13;        // Carrage Return.
+      JIS_ESC=27;       // Escape.
+
+      JIS_SS2=$8E;      //EUC-JP 2-byte sequence start
+      JIS_SS3=$8F;      //EUC-JP 3-byte sequence start
 
 type TUTFArray=array[0..3] of byte;
 
@@ -1757,17 +1760,40 @@ begin
         if i=ord('@') then AEncoding:=TOldJISEncoding;
       end else
       if i=ord('K') then AEncoding:=TNECJISEncoding;
-    end else if i=JIS_SS2 then
-    begin
+    end else
+
+    //EUC 9E+* 2-byte or 9F+*+* 3-byte sequence
+    if i=JIS_SS2 then begin
       if AStream.Read(i, 1)<>1 then i:=-1;
-      if (i>=161) and (i<=223) then begin
+      if (i>=$A1) and (i<=$DF) then begin
         AEncoding:=nil;
         eucsjis:=true;
-      end
-      else if (i<>127) and (i>=64) and (i<=252) then AEncoding:=TSJISEncoding;
-    end else if (i>=129) and (i<=159) then AEncoding:=TSJISEncoding
-    else if (i>=161) and (i<=223) then
-    begin
+      end else
+      if (i>=$40) and (i<=$FC) and (i<>$7F) then
+        AEncoding:=TSJISEncoding;
+    end else
+
+    //EUC 9F+*+* 3-byte sequence
+    if i=JIS_SS3 then begin
+      if AStream.Read(i, 1)<>1 then i:=-1;
+      if (i>=$A1) and (i<=$DF) then begin
+        if AStream.Read(i, 1)<>1 then i:=-1;
+        if (i>=$A1) and (i<=$DF) then begin
+          AEncoding:=nil;
+          eucsjis:=true;
+        end;
+      end else
+      if (i>=$40) and (i<=$FC) and (i<>$7F) then
+        AEncoding:=TSJISEncoding;
+    end else
+
+    //Shift-JIS first byte range
+    if (i>=$81) and (i<=$9F) then
+      AEncoding:=TSJISEncoding
+    else
+
+    //Single byte half-width kana, both in EUC and Shift-JIS
+    if (i>=$A1) and (i<=$DF) then begin
       if AStream.Read(i, 1)<>1 then i:=-1;
       if (i>=240) and (i<=254) then AEncoding:=TEUCEncoding
       else if (i>=161) and (i<=223) then begin
@@ -1788,9 +1814,15 @@ begin
           if AStream.Read(i, 1)<>1 then break;
         end;
       end else if i<=159 then AEncoding:=TSJISEncoding;
-    end else if (i>=240) and (i<=254) then AEncoding:=TEUCEncoding
-    else if (i>=224) and (i<=239) then
-    begin
+    end else
+
+    //Shift-JIS: unused as first byte; EUC: possible
+    if (i>=$F0) and (i<=$FE) then
+      AEncoding := TEUCEncoding
+    else
+
+    //Shift-JIS first byte range
+    if (i>=$E0) and (i<=$EF) then  begin
       if AStream.Read(i, 1)<>1 then i:=-1;
       if ((i>=64) and (i<=126)) or ((i>=128) and (i<=160)) then AEncoding:=TSJISEncoding
       else if (i>=253) and (i<=254) then AEncoding:=TEUCEncoding
@@ -1799,6 +1831,7 @@ begin
         eucsjis:=true;
       end;
     end;
+
   end;
 
   if (AEncoding=nil) and eucsjis then
