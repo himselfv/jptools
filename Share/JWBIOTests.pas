@@ -539,7 +539,7 @@ end;
 function JWBIOTestSuite: ITestSuite;
 var ASuite: TTestSuite;
 begin
-  ASuite := TTestSuite.create('JWBIO Tests');
+  ASuite := TTestSuite.create('JWBIO');
   ASuite.addTest(TEncodingTestCase.Suite);
   ASuite.addTest(TMiscEncodingTests.Suite);
   ASuite.addTest(TReadWriteSpeedTestCase.Suite);

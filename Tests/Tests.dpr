@@ -27,10 +27,12 @@ uses
   TestFramework,
   GUITestRunner,
   TextTestRunner,
-  SpeedTests in 'SpeedTests.pas',
   FastArray in '..\Share\FastArray.pas',
   JWBIOTests in '..\Share\JWBIOTests.pas',
-  KanaConvTests in '..\KanaConv\KanaConvTests.pas';
+  KanjiDicTests in '..\Share\KanjiDicTests.pas',
+  EdictTests in '..\Share\EdictTests.pas',
+  KanaConvTests in '..\KanaConv\KanaConvTests.pas',
+  SpeedTests in 'SpeedTests.pas';
 
 {$R *.RES}
 
