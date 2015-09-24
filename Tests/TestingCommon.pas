@@ -1,0 +1,54 @@
+unit TestingCommon;
+
+interface
+uses TestFramework;
+
+var
+  TestCasesDir: string = ''; //all tests must keep subfolders for data
+  SpeedTests: TTestSuite;    //register any performance tests, opposed to validity tests
+
+type
+  //Usage: RegisterTest(TNamedTestSuite.Create(AClass))
+  TNamedTestSuite = class(TTestSuite)
+  public
+    constructor Create(const AName: string; AClass: TTestCaseClass);
+  end;
+
+type
+  TStringArray = array of string;
+
+function FileList(const APath, AMask: string): TStringArray;
+
+implementation
+uses SysUtils;
+
+constructor TNamedTestSuite.Create(const AName: string; AClass: TTestCaseClass);
+begin
+  inherited Create(AClass);
+  Self.FTestName := AName;
+end;
+
+function FileList(const APath, AMask: string): TStringArray;
+var sr: TSearchRec;
+  res: integer;
+begin
+  SetLength(Result, 0);
+  res := FindFirst(APath+'\'+AMask, faAnyFile and not faDirectory, sr);
+  while res = 0 do begin
+    SetLength(Result, Length(Result)+1);
+    Result[Length(Result)-1] := APath+'\'+sr.Name;
+    res := FindNext(sr);
+  end;
+  SysUtils.FindClose(sr);
+end;
+
+
+initialization
+  //To change this in time before tests start using it, set in the initialization section of a unit
+  //sufficiently high in the project's uses list.
+  TestCasesDir := ExtractFilePath(ParamStr(0))+'\Tests';
+
+  SpeedTests := TTestSuite.Create('Speed Tests');
+  RegisterTest(SpeedTests);
+
+end.

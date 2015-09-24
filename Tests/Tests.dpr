@@ -8,13 +8,6 @@ program Tests;
   to use the console test runner.  Otherwise the GUI test runner will be used by
   default.
 
-  Global conditionals:
-  HARDCORE
-    Adds hardcore versions of some tests. Principally they're the same, but with
-    more load and therefore slower.
-    May help to catch errors which only occur in heavy load conditions. Set when
-    running final checks before releasing.
-
 }
 
 {$IFDEF CONSOLE_TESTRUNNER}
@@ -27,12 +20,12 @@ uses
   TestFramework,
   GUITestRunner,
   TextTestRunner,
+  TestingCommon,
   FastArray in '..\Share\FastArray.pas',
   JWBIOTests in '..\Share\JWBIOTests.pas',
   KanjiDicTests in '..\Share\KanjiDicTests.pas',
   EdictTests in '..\Share\EdictTests.pas',
-  KanaConvTests in '..\KanaConv\KanaConvTests.pas',
-  SpeedTests in 'SpeedTests.pas';
+  KanaConvTests in '..\KanaConv\KanaConvTests.pas';
 
 {$R *.RES}
 

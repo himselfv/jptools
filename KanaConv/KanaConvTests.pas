@@ -6,15 +6,14 @@ interface
 uses SysUtils, Classes, TestFramework, JWBIO, JWBStrings, KanaConv;
 
 type
-  TStringArray = array of string;
   TConvTableTest = class(TTestCase)
   protected
     FTableNames: TStringArray;
     FConv: TRomajiTranslator;
   public
-    class function Suite(const ATableNames: array of string): ITestSuite; reintroduce; overload;
+    constructor Create(const ATableNames: array of string); reintroduce;
+    function GetName: string; override;
     function TableDir: string;
-    function TestDir: string;
     procedure SetUp; override;
     procedure TearDown; override;
     procedure RunTestFile(const AFilename: string);
@@ -39,15 +38,32 @@ type
   end;
 
 implementation
+uses TestingCommon;
+
+constructor TConvTableTest.Create(const ATableNames: array of string);
+var i: integer;
+begin
+  inherited Create('RunTests');
+  SetLength(FTableNames, Length(ATableNames));
+  for i := 0 to Length(ATableNames)-1 do
+    FTableNames[i] := ATableNames[Low(ATableNames) + i];
+end;
+
+function TConvTableTest.GetName: string;
+var i: integer;
+begin
+  Result := '';
+  for i := 0 to Length(FTableNames)-1 do
+    Result := Result + ExtractFilename(FTableNames[i]) + ', ';
+  if Result <> '' then
+    SetLength(Result, Length(Result)-2)
+  else
+    Result := '[ empty ]';
+end;
 
 function TConvTableTest.TableDir: string;
 begin
   Result := AppFolder;
-end;
-
-function TConvTableTest.TestDir: string;
-begin
-  Result := AppFolder + '\Tests\kanaconv\';
 end;
 
 procedure TConvTableTest.Setup;
@@ -55,7 +71,7 @@ var i: integer;
 begin
  //FConv must be created in descendants
   for i := 0 to Length(FTableNames)-1 do
-    FConv.LoadFromFile(TableDir+'\'+FTableNames[i]);
+    FConv.LoadFromFile(TableDir+'\'+ExtractFilename(FTableNames[i]));
 end;
 
 procedure TConvTableTest.Teardown;
@@ -67,7 +83,7 @@ procedure TConvTableTest.RunTests;
 var i: integer;
 begin
   for i := 0 to Length(FTableNames)-1 do
-    RunTestFile(ChangeFileExt(FTableNames[i], '.txt'));
+    RunTestFile(FTableNames[i]+'.txt');
 end;
 
 procedure TConvTableTest.RunTestFile(const AFilename: string);
@@ -78,7 +94,7 @@ var inp: TStreamDecoder;
   lp,rp: string;
   cmp: string;
 begin
-    inp := OpenTextFile(TestDir+AFilename);
+    inp := OpenTextFile(AFilename);
     try
       i_ln := -1;
       while inp.ReadLn(ln) do begin
@@ -121,10 +137,6 @@ begin
   inherited;
 end;
 
-class function TConvTableTest.Suite(const ATableNames: array of string): ITestSuite;
-begin
-  Result := TConvTableSuite.Create(Self, ATableNames);
-end;
 
 constructor TConvTableSuite.Create(TestClass: TTestCaseClass;
   ATableNames: array of string);
@@ -154,11 +166,17 @@ end;
 
 function KanaConvTestSuite: ITestSuite;
 var ASuite: TTestSuite;
+  fname, rawName: string;
 begin
   ASuite := TTestSuite.Create('KanaConv');
-  ASuite.addTest(TKanaTableTest.Suite(['Hepburn.roma']));
-  ASuite.addTest(TKanaTableTest.Suite(['Kiriji - Polivanov.roma']));
-  ASuite.addTest(TBopomofoTableTest.Suite(['PinYin.rpy']));
+  // Load all .txt files from test case dir
+  for fname in FileList(TestCasesDir+'\kanaconv', '*.txt') do begin
+    rawName := ChangeFileExt(fname, ''); //strip .txt
+    if ExtractFileExt(rawName)='.rpy' then
+      ASuite.AddTest(TBopomofoTableTest.Create([rawName]))
+    else
+      ASuite.AddTest(TKanaTableTest.Create([rawName]))
+  end;
   Result := ASuite;
 end;
 

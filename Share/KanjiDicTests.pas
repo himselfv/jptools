@@ -1,4 +1,5 @@
 unit KanjiDicTests;
+// Requires KANJIDIC in the same folder
 
 interface
 uses TestFramework;
@@ -10,8 +11,19 @@ type
     procedure KanjidicLoad;
   end;
 
+  TKanjidicSpeedTests = class(TTestCase)
+  public
+    FReader: TKanjidicTests;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure KanjidicReadTime;
+    procedure KanjidicLoadTime;
+  end;
+
+
 implementation
-uses SysUtils, Classes, JWBIO, KanjidicReader, Kanjidic;
+uses SysUtils, Classes, Windows, TestingCommon, JWBIO, KanjidicReader, Kanjidic;
 
 procedure TKanjidicTests.KanjidicRead;
 var AInput: TStreamDecoder;
@@ -37,7 +49,45 @@ begin
   FreeAndNil(Kanjidic);
 end;
 
+
+const
+  KANJIDIC_ITER_CNT: integer = 20;
+
+procedure TKanjidicSpeedTests.SetUp;
+begin
+  FReader := TKanjidicTests.Create('');
+end;
+
+procedure TKanjidicSpeedTests.TearDown;
+begin
+  FreeAndNil(FReader);
+end;
+
+procedure TKanjidicSpeedTests.KanjidicReadTime;
+var i: integer;
+  tm: cardinal;
+begin
+  tm := GetTickCount;
+  for i := 0 to KANJIDIC_ITER_CNT-1 do
+    FReader.KanjidicRead();
+  tm := GetTickCount-tm;
+  Status('x'+IntToStr(KANJIDIC_ITER_CNT)+' = '+IntToStr(tm)+' ticks.');
+end;
+
+procedure TKanjidicSpeedTests.KanjidicLoadTime;
+var i: integer;
+  tm: cardinal;
+begin
+  tm := GetTickCount;
+  for i := 0 to KANJIDIC_ITER_CNT-1 do
+    FReader.KanjidicLoad();
+  tm := GetTickCount-tm;
+  Status('x'+IntToStr(KANJIDIC_ITER_CNT)+' = '+IntToStr(tm)+' ticks.');
+end;
+
+
 initialization
-  RegisterTest(TKanjiDicTests.Suite);
+  RegisterTest(TNamedTestSuite.Create('Kanjidic', TKanjiDicTests));
+  SpeedTests.AddTest(TNamedTestSuite.Create('Kanjidic', TKanjidicSpeedTests));
 
 end.

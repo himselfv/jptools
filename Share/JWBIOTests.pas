@@ -99,7 +99,7 @@ type
   end;
 
 implementation
-uses Windows, JWBStrings;
+uses Windows, JWBStrings, TestingCommon;
 
 procedure TEncodingTestCase.Setup;
 begin
@@ -116,7 +116,7 @@ end;
 function TEncodingTestcase.GetTestFilename(const AFilename: string): string;
 begin
  //All encoding test files are stored in the same folder
-  Result := 'Tests\encoding\'+AFilename;
+  Result := TestCasesDir+'\encoding\'+AFilename;
 end;
 
 procedure TEncodingTestCase.LoadFile(const AShortFilename: string; AEncoding: CEncoding);
@@ -361,7 +361,7 @@ procedure TMiscEncodingTests.SurrogateLinefeed;
 var inp: TStreamDecoder;
   ln: UnicodeString;
 begin
-  inp := OpenTextFile('Tests\encoding-misc\utf8-surrogates.txt', TUTF8Encoding);
+  inp := OpenTextFile(TestCasesDir+'\encoding-misc\utf8-surrogates.txt', TUTF8Encoding);
   Check(inp.ReadLn(ln), 'Cannot read introductory lines');
   Check(inp.ReadLn(ln), 'Cannot read introductory lines');
   Check(inp.ReadLn(ln), 'Cannot read data line');
@@ -413,20 +413,11 @@ end;
 
 function EncodingDetectionSuite: ITestSuite;
 var ASuite: TTestSuite;
-  basePath: string;
-  sr: TSearchRec;
-  res: integer;
+  fname: string;
 begin
   ASuite := TTestSuite.create('Encoding detection');
-
-  basePath := AppFolder+'\Tests\encoding-detection';
-  res := FindFirst(basePath+'\*.txt', faAnyFile and not faDirectory, sr);
-  while res = 0 do begin
-    ASuite.AddTest(TEncodingDetectionTest.Suite(basePath+'\'+sr.Name));
-    res := FindNext(sr);
-  end;
-  SysUtils.FindClose(sr);
-
+  for fname in FileList(TestCasesDir+'\encoding-detection', '*.txt') do
+    ASuite.AddTest(TEncodingDetectionTest.Suite(fname));
   Result := ASuite;
 end;
 
@@ -539,15 +530,15 @@ end;
 function JWBIOTestSuite: ITestSuite;
 var ASuite: TTestSuite;
 begin
-  ASuite := TTestSuite.create('JWBIO');
+  ASuite := TTestSuite.Create('JWBIO');
   ASuite.addTest(TEncodingTestCase.Suite);
   ASuite.addTest(TMiscEncodingTests.Suite);
-  ASuite.addTest(TReadWriteSpeedTestCase.Suite);
   ASuite.AddTest(EncodingDetectionSuite);
   Result := ASuite;
 end;
 
 initialization
   RegisterTest(JWBIOTestSuite);
+  SpeedTests.AddTest(TNamedTestSuite.Create('JWBIO Read/Write Speed', TReadWriteSpeedTestCase));
 
 end.

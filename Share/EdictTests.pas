@@ -1,4 +1,5 @@
 unit EdictTests;
+// Requires EDICT in the same folder
 
 interface
 uses TestFramework;
@@ -10,8 +11,19 @@ type
     procedure EdictLoad;
   end;
 
+  TEdictSpeedTests = class(TTestCase)
+  public
+    FReader: TEdictTests;
+    procedure SetUp; override;
+    procedure TearDown; override;
+  published
+    procedure EdictReadTime;
+    procedure EdictLoadTime;
+  end;
+
+
 implementation
-uses SysUtils, Classes, JWBIO, EdictReader, Edict;
+uses SysUtils, Classes, Windows, TestingCommon, JWBIO, EdictReader, Edict;
 
 procedure TEdictTests.EdictRead;
 var AInput: TStreamDecoder;
@@ -35,7 +47,44 @@ begin
   FreeAndNil(Edict);
 end;
 
+
+const
+  EDICT_ITER_CNT: integer = 1;
+
+procedure TEdictSpeedTests.SetUp;
+begin
+  FReader := TEdictTests.Create('');
+end;
+
+procedure TEdictSpeedTests.TearDown;
+begin
+  FreeAndNil(FReader);
+end;
+
+procedure TEdictSpeedTests.EdictReadTime;
+var i: integer;
+  tm: cardinal;
+begin
+  tm := GetTickCount;
+  for i := 0 to EDICT_ITER_CNT-1 do
+    FReader.EdictRead();
+  tm := GetTickCount-tm;
+  Status('x'+IntToStr(EDICT_ITER_CNT)+' = '+IntToStr(tm)+' ticks.');
+end;
+
+procedure TEdictSpeedTests.EdictLoadTime;
+var i: integer;
+  tm: cardinal;
+begin
+  tm := GetTickCount;
+  for i := 0 to EDICT_ITER_CNT-1 do
+    FReader.EdictLoad();
+  tm := GetTickCount-tm;
+  Status('x'+IntToStr(EDICT_ITER_CNT)+' = '+IntToStr(tm)+' ticks.');
+end;
+
 initialization
-  RegisterTest(TEdictTests.Suite);
+  RegisterTest(TNamedTestSuite.Create('Edict', TEdictTests));
+  SpeedTests.AddTest(TNamedTestSuite.Create('Edict', TEdictSpeedTests));
 
 end.
