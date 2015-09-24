@@ -30,7 +30,7 @@ var AInput: TStreamDecoder;
   ed: TEdictArticle;
   ln: string;
 begin
-  AInput := OpenTextFile('EDICT2');
+  AInput := OpenTextFile(CommonDataDir+'\EDICT2');
   AInput.Rewind();
   while AInput.ReadLn(ln) do begin
     ln := Trim(ln);
@@ -43,7 +43,7 @@ procedure TEdictTests.EdictLoad;
 var Edict: TEdict;
 begin
   Edict := TEdict.Create;
-  Edict.LoadFromFile('EDICT2');
+  Edict.LoadFromFile(CommonDataDir+'\EDICT2');
   FreeAndNil(Edict);
 end;
 
@@ -85,6 +85,6 @@ end;
 
 initialization
   RegisterTest(TNamedTestSuite.Create('Edict', TEdictTests));
-  SpeedTests.AddTest(TNamedTestSuite.Create('Edict', TEdictSpeedTests));
+  RegisterSpeedTest(TNamedTestSuite.Create('Edict', TEdictSpeedTests));
 
 end.

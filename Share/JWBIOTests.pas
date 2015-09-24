@@ -436,6 +436,6 @@ end;
 
 initialization
   RegisterTest(JWBIOTestSuite);
-  SpeedTests.AddTest(TNamedTestSuite.Create('JWBIO Read/Write Speed', TReadWriteSpeedTestCase));
+  RegisterSpeedTest(TNamedTestSuite.Create('JWBIO Read/Write Speed', TReadWriteSpeedTestCase))
 
 end.

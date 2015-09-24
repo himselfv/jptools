@@ -5,10 +5,10 @@ uses TestFramework;
 
 var
   TestCasesDir: string = ''; //all tests must keep subfolders for data
-  SpeedTests: TTestSuite;    //register any performance tests, opposed to validity tests
+  SpeedTests: TTestSuite;    //register any performance tests here. Nil => do not register
 
 function CommonDataDir: string; inline; //where stuff like dictionaries and resources is
-
+procedure RegisterSpeedTest(Test: ITest);
 
 type
   //Usage: RegisterTest(TNamedTestSuite.Create(AClass))
@@ -28,6 +28,12 @@ uses SysUtils;
 function CommonDataDir: string;
 begin
   Result := ExtractFilePath(ParamStr(0)); //for now
+end;
+
+procedure RegisterSpeedTest(Test: ITest);
+begin
+  if SpeedTests <> nil then
+    SpeedTests.AddTest(Test);
 end;
 
 constructor TNamedTestSuite.Create(const AName: string; AClass: TTestCaseClass);
@@ -56,7 +62,9 @@ initialization
   //sufficiently high in the project's uses list.
   TestCasesDir := ExtractFilePath(ParamStr(0))+'\Tests';
 
-  SpeedTests := TTestSuite.Create('Speed Tests');
-  RegisterTest(SpeedTests);
+  if not FindCmdLineSwitch('nospeed') then begin
+    SpeedTests := TTestSuite.Create('Speed Tests');
+    RegisterTest(SpeedTests);
+  end;
 
 end.

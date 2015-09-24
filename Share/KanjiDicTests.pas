@@ -30,7 +30,7 @@ var AInput: TStreamDecoder;
   ed: TKanjiDicEntry;
   ln: string;
 begin
-  AInput := OpenTextFile('kanjidic');
+  AInput := OpenTextFile(CommonDataDir+'\kanjidic');
   AInput.Rewind();
   while AInput.ReadLn(ln) do begin
     ln := Trim(ln);
@@ -45,7 +45,7 @@ procedure TKanjidicTests.KanjidicLoad;
 var Kanjidic: TKanjidic;
 begin
   Kanjidic := TKanjidic.Create;
-  Kanjidic.LoadFromFile('kanjidic');
+  Kanjidic.LoadFromFile(CommonDataDir+'\kanjidic');
   FreeAndNil(Kanjidic);
 end;
 
@@ -88,6 +88,6 @@ end;
 
 initialization
   RegisterTest(TNamedTestSuite.Create('Kanjidic', TKanjiDicTests));
-  SpeedTests.AddTest(TNamedTestSuite.Create('Kanjidic', TKanjidicSpeedTests));
+  RegisterSpeedTest(TNamedTestSuite.Create('Kanjidic', TKanjidicSpeedTests));
 
 end.
