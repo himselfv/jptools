@@ -1,0 +1,60 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{5E34B762-4203-4184-9F8D-6A701D67A069}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="AnkiKanjiList.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="AnkiWordList.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="AnkiExampleList.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="AnkiKanjiList">
+        <MSBuild Projects="AnkiKanjiList.dproj"/>
+    </Target>
+    <Target Name="AnkiKanjiList:Clean">
+        <MSBuild Projects="AnkiKanjiList.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AnkiKanjiList:Make">
+        <MSBuild Projects="AnkiKanjiList.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="AnkiWordList">
+        <MSBuild Projects="AnkiWordList.dproj"/>
+    </Target>
+    <Target Name="AnkiWordList:Clean">
+        <MSBuild Projects="AnkiWordList.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AnkiWordList:Make">
+        <MSBuild Projects="AnkiWordList.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="AnkiExampleList">
+        <MSBuild Projects="AnkiExampleList.dproj"/>
+    </Target>
+    <Target Name="AnkiExampleList:Clean">
+        <MSBuild Projects="AnkiExampleList.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AnkiExampleList:Make">
+        <MSBuild Projects="AnkiExampleList.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="AnkiKanjiList;AnkiWordList;AnkiExampleList"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="AnkiKanjiList:Clean;AnkiWordList:Clean;AnkiExampleList:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="AnkiKanjiList:Make;AnkiWordList:Make;AnkiExampleList:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

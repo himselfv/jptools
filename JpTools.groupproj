@@ -1,0 +1,240 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{DDED3C48-E5C1-4038-A01C-C52C06F4FE15}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="AnkiList\AnkiKanjiList.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="AnkiList\AnkiWordList.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="AnkiList\AnkiParseTagExport.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="AnkiList\AnkiMergeTags.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="AnkiList\AnkiToEdict.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="AnkiList\AnkiDerivatives.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="AnkiList\AnkiExampleList.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="AnkiList\RadGen.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="AnkiList\YarxiKanjiInfo.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="AozoraTxt\AozoraTxt.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Stats\KanjiStats.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Stats\KanjiList.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Stats\MiscTxt.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="KanaConv\KanaTest.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Yarxi\YarxiConvert.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Warodai\WarodaiConvert.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Tests\Tests.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="Wordfreq\Wordfreq.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="AnkiKanjiList">
+        <MSBuild Projects="AnkiList\AnkiKanjiList.dproj"/>
+    </Target>
+    <Target Name="AnkiKanjiList:Clean">
+        <MSBuild Projects="AnkiList\AnkiKanjiList.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AnkiKanjiList:Make">
+        <MSBuild Projects="AnkiList\AnkiKanjiList.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="AnkiWordList">
+        <MSBuild Projects="AnkiList\AnkiWordList.dproj"/>
+    </Target>
+    <Target Name="AnkiWordList:Clean">
+        <MSBuild Projects="AnkiList\AnkiWordList.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AnkiWordList:Make">
+        <MSBuild Projects="AnkiList\AnkiWordList.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="AnkiParseTagExport">
+        <MSBuild Projects="AnkiList\AnkiParseTagExport.dproj"/>
+    </Target>
+    <Target Name="AnkiParseTagExport:Clean">
+        <MSBuild Projects="AnkiList\AnkiParseTagExport.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AnkiParseTagExport:Make">
+        <MSBuild Projects="AnkiList\AnkiParseTagExport.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="AnkiMergeTags">
+        <MSBuild Projects="AnkiList\AnkiMergeTags.dproj"/>
+    </Target>
+    <Target Name="AnkiMergeTags:Clean">
+        <MSBuild Projects="AnkiList\AnkiMergeTags.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AnkiMergeTags:Make">
+        <MSBuild Projects="AnkiList\AnkiMergeTags.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="AnkiToEdict">
+        <MSBuild Projects="AnkiList\AnkiToEdict.dproj"/>
+    </Target>
+    <Target Name="AnkiToEdict:Clean">
+        <MSBuild Projects="AnkiList\AnkiToEdict.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AnkiToEdict:Make">
+        <MSBuild Projects="AnkiList\AnkiToEdict.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="AnkiDerivatives">
+        <MSBuild Projects="AnkiList\AnkiDerivatives.dproj"/>
+    </Target>
+    <Target Name="AnkiDerivatives:Clean">
+        <MSBuild Projects="AnkiList\AnkiDerivatives.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AnkiDerivatives:Make">
+        <MSBuild Projects="AnkiList\AnkiDerivatives.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="AnkiExampleList">
+        <MSBuild Projects="AnkiList\AnkiExampleList.dproj"/>
+    </Target>
+    <Target Name="AnkiExampleList:Clean">
+        <MSBuild Projects="AnkiList\AnkiExampleList.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AnkiExampleList:Make">
+        <MSBuild Projects="AnkiList\AnkiExampleList.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="RadGen">
+        <MSBuild Projects="AnkiList\RadGen.dproj"/>
+    </Target>
+    <Target Name="RadGen:Clean">
+        <MSBuild Projects="AnkiList\RadGen.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="RadGen:Make">
+        <MSBuild Projects="AnkiList\RadGen.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="YarxiKanjiInfo">
+        <MSBuild Projects="AnkiList\YarxiKanjiInfo.dproj"/>
+    </Target>
+    <Target Name="YarxiKanjiInfo:Clean">
+        <MSBuild Projects="AnkiList\YarxiKanjiInfo.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="YarxiKanjiInfo:Make">
+        <MSBuild Projects="AnkiList\YarxiKanjiInfo.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="AozoraTxt">
+        <MSBuild Projects="AozoraTxt\AozoraTxt.dproj"/>
+    </Target>
+    <Target Name="AozoraTxt:Clean">
+        <MSBuild Projects="AozoraTxt\AozoraTxt.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="AozoraTxt:Make">
+        <MSBuild Projects="AozoraTxt\AozoraTxt.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="KanjiStats">
+        <MSBuild Projects="Stats\KanjiStats.dproj"/>
+    </Target>
+    <Target Name="KanjiStats:Clean">
+        <MSBuild Projects="Stats\KanjiStats.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="KanjiStats:Make">
+        <MSBuild Projects="Stats\KanjiStats.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="KanjiList">
+        <MSBuild Projects="Stats\KanjiList.dproj"/>
+    </Target>
+    <Target Name="KanjiList:Clean">
+        <MSBuild Projects="Stats\KanjiList.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="KanjiList:Make">
+        <MSBuild Projects="Stats\KanjiList.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="MiscTxt">
+        <MSBuild Projects="Stats\MiscTxt.dproj"/>
+    </Target>
+    <Target Name="MiscTxt:Clean">
+        <MSBuild Projects="Stats\MiscTxt.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="MiscTxt:Make">
+        <MSBuild Projects="Stats\MiscTxt.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="KanaTest">
+        <MSBuild Projects="KanaConv\KanaTest.dproj"/>
+    </Target>
+    <Target Name="KanaTest:Clean">
+        <MSBuild Projects="KanaConv\KanaTest.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="KanaTest:Make">
+        <MSBuild Projects="KanaConv\KanaTest.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="YarxiConvert">
+        <MSBuild Projects="Yarxi\YarxiConvert.dproj"/>
+    </Target>
+    <Target Name="YarxiConvert:Clean">
+        <MSBuild Projects="Yarxi\YarxiConvert.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="YarxiConvert:Make">
+        <MSBuild Projects="Yarxi\YarxiConvert.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="WarodaiConvert">
+        <MSBuild Projects="Warodai\WarodaiConvert.dproj"/>
+    </Target>
+    <Target Name="WarodaiConvert:Clean">
+        <MSBuild Projects="Warodai\WarodaiConvert.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="WarodaiConvert:Make">
+        <MSBuild Projects="Warodai\WarodaiConvert.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Tests">
+        <MSBuild Projects="Tests\Tests.dproj"/>
+    </Target>
+    <Target Name="Tests:Clean">
+        <MSBuild Projects="Tests\Tests.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Tests:Make">
+        <MSBuild Projects="Tests\Tests.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Wordfreq">
+        <MSBuild Projects="Wordfreq\Wordfreq.dproj"/>
+    </Target>
+    <Target Name="Wordfreq:Clean">
+        <MSBuild Projects="Wordfreq\Wordfreq.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="Wordfreq:Make">
+        <MSBuild Projects="Wordfreq\Wordfreq.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="AnkiKanjiList;AnkiWordList;AnkiParseTagExport;AnkiMergeTags;AnkiToEdict;AnkiDerivatives;AnkiExampleList;RadGen;YarxiKanjiInfo;AozoraTxt;KanjiStats;KanjiList;MiscTxt;KanaTest;YarxiConvert;WarodaiConvert;Tests;Wordfreq"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="AnkiKanjiList:Clean;AnkiWordList:Clean;AnkiParseTagExport:Clean;AnkiMergeTags:Clean;AnkiToEdict:Clean;AnkiDerivatives:Clean;AnkiExampleList:Clean;RadGen:Clean;YarxiKanjiInfo:Clean;AozoraTxt:Clean;KanjiStats:Clean;KanjiList:Clean;MiscTxt:Clean;KanaTest:Clean;YarxiConvert:Clean;WarodaiConvert:Clean;Tests:Clean;Wordfreq:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="AnkiKanjiList:Make;AnkiWordList:Make;AnkiParseTagExport:Make;AnkiMergeTags:Make;AnkiToEdict:Make;AnkiDerivatives:Make;AnkiExampleList:Make;RadGen:Make;YarxiKanjiInfo:Make;AozoraTxt:Make;KanjiStats:Make;KanjiList:Make;MiscTxt:Make;KanaTest:Make;YarxiConvert:Make;WarodaiConvert:Make;Tests:Make;Wordfreq:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>
