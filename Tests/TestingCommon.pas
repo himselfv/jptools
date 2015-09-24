@@ -7,6 +7,9 @@ var
   TestCasesDir: string = ''; //all tests must keep subfolders for data
   SpeedTests: TTestSuite;    //register any performance tests, opposed to validity tests
 
+function CommonDataDir: string; inline; //where stuff like dictionaries and resources is
+
+
 type
   //Usage: RegisterTest(TNamedTestSuite.Create(AClass))
   TNamedTestSuite = class(TTestSuite)
@@ -21,6 +24,11 @@ function FileList(const APath, AMask: string): TStringArray;
 
 implementation
 uses SysUtils;
+
+function CommonDataDir: string;
+begin
+  Result := ExtractFilePath(ParamStr(0)); //for now
+end;
 
 constructor TNamedTestSuite.Create(const AName: string; AClass: TTestCaseClass);
 begin

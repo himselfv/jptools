@@ -7,75 +7,61 @@ type
  { Wakan supports reading and writing text in a range of encodings, with or
   without BOM. }
   TEncodingTestCase = class(TTestCase)
-  protected
-    FLines: TStringList;
-    function GetTestFilename(const AFilename: string): string;
-    procedure LoadFile(const AShortFilename: string; AEncoding: CEncoding);
-    procedure SaveFile(const AFilename: string; AEncoding: CEncoding; AWriteBom: boolean);
-    procedure VerifyText(const AFilename: string; AEncoding: CEncoding);
-    procedure VerifyAscii(const AFilename: string; AEncoding: CEncoding);
-    procedure VerifyAcp(const AFilename: string; AEncoding: CEncoding);
-    procedure LoadSaveCompare(const AFilename: string; AEncoding: CEncoding;
-      ABom: boolean; const ATestComment: string = '');
   public
+    EncodingClass: CEncoding;
+    TestFile: string;
+    Lines: TStringList;
+    UseBom: boolean;
     procedure SetUp; override;
     procedure TearDown; override;
-    property Lines: TStringList read FLines;
+    procedure LoadFile(const AFilename: string; AEncoding: CEncoding);
+    procedure SaveFile(const AFilename: string; AEncoding: CEncoding; AWriteBom: boolean);
+    procedure VerifyContents(const AFilename: string; AEncoding: CEncoding); virtual;
+    procedure LoadSaveCompare(const AFilename: string; AEncoding: CEncoding; ABom: boolean);
   published
-    procedure Ascii;
-    procedure UTF8;
-    procedure UTF8Sign;
-    procedure UTF16LE;
-    procedure UTF16LESign;
-    procedure UTF16BE;
-    procedure UTF16BESign;
-    procedure EUC;
-    procedure ShiftJis;
-    procedure Acp;
-
-    procedure GuessAscii;
-    procedure GuessUTF8;
-    procedure GuessUTF8Sign;
-    procedure GuessUTF16LE;
-    procedure GuessUTF16LESign;
-    procedure GuessUTF16BE;
-    procedure GuessUTF16BESign;
-    procedure GuessEUC;
-    procedure GuessShiftJis;
-
-    procedure SaveAscii;
-    procedure SaveUTF8;
-    procedure SaveUTF8Sign;
-    procedure SaveUTF16LE;
-    procedure SaveUTF16LESign;
-    procedure SaveUTF16BE;
-    procedure SaveUTF16BESign;
-    procedure SaveEUC;
-    procedure SaveShiftJis;
-    procedure SaveAcp;
+    procedure VerifyText;
+    procedure GuessEncoding;
+    procedure SaveCompare;
   end;
+  CEncodingTestCase = class of TEncodingTestCase;
+
+  TAsciiEncodingTestCase = class(TEncodingTestCase)
+  public
+    procedure VerifyContents(const AFilename: string; AEncoding: CEncoding); override;
+  end;
+
+  TAcpEncodingTestCase = class(TEncodingTestCase)
+  public
+    procedure VerifyContents(const AFilename: string; AEncoding: CEncoding); override;
+  end;
+
+  TEncodingTestSuite = class(TTestSuite)
+  public
+    EncodingClass: CEncoding;
+    TestFile: string;
+    UseBom: boolean;
+    constructor Create(AEncodingClass: CEncoding; AUseBom: boolean; ATestFile: string;
+      ATestClass: CEncodingTestCase = nil);
+    procedure AddTest(ATest: ITest); override;
+    function GetName: string; override;
+  end;
+
 
   TMiscEncodingTests = class(TTestCase)
   published
     procedure SurrogateLinefeed;
   end;
 
-  TEncodingDetectionSuite = class(TTestSuite)
-  protected
-    FFilename: string;
-  public
-    constructor Create(TestClass: TTestCaseClass; AFilename: string);
-    procedure AddTest(ATest: ITest); override;
-  end;
 
   TEncodingDetectionTest = class(TTestCase)
-  protected
-    FFilename: string;
   public
-    class function Suite(const AFilename: string): ITestSuite; reintroduce; overload;
+    Filename: string;
+    constructor Create(const AFilename: string); reintroduce;
+    function GetName: string; override;
   published
     procedure DetectEncoding;
   end;
+
 
  { Writes ~11Mb through the encoder, outputs the time to Status().
   You need console test runner to see it. }
@@ -104,27 +90,19 @@ uses Windows, JWBStrings, TestingCommon;
 procedure TEncodingTestCase.Setup;
 begin
   inherited;
-  FLines := TStringList.Create;
+  Lines := TStringList.Create;
 end;
 
 procedure TEncodingTestCase.TearDown;
 begin
-  FreeAndNil(FLines);
+  FreeAndNil(Lines);
   inherited;
 end;
 
-function TEncodingTestcase.GetTestFilename(const AFilename: string): string;
-begin
- //All encoding test files are stored in the same folder
-  Result := TestCasesDir+'\encoding\'+AFilename;
-end;
-
-procedure TEncodingTestCase.LoadFile(const AShortFilename: string; AEncoding: CEncoding);
+procedure TEncodingTestCase.LoadFile(const AFilename: string; AEncoding: CEncoding);
 var conv: TStreamDecoder;
-  AFilename: string;
   ln: string;
 begin
-  AFilename := GetTestFilename(AShortFilename);
   if AEncoding=nil then
     Check(Conv_DetectType(AFilename, AEncoding) or (AEncoding<>nil),
       'Cannot guess file encoding.');
@@ -162,7 +140,7 @@ end;
 to verify that they were decoded properly.
 Expand the text to include various corner cases. Do not cover Ruby or any extended
 parsing here. }
-procedure TEncodingTestCase.VerifyText(const AFilename: string; AEncoding: CEncoding);
+procedure TEncodingTestCase.VerifyContents(const AFilename: string; AEncoding: CEncoding);
 begin
   LoadFile(AFilename, AEncoding);
   Check(Lines.Count=3);
@@ -170,8 +148,45 @@ begin
   Check(Lines[2].EndsWith('女子中学生だ。'));
 end;
 
+{ Load the file, save it in the same encoding to a temporary folder and then
+ compare byte-by-byte to the original file.
+ Realistically, there will be cases when some of the nuances are lost. If this
+ happens another test might be needed to load the file back and compare as data }
+procedure TEncodingTestCase.LoadSaveCompare(const AFilename: string;
+  AEncoding: CEncoding; ABom: boolean);
+var tempDir: string;
+begin
+  LoadFile(AFilename, AEncoding);
+  tempDir := CreateRandomTempDir();
+  try
+    SaveFile(tempDir+'\'+ExtractFilename(AFilename), AEncoding, ABom);
+    Check(CompareFiles(AFilename, tempDir+'\'+ExtractFilename(AFilename)));
+  finally
+    DeleteDirectory(tempDir);
+  end;
+end;
+
+procedure TEncodingTestCase.VerifyText;
+begin
+  Check(Self.EncodingClass <> nil, 'Encoding not found');
+  VerifyContents(Self.TestFile, Self.EncodingClass);
+end;
+
+procedure TEncodingTestCase.GuessEncoding;
+begin
+  Check(Self.EncodingClass <> nil, 'Encoding not found');
+  VerifyContents(Self.TestFile, nil);
+end;
+
+procedure TEncodingTestCase.SaveCompare;
+begin
+  Check(Self.EncodingClass <> nil, 'Encoding not found');
+  LoadSaveCompare(Self.TestFile, Self.EncodingClass, Self.UseBom);
+end;
+
+
 { Ascii text is different since it can't contain unicode }
-procedure TEncodingTestCase.VerifyAscii(const AFilename: string; AEncoding: CEncoding);
+procedure TAsciiEncodingTestCase.VerifyContents(const AFilename: string; AEncoding: CEncoding);
 begin
   LoadFile(AFilename, AEncoding);
   Check(Lines.Count=3);
@@ -181,7 +196,7 @@ end;
 
 { With ACP we cannot verify ACP text because the active codepage can be different
  on the PC where tests are run, but at least we check what we can }
-procedure TEncodingTestCase.VerifyAcp(const AFilename: string; AEncoding: CEncoding);
+procedure TAcpEncodingTestCase.VerifyContents(const AFilename: string; AEncoding: CEncoding);
 begin
   LoadFile(AFilename, AEncoding);
   Check(Lines.Count=4);
@@ -189,171 +204,63 @@ begin
   Check(Lines[2].EndsWith('other line.'));
 end;
 
-{ Load the file, save it in the same encoding to a temporary folder and then
- compare byte-by-byte to the original file.
- Realistically, there will be cases when some of the nuances are lost. If this
- happens another test might be needed to load the file back and compare as data }
-procedure TEncodingTestCase.LoadSaveCompare(const AFilename: string;
-  AEncoding: CEncoding; ABom: boolean; const ATestComment: string = '');
-var tempDir: string;
+
+constructor TEncodingTestSuite.Create(AEncodingClass: CEncoding; AUseBom: boolean; ATestFile: string;
+  ATestClass: CEncodingTestCase);
 begin
-  LoadFile(AFilename, AEncoding);
-  tempDir := CreateRandomTempDir();
-  try
-    SaveFile(tempDir+'\'+AFilename, AEncoding, ABom);
-    Check(CompareFiles(GetTestFilename(AFilename), tempDir+'\'+AFilename));
-  finally
-    DeleteDirectory(tempDir);
+  Self.EncodingClass := AEncodingClass;
+  Self.TestFile := ATestFile;
+  Self.UseBom := AUseBom;
+  if ATestClass = nil then
+    inherited Create(TEncodingTestCase)
+  else
+    inherited Create(ATestClass);
+end;
+
+procedure TEncodingTestSuite.AddTest(ATest: ITest);
+var testCase: TEncodingTestCase;
+begin
+  testCase := ATest as TEncodingTestCase;
+  testCase.TestFile := TestFile;
+  testCase.EncodingClass := EncodingClass;
+  testCase.UseBom := UseBom;
+  inherited;
+end;
+
+function TEncodingTestSuite.GetName: string;
+begin
+  Result := ChangeFileExt(ExtractFilename(Self.TestFile), '');
+end;
+
+function EncodingTestSuite: ITestSuite;
+var ASuite: TTestSuite;
+  fname, encName: string;
+  EncodingClass: CEncoding;
+  TestClass: CEncodingTestCase;
+  UseBom: boolean;
+begin
+  ASuite := TTestSuite.Create('Encoding / decoding');
+  for fname in FileList(TestCasesDir+'\encoding\', '*.txt') do begin
+    encName := ChangeFileExt(ExtractFilename(fname), '');
+    if encName.EndsWith('-bom') then begin
+      UseBom := true;
+      SetLength(encName, Length(encName)-4);
+    end else
+      UseBom := false;
+    EncodingClass := JWBIO.FindEncodingByName(encName);
+    if SameText(encName, 'ascii') or SameText(encName, 'ansi') then
+      TestClass := TAsciiEncodingTestCase
+    else
+    if SameText(encName, 'acp') then
+      TestClass := TAcpEncodingTestCase
+    else
+      TestClass := TEncodingTestCase;
+    ASuite.AddTest(TEncodingTestSuite.Create(EncodingClass, UseBom, fname, TestClass));
   end;
+  Result := ASuite;
 end;
 
-{ Simple loading }
-procedure TEncodingTestCase.Ascii;
-begin
-  VerifyAscii('ascii.txt', TAsciiEncoding);
-end;
 
-procedure TEncodingTestCase.UTF8;
-begin
-  VerifyText('utf8.txt', TUTF8Encoding);
-end;
-
-procedure TEncodingTestCase.UTF8Sign;
-begin
-  VerifyText('utf8sign.txt', TUTF8Encoding);
-end;
-
-procedure TEncodingTestCase.UTF16LE;
-begin
-  VerifyText('utf16le.txt', TUTF16LEEncoding);
-end;
-
-procedure TEncodingTestCase.UTF16LESign;
-begin
-  VerifyText('utf16lesign.txt', TUTF16LEEncoding);
-end;
-
-procedure TEncodingTestCase.UTF16BE;
-begin
-  VerifyText('utf16be.txt', TUTF16BEEncoding);
-end;
-
-procedure TEncodingTestCase.UTF16BESign;
-begin
-  VerifyText('utf16besign.txt', TUTF16BEEncoding);
-end;
-
-procedure TEncodingTestCase.EUC;
-begin
-  VerifyText('euc.txt', TEUCEncoding);
-end;
-
-procedure TEncodingTestCase.ShiftJis;
-begin
-  VerifyText('shiftjis.txt', TSJISEncoding);
-end;
-
-procedure TEncodingTestCase.Acp;
-begin
-  VerifyAcp('acp.txt', TACPEncoding);
-end;
-
-{ Guess* versions make converter guess the encoding }
-procedure TEncodingTestCase.GuessAscii;
-begin
-  VerifyAscii('ascii.txt', nil);
-end;
-
-procedure TEncodingTestCase.GuessUTF8;
-begin
-  VerifyText('utf8.txt', nil);
-end;
-
-procedure TEncodingTestCase.GuessUTF8Sign;
-begin
-  VerifyText('utf8sign.txt', nil);
-end;
-
-procedure TEncodingTestCase.GuessUTF16LE;
-begin
-  VerifyText('utf16le.txt', nil);
-end;
-
-procedure TEncodingTestCase.GuessUTF16LESign;
-begin
-  VerifyText('utf16lesign.txt', nil);
-end;
-
-procedure TEncodingTestCase.GuessUTF16BE;
-begin
-  VerifyText('utf16be.txt', nil);
-end;
-
-procedure TEncodingTestCase.GuessUTF16BESign;
-begin
-  VerifyText('utf16besign.txt', nil);
-end;
-
-procedure TEncodingTestCase.GuessEUC;
-begin
-  VerifyText('euc.txt', nil);
-end;
-
-procedure TEncodingTestCase.GuessShiftJis;
-begin
-  VerifyText('shiftjis.txt', nil);
-end;
-
-{ Save* to load, then save, then compare to original file }
-procedure TEncodingTestCase.SaveAscii;
-begin
-  LoadSaveCompare('ascii.txt', TAsciiEncoding, false);
-end;
-
-procedure TEncodingTestCase.SaveUTF8;
-begin
-  LoadSaveCompare('utf8.txt', TUTF8Encoding, false);
-end;
-
-procedure TEncodingTestCase.SaveUTF8Sign;
-begin
-  LoadSaveCompare('utf8sign.txt', TUTF8Encoding, true);
-end;
-
-procedure TEncodingTestCase.SaveUTF16LE;
-begin
-  LoadSaveCompare('utf16le.txt', TUTF16LEEncoding, false);
-end;
-
-procedure TEncodingTestCase.SaveUTF16LESign;
-begin
-  LoadSaveCompare('utf16lesign.txt', TUTF16LEEncoding, true);
-end;
-
-procedure TEncodingTestCase.SaveUTF16BE;
-begin
-  LoadSaveCompare('utf16be.txt', TUTF16BEEncoding, false);
-end;
-
-procedure TEncodingTestCase.SaveUTF16BESign;
-begin
-  LoadSaveCompare('utf16besign.txt', TUTF16BEEncoding, true);
-end;
-
-procedure TEncodingTestCase.SaveEUC;
-begin
-  LoadSaveCompare('euc.txt', TEUCEncoding, false);
-end;
-
-procedure TEncodingTestCase.SaveShiftJis;
-begin
-  LoadSaveCompare('shiftjis.txt', TSJISEncoding, false);
-end;
-
-procedure TEncodingTestCase.SaveAcp;
-begin
-  LoadSaveCompare('acp.txt', TACPEncoding, false);
-end;
 
 { Misc encoding tests }
 
@@ -375,25 +282,15 @@ end;
 
 { Encoding detection }
 
-constructor TEncodingDetectionSuite.Create(TestClass: TTestCaseClass;
-  AFilename: string);
+constructor TEncodingDetectionTest.Create(const AFilename: string);
 begin
-  Self.FFilename := AFilename;
-  inherited Create(ChangeFileExt(ExtractFilename(AFilename),''));
-  AddTests(testClass);
+  Filename := AFilename;
+  inherited Create('DetectEncoding');
 end;
 
-procedure TEncodingDetectionSuite.AddTest(ATest: ITest);
+function TEncodingDetectionTest.GetName: string;
 begin
-  inherited;
- //Parametrize
-  if ATest is TEncodingDetectionTest then
-    (ATest as TEncodingDetectionTest).FFilename := FFilename;
-end;
-
-class function TEncodingDetectionTest.Suite(const AFilename: string): ITestSuite;
-begin
-  Result := TEncodingDetectionSuite.Create(Self, AFilename);
+  Result := ChangeFileExt(ExtractFilename(Filename), '');
 end;
 
 procedure TEncodingDetectionTest.DetectEncoding;
@@ -401,10 +298,10 @@ var enc: CEncoding;
   bareFilename: string;
   encName: string;
 begin
-  JWBIO.Conv_DetectType(Self.FFilename, enc);
+  JWBIO.Conv_DetectType(Self.Filename, enc);
   Check(enc <> nil, 'Cannot detect encoding');
 
-  bareFilename := ChangeFileExt(FFilename, ''); //strip .txt
+  bareFilename := ChangeFileExt(Self.Filename, ''); //strip .txt
   encName := ExtractFileExt(bareFilename); //read encoding name (second extension)
   if encName.StartsWith('.') then
     delete(encName, 1, 1);
@@ -417,7 +314,7 @@ var ASuite: TTestSuite;
 begin
   ASuite := TTestSuite.create('Encoding detection');
   for fname in FileList(TestCasesDir+'\encoding-detection', '*.txt') do
-    ASuite.AddTest(TEncodingDetectionTest.Suite(fname));
+    ASuite.AddTest(TEncodingDetectionTest.Create(fname));
   Result := ASuite;
 end;
 
@@ -531,7 +428,7 @@ function JWBIOTestSuite: ITestSuite;
 var ASuite: TTestSuite;
 begin
   ASuite := TTestSuite.Create('JWBIO');
-  ASuite.addTest(TEncodingTestCase.Suite);
+  ASuite.addTest(EncodingTestSuite);
   ASuite.addTest(TMiscEncodingTests.Suite);
   ASuite.AddTest(EncodingDetectionSuite);
   Result := ASuite;
