@@ -7,7 +7,8 @@ program YarxiKanjiInfo;
 {$R *.res}
 
 uses
-  SysUtils, ConsoleToolbox, JwbIo, FastArray, Yarxi, YarxiKanji, YarxiCore;
+  Classes, SysUtils, ConsoleToolbox, JwbIo, FastArray, Yarxi, YarxiKanji,
+  YarxiCore;
 
 type
   TYarxiKanjiInfo = class(TCommandLineApp)

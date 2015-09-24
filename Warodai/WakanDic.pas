@@ -5,7 +5,7 @@ unit WakanDic;
 }
 
 interface
-uses TextTable, JWBDic, JWBEdictMarkers, JWBKanaConv, Warodai, WarodaiHeader,
+uses TextTable, JWBDic, JWBEdictMarkers, KanaConv, Warodai, WarodaiHeader,
   WarodaiBody, EdictWriter;
 
 var

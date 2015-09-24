@@ -292,7 +292,7 @@ function DumpKanjiCompound(const ACompound: TCompoundEntry): string;
 
 
 implementation
-uses StrUtils, JWBKanaConv, YarxiStrings, YarxiCore, YarxiRefs,
+uses StrUtils, KanaConv, YarxiStrings, YarxiCore, YarxiRefs,
   YarxiReadingCommon;
 
 {

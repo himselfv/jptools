@@ -42,7 +42,7 @@ function ParseTangoHyphens(reading: TTangoReading; inp: string): TTangoReading; 
 function ParseTangoYo(russian: TTangoRussian; inp: string): TTangoRussian; //может быть лучше будет редактировать на месте, а не возвращать
 
 implementation
-uses SysUtils, WcExceptions, JWBKanaConv, YarxiStrings, YarxiCore, YarxiRefs,
+uses SysUtils, WcExceptions, KanaConv, YarxiStrings, YarxiCore, YarxiRefs,
   YarxiReadingCommon;
 
 {

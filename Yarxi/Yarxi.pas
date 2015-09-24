@@ -7,7 +7,7 @@ Usage:
 
 
 interface
-uses SysUtils, sqlite3, sqlite3ds, uDataSetHelper, UniStrUtils, JWBKanaConv,
+uses SysUtils, sqlite3, sqlite3ds, uDataSetHelper, UniStrUtils, KanaConv,
   FastArray, YarxiStrings, YarxiKanji, YarxiTango;
 
 type

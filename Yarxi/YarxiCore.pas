@@ -1,7 +1,7 @@
 ﻿unit YarxiCore;
 
 interface
-uses YarxiStrings, JWBKanaConv;
+uses YarxiStrings, KanaConv;
 
 {
  Данные хранятся в базе Яркси в разновидности кодировки Хэпбёрна. Отделение n
