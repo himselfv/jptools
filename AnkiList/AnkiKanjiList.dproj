@@ -45,7 +45,7 @@
         <DCC_ExeOutput>..\Release\</DCC_ExeOutput>
         <DCC_DependencyCheckOutputName>..\Release\AnkiList.exe</DCC_DependencyCheckOutputName>
         <DCC_ImageBase>00400000</DCC_ImageBase>
-        <DCC_UnitSearchPath>..\Share\;$(WAKAN)\Components;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\Share\;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_Platform>x86</DCC_Platform>
         <DCC_N>false</DCC_N>
         <DCC_S>false</DCC_S>

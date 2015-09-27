@@ -35,7 +35,7 @@
         <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
-        <DCC_UnitSearchPath>..\Share\;$(WAKAN)\Components;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\Share\;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_ExeOutput>..\Release</DCC_ExeOutput>
         <DCC_DcuOutput>..\Dcu\$(Platform)$(Config)</DCC_DcuOutput>
         <Manifest_File>None</Manifest_File>

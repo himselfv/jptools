@@ -35,7 +35,7 @@
         <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
-        <DCC_UnitSearchPath>..\Share;..\KanaConv;..\Yarxi;$(WAKAN)\Components;$(SHARE)\Lib\sqlite3;$(SHARE)\Lib\sqlite3ds;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\Share;..\KanaConv;..\Yarxi;$(SHARE)\Lib\sqlite3;$(SHARE)\Lib\sqlite3ds;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_ImageBase>00400000</DCC_ImageBase>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
         <VerInfo_Locale>1049</VerInfo_Locale>

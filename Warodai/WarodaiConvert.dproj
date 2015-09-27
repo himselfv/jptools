@@ -37,7 +37,7 @@
     <PropertyGroup Condition="'$(Base)'!=''">
         <Manifest_File>None</Manifest_File>
         <DCC_UnitAlias>PerlRegEx=System.RegularExpressionsCore;$(DCC_UnitAlias)</DCC_UnitAlias>
-        <DCC_UnitSearchPath>..\Share;..\KanaConv;$(WAKAN)\Components;$(WAKAN)\Components\TextTable;$(WAKAN)\Components\Package;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>..\Share;..\KanaConv;$(WAKAN)\Modules;$(WAKAN)\Modules\TextTable;$(WAKAN)\Modules\Package;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_ExeOutput>..\Release</DCC_ExeOutput>
         <DCC_DcuOutput>..\Dcu\$(Platform)$(Config)</DCC_DcuOutput>
         <VerInfo_Locale>1049</VerInfo_Locale>
