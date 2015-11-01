@@ -45,7 +45,7 @@ If the file is tab-separated, AnkiKanjiList assumes first column containes expre
 大きい    おおきい
 ```
 
-You can tell it to use different columns with `-te` and {{{-tr}}.
+You can tell it to use different columns with `-te` and {{{-tr}}}.
 
 **Note:** You may omit readings at all or just on some lines, but you have to have an expression column. If you only have readings, e.g.:
 ```
@@ -64,9 +64,10 @@ Input file may list several versions of the reading or writing, e.g.
 In this case you can provide a separator text with `-es 、` and AnkiWordList will try all combinations of expression/reading against the dictionary. If several matches are found, they will be graded by their relevancy, the more provided readings/writings match the entry, the more relevant match it is.
 
 **Note**: It is in general not a good idea to have multiple variants of the same expression in a single Anki card.
-1. **Do not:** List multiple unrelated words in a single card. **Instead:** Create several cards, one for each word.
-2. **Do not:** List several readings of a single expression which have different meanings. **Instead:** Create several cards, one for each reading.
-3. **Do not:** List obsolete writings or readings for an expression. **Instead**: Just don't list obsolete readings at all. This only distracts the learner with mostly pointless information.
+
+  1. **Do not:** List multiple unrelated words in a single card. **Instead:** Create several cards, one for each word.
+  2. **Do not:** List several readings of a single expression which have different meanings. **Instead:** Create several cards, one for each reading.
+  3. **Do not:** List obsolete writings or readings for an expression. **Instead**: Just don't list obsolete readings at all. This only distracts the learner with mostly pointless information.
 
 One valid case when you may want to list several readings is when those readings are equivalent or have very similar meanings.
 
