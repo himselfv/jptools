@@ -19,4 +19,4 @@
 Преобразование в другие форматы они разрешили и сказали, что относятся к этому хорошо.
 
 ## Download
-**[WarodaiConvert.exe](http://googledrive.com/host/0B6e6N2yLg25MTlp3WkpfbG9ySGM/WarodaiConvert.exe)**
+**[WarodaiConvert.exe](https://drive.google.com/open?id=0B6e6N2yLg25MZkE5QmQtc2ZVVjA)**
