@@ -53,4 +53,4 @@ Since the scope of information produced by this tool is insufficient for generat
 As the tool is in the experimental stage it may produce informational messages on the standard error console. So long as there are no errors they are safe to ignore.
 
 ## Download
-**[YarxiKanjiInfo.exe](http://googledrive.com/host/0B6e6N2yLg25MTlp3WkpfbG9ySGM/YarxiKanjiInfo.exe)**
+**[YarxiKanjiInfo.exe](https://drive.google.com/open?id=0B6e6N2yLg25MemU4REdWQkc4clU)**
