@@ -47,4 +47,4 @@ If you're updating your deck, don't bother filtering out duplicates. Anki will i
 
 
 ## Download
-**[AnkiKanjiList.exe](http://googledrive.com/host/0B6e6N2yLg25MTlp3WkpfbG9ySGM/AnkiKanjiList.exe)**
+**[AnkiKanjiList.exe](https://drive.google.com/open?id=0B6e6N2yLg25MNndCMHg2R3F5cVE)**
