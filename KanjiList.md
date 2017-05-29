@@ -88,4 +88,4 @@ Produces a list of those of 1000 most frequent kanji which are not yet learned.
 (Assumes proper unicode handling in console, which is beyond the scope of this article)
 
 ## Download
-**[KanjiList.exe](http://googledrive.com/host/0B6e6N2yLg25MTlp3WkpfbG9ySGM/KanjiList.exe)**
+**[KanjiList.exe](https://drive.google.com/open?id=0B6e6N2yLg25MT3RhVWRSemY0MmM)**
