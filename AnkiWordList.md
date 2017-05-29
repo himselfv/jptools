@@ -84,4 +84,4 @@ AnkiWordList outputs generated cards in a tab-separated format to a standard out
 There's no way, because you can just run the program multiple times with different dictionaries. Import the results into separate fields, then just show all of those from Anki.
 
 # Download
-**[AnkiWordList.exe](http://googledrive.com/host/0B6e6N2yLg25MTlp3WkpfbG9ySGM/AnkiWordList.exe)**
+**[AnkiWordList.exe](https://drive.google.com/open?id=0B6e6N2yLg25MeFVUbUNPNFlfdTg)**
