@@ -132,7 +132,7 @@ type
     elUnlikely    //data is unlikely to be in this encoding
   );
 
-  TEncoding = class
+  TEncoding = class(TObject)
     constructor Create; virtual;
     class function GetBom: TBytes; virtual;
     class function ReadBom(AStream: TStream): boolean; virtual;
@@ -888,7 +888,7 @@ end;
 
 {$IFDEF MSWINDOWS}
 { A note on parametrized encodings:
- They will work, but no with any special code which assumes one encoding == one type.
+ They will work, but not with any special code which assumes one encoding == one type.
  You also cannot rely on comparisons like "if Encoding1==Encoding2". }
 constructor TMultibyteEncoding.Create(const ACodepage: integer);
 begin
@@ -988,8 +988,7 @@ end;
 
 constructor TAcpEncoding.Create;
 begin
-  inherited Create();
-  FCodepage := CP_ACP;
+  inherited Create(CP_ACP);
 end;
 {$ENDIF}
 
@@ -1352,7 +1351,7 @@ end;
 function _is(b:word;cl:byte):boolean;
 begin
   case cl of
-    IS_EUC:result:=(b>=161) and (b<=254);
+    IS_EUC:result:=(b>=$A1) and (b<=$FE);
     IS_HALFKATA:result:=(b>=161) and (b<=223);
     IS_SJIS1:result:=((b>=129) and (b<=159)) or ((b>=224) and (b<=239));
     IS_SJIS2:result:=(b>=64) and (b<=252);
