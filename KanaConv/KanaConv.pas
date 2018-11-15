@@ -189,6 +189,9 @@ type
     FReplKtr: TRomajiReplacementTable;
     FReplRtk: TRomajiReplacementTable;
     procedure CreateTranslationTable; virtual;
+    procedure RomaReplace(var s: string); overload; inline;
+    procedure RomaReplace(var s: string; const r: PRomajiReplacementRule); overload;
+    procedure KanaReplace(var s: string); overload;
   public
     constructor Create;
     destructor Destroy; override;
@@ -206,7 +209,7 @@ type
     FTrans: TKanaTranslationTable;
     procedure CreateTranslationTable; override;
     function SingleKanaToRomaji(var ps: PUnicodeChar; flags: TResolveFlags): string;
-    procedure RomaReplace(var s: string; const r: PRomajiReplacementRule);
+    procedure RomaReplace(var s: string; const r: PRomajiReplacementRule); reintroduce;
   public
    { Always generates lowercase romaji }
     function KanaToRomaji(const AString: UnicodeString; AFlags: TResolveFlags): string; override;
@@ -880,6 +883,51 @@ begin
   Result.pref := #00; //by default
 end;
 
+{
+Performs a pre-romaji-translation replacements on a string
+Descendants can reimplement this or call as is.
+}
+procedure TRomajiTranslator.RomaReplace(var s: string);
+var i: integer;
+begin
+  for i := 0 to FReplRtk.Count - 1 do
+    RomaReplace(s, FReplRtk[i]);
+end;
+
+function isRomaReplacementMatch(pc_sub, pc_s: PChar): boolean; inline;
+begin
+  while (pc_sub^<>#00) and (pc_s^<>#00) do begin
+    if pc_sub^<>pc_s^ then break;
+    Inc(pc_sub);
+    Inc(pc_s);
+  end;
+  Result := pc_sub^=#00;
+end;
+
+procedure TRomajiTranslator.RomaReplace(var s: string; const r: PRomajiReplacementRule);
+var i: integer;
+begin
+  i := 1;
+  while i<Length(s) do begin
+    if isRomaReplacementMatch(@r.s_find[1], @s[i]) then begin
+      s := copy(s,1,i-1)+r.s_repl+copy(s,i+Length(r.s_find),MaxInt);
+      Inc(i,Length(r.s_find)-1);
+    end;
+    Inc(i);
+  end;
+end;
+
+procedure TRomajiTranslator.KanaReplace(var s: string);
+var i: integer;
+  r: PRomajiReplacementRule;
+begin
+  for i := 0 to FReplKtr.Count - 1 do begin
+    r := FReplKtr[i];
+    s := repl(s, r.s_find, r.s_repl);
+  end;
+end;
+
+
 //Finds first entry which starts with ASyllable
 //Text must be lowercased.
 function TRomajiTranslator.RomajiPartialMatch(const ASyllable: string): integer;
@@ -989,8 +1037,6 @@ function TKanaTranslator.KanaToRomaji(const AString: UnicodeString; AFlags: TRes
 var fn:string;
   s2:string;
   ps: PWideChar;
-  i: integer;
-  r: PRomajiReplacementRule;
 begin
   if Length(AString)<=0 then begin
     Result := '';
@@ -999,30 +1045,17 @@ begin
   s2 := '';
   ps := PWideChar(AString);
 
- { Translation }
+  //Translation
   while ps^<>#00 do begin
     fn := SingleKanaToRomaji(ps, AFlags); //also eats one or two symbols
     s2:=s2+fn;
   end;
 
- { Replacements }
-  for i := 0 to FReplKtr.Count - 1 do begin
-    r := FReplKtr[i];
-    s2 := repl(s2, r.s_find, r.s_repl);
-  end;
+  //Replacements
+  Self.KanaReplace(s2);
 
   if (length(s2)>0) and (s2[length(s2)]='''') then delete(s2,length(s2),1);
   result:=s2;
-end;
-
-function isMatch(pc_sub, pc_s: PChar): boolean; inline;
-begin
-  while (pc_sub^<>#00) and (pc_s^<>#00) do begin
-    if pc_sub^<>pc_s^ then break;
-    Inc(pc_sub);
-    Inc(pc_s);
-  end;
-  Result := pc_sub^=#00;
 end;
 
 { Performs a replacement, minding Hiragana/Katakana mode. }
@@ -1041,7 +1074,7 @@ begin
       mode := 'K'
     else
     if (r.pref=#00) or (r.pref=mode) then
-      if isMatch(@r.s_find[1], @s[i]) then begin
+      if isRomaReplacementMatch(@r.s_find[1], @s[i]) then begin
         s := copy(s,1,i-1)+r.s_repl+copy(s,i+Length(r.s_find),MaxInt);
         Inc(i,Length(r.s_find)-1);
       end;
@@ -1168,6 +1201,9 @@ begin
       s2 := s2 + Chr(Ord('0') + fpyextrtone(curstr)); //to digit
   end;
   Result := LowerCase(s2);
+
+  //Replacements
+  Self.KanaReplace(Result);
 end;
 
 function TPinYinTranslator.RomajiToKana(const AString: string; AFlags: TResolveFlags): UnicodeString;
@@ -1177,7 +1213,11 @@ var s2:string;
   bir: TRomajiIndexEntry;
 begin
   curstr := LowerCase(AString);
+
+  //Replacements
   curstr := repl(curstr,'v','u:');
+  Self.RomaReplace(curstr);
+
   s2:='';
   while curstr<>'' do
   begin
