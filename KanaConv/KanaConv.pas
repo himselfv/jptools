@@ -189,6 +189,9 @@ type
     FReplKtr: TRomajiReplacementTable;
     FReplRtk: TRomajiReplacementTable;
     procedure CreateTranslationTable; virtual;
+    procedure RomaReplace(var s: string); overload; inline;
+    procedure RomaReplace(var s: string; const r: PRomajiReplacementRule); overload;
+    procedure KanaReplace(var s: string); overload;
   public
     constructor Create;
     destructor Destroy; override;
@@ -197,8 +200,8 @@ type
     procedure LoadFromStrings(const sl: TStrings);
     function KanaToRomaji(const AString: UnicodeString; AFlags: TResolveFlags): string; virtual; abstract;
     function RomajiToKana(const AString: string; AFlags: TResolveFlags): UnicodeString; virtual; abstract;
-    function RomajiPartialMatch(const ASyllable: string): integer; virtual;
-    function RomajiBestMatch(const AText: string; out ARomaIdx: integer): integer; virtual;
+    function RomajiPartialMatch(const ASyllable: string): integer;
+    function RomajiBestMatch(const AText: string): TRomajiIndexEntry; inline;
   end;
 
   TKanaTranslator = class(TRomajiTranslator)
@@ -206,7 +209,7 @@ type
     FTrans: TKanaTranslationTable;
     procedure CreateTranslationTable; override;
     function SingleKanaToRomaji(var ps: PUnicodeChar; flags: TResolveFlags): string;
-    procedure RomaReplace(var s: string; const r: PRomajiReplacementRule);
+    procedure RomaReplace(var s: string; const r: PRomajiReplacementRule); reintroduce;
   public
    { Always generates lowercase romaji }
     function KanaToRomaji(const AString: UnicodeString; AFlags: TResolveFlags): string; override;
@@ -880,6 +883,51 @@ begin
   Result.pref := #00; //by default
 end;
 
+{
+Performs a pre-romaji-translation replacements on a string
+Descendants can reimplement this or call as is.
+}
+procedure TRomajiTranslator.RomaReplace(var s: string);
+var i: integer;
+begin
+  for i := 0 to FReplRtk.Count - 1 do
+    RomaReplace(s, FReplRtk[i]);
+end;
+
+function isRomaReplacementMatch(pc_sub, pc_s: PChar): boolean; inline;
+begin
+  while (pc_sub^<>#00) and (pc_s^<>#00) do begin
+    if pc_sub^<>pc_s^ then break;
+    Inc(pc_sub);
+    Inc(pc_s);
+  end;
+  Result := pc_sub^=#00;
+end;
+
+procedure TRomajiTranslator.RomaReplace(var s: string; const r: PRomajiReplacementRule);
+var i: integer;
+begin
+  i := 1;
+  while i<Length(s) do begin
+    if isRomaReplacementMatch(@r.s_find[1], @s[i]) then begin
+      s := copy(s,1,i-1)+r.s_repl+copy(s,i+Length(r.s_find),MaxInt);
+      Inc(i,Length(r.s_find)-1);
+    end;
+    Inc(i);
+  end;
+end;
+
+procedure TRomajiTranslator.KanaReplace(var s: string);
+var i: integer;
+  r: PRomajiReplacementRule;
+begin
+  for i := 0 to FReplKtr.Count - 1 do begin
+    r := FReplKtr[i];
+    s := repl(s, r.s_find, r.s_repl);
+  end;
+end;
+
+
 //Finds first entry which starts with ASyllable
 //Text must be lowercased.
 function TRomajiTranslator.RomajiPartialMatch(const ASyllable: string): integer;
@@ -900,24 +948,19 @@ begin
   end;
 end;
 
-//Finds best matching entry for the pinyin syllable at the start of the text
+//Finds the best matching entry for the syllable at the start of the text
 //Text must be lowercased
-function TRomajiTranslator.RomajiBestMatch(const AText: string; out ARomaIdx: integer): integer;
-var i, j, cl: integer;
-  rom: string;
+function TRomajiTranslator.RomajiBestMatch(const AText: string): TRomajiIndexEntry;
+var bi: TBinTreeItem;
+  bir: TRomajiIndexEntry absolute bi;
 begin
-  Result := -1;
-  cl := 0;
-  for i:=0 to FTrans.Count-1 do
-    for j:=0 to Length(FTrans[i].romaji)-1 do begin
-      rom := FTrans[i].romaji[j];
-      if pos(rom, AText)=1 then
-        if Length(rom)>cl then
-        begin
-          cl:=Length(rom);
-          Result:=i;
-          ARomaIdx:=j;
-        end;
+  Result := nil;
+  //The binary tree is sorted by priority then length, so start from the top
+  //The first match we find IS the best match
+  for bi in FTrans.FRomajiIndex do
+    if StartsStr(bir.roma, AText) then begin
+      Result := bir;
+      break;
     end;
 end;
 
@@ -994,8 +1037,6 @@ function TKanaTranslator.KanaToRomaji(const AString: UnicodeString; AFlags: TRes
 var fn:string;
   s2:string;
   ps: PWideChar;
-  i: integer;
-  r: PRomajiReplacementRule;
 begin
   if Length(AString)<=0 then begin
     Result := '';
@@ -1004,30 +1045,17 @@ begin
   s2 := '';
   ps := PWideChar(AString);
 
- { Translation }
+  //Translation
   while ps^<>#00 do begin
     fn := SingleKanaToRomaji(ps, AFlags); //also eats one or two symbols
     s2:=s2+fn;
   end;
 
- { Replacements }
-  for i := 0 to FReplKtr.Count - 1 do begin
-    r := FReplKtr[i];
-    s2 := repl(s2, r.s_find, r.s_repl);
-  end;
+  //Replacements
+  Self.KanaReplace(s2);
 
   if (length(s2)>0) and (s2[length(s2)]='''') then delete(s2,length(s2),1);
   result:=s2;
-end;
-
-function isMatch(pc_sub, pc_s: PChar): boolean; inline;
-begin
-  while (pc_sub^<>#00) and (pc_s^<>#00) do begin
-    if pc_sub^<>pc_s^ then break;
-    Inc(pc_sub);
-    Inc(pc_s);
-  end;
-  Result := pc_sub^=#00;
 end;
 
 { Performs a replacement, minding Hiragana/Katakana mode. }
@@ -1046,7 +1074,7 @@ begin
       mode := 'K'
     else
     if (r.pref=#00) or (r.pref=mode) then
-      if isMatch(@r.s_find[1], @s[i]) then begin
+      if isRomaReplacementMatch(@r.s_find[1], @s[i]) then begin
         s := copy(s,1,i-1)+r.s_repl+copy(s,i+Length(r.s_find),MaxInt);
         Inc(i,Length(r.s_find)-1);
       end;
@@ -1058,8 +1086,7 @@ function TKanaTranslator.RomajiToKana(const AString: string; AFlags: TResolveFla
 var s2,s3,fn:string;
   kata:integer;
   l,i:integer;
-  bi: TBinTreeItem;
-  bir: TRomajiIndexEntry absolute bi;
+  bir: TRomajiIndexEntry;
 begin
   if length(AString)<=0 then begin
     Result := '';
@@ -1079,7 +1106,6 @@ begin
   while length(s2)>0 do
   begin
     fn:='';
-    l:=0;
 
     if s2[1]='H' then begin
       kata:=0;
@@ -1091,18 +1117,14 @@ begin
       l:=1;
       fn:='';
     end else begin
-
-      for bi in FTrans.FRomajiIndex do
-        if StartsStr(bir.roma, s2) then begin
-          l := Length(bir.roma);
-          if kata=0 then
-            fn := bir.entries[0].Phonetic
-          else
-            fn := ToKatakana(bir.entries[0].Phonetic);
-          break;
-        end;
-
-      if l=0 then begin
+      bir := RomajiBestMatch(s2);
+      if bir <> nil then begin
+        l := Length(bir.roma);
+        if kata=0 then
+          fn := bir.entries[0].Phonetic
+        else
+          fn := ToKatakana(bir.entries[0].Phonetic);
+      end else begin
         if rfDeleteInvalidChars in AFlags then
           fn := ''
         else
@@ -1110,7 +1132,7 @@ begin
           fn := '?'
         else
           fn := s2[1];
-        l:=1;
+        l:=1; //move to the next char, or we'll loop infinitely
       end;
 
     end;
@@ -1179,30 +1201,31 @@ begin
       s2 := s2 + Chr(Ord('0') + fpyextrtone(curstr)); //to digit
   end;
   Result := LowerCase(s2);
+
+  //Replacements
+  Self.KanaReplace(Result);
 end;
 
 function TPinYinTranslator.RomajiToKana(const AString: string; AFlags: TResolveFlags): UnicodeString;
 var s2:string;
-  cl:integer;
-  i,j:integer;
   ch:WideChar;
   curstr:string;
+  bir: TRomajiIndexEntry;
 begin
   curstr := LowerCase(AString);
+
+  //Replacements
   curstr := repl(curstr,'v','u:');
+  Self.RomaReplace(curstr);
+
   s2:='';
   while curstr<>'' do
   begin
     //Find longest match for character sequence starting at this point
-    i := RomajiBestMatch(curstr,j);
-    if i>=0 then
-      cl := Length(FTrans[i].romaji[j])
-    else
-      cl := 0;
-
-    if i>=0 then begin
-      s2:=s2+FTrans[i].Phonetic;
-      delete(curstr,1,cl);
+    bir := RomajiBestMatch(curstr);
+    if bir <> nil then begin
+      s2:=s2+bir.entries[0].Phonetic;
+      delete(curstr,1,Length(bir.roma));
 
      //with ansi pinyin, we only try to extract tone after a syllable match
       if (length(curstr)>0) and (curstr[1]>='0') and (curstr[1]<='5') then
@@ -1266,8 +1289,9 @@ end;
 
 function IsEncodedBopomofoTone(const ch: UnicodeChar): boolean;
 begin
-  Result := fpydetone(ch) < 10;
+  Result := (Ord(ch) and $FFF0 = $F030);
 end;
+
 
 {
 Converts raw database pin4yin4 to enhanced unicode pínín with marks.
@@ -1502,6 +1526,15 @@ begin
   Result:=cnv2+lowercase(curcc)+curp;
 end;
 
+
+{
+Converts encoded tonal marks to visual accent marks.
+
+This uses the official visual accent marks for Bopomofo:
+  https://en.wikipedia.org/wiki/Bopomofo#Tonal_marks
+
+There is no mark for Tone 1 in Bopomofo. Contrast with Pinyin where there is no mark for Tone 5.
+}
 function ConvertBopomofo(const str: UnicodeString): UnicodeString;
 var i, tone: integer;
   ch: UnicodeChar;
