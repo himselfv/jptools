@@ -1503,6 +1503,15 @@ begin
   Result:=cnv2+lowercase(curcc)+curp;
 end;
 
+
+{
+Converts encoded tonal marks to visual accent marks.
+
+This uses the official visual accent marks for Bopomofo:
+  https://en.wikipedia.org/wiki/Bopomofo#Tonal_marks
+
+There is no mark for Tone 1 in Bopomofo. Contrast with Pinyin where there is no mark for Tone 5.
+}
 function ConvertBopomofo(const str: UnicodeString): UnicodeString;
 var i, tone: integer;
   ch: UnicodeChar;
