@@ -257,6 +257,7 @@ function fpytone(const i: byte): UnicodeChar; inline; //creates a character whic
 function fpydetone(const ch: UnicodeChar): byte; inline; //returns 0-5 if the character encodes tone, or 255
 function fpygettone(const s: UnicodeString): byte; inline; //returns 0-5 if the first character encodes tone, or 255
 function fpyextrtone(var s: UnicodeString): byte; inline; //same, but deletes the tone from the string
+function IsEncodedBopomofoTone(const ch: UnicodeChar): boolean; inline;
 
 { pin4yin4<->pínín conversion
  Works only for pure pinyin, although tolerant for some punctuation and limited latin. }
@@ -267,6 +268,7 @@ function DeconvertPinYin(romac: TPinYinTranslator; const str: UnicodeString):str
  There could be parentless tone marks already in the string, so the result
  is slightly less unambiguous. }
 function ConvertBopomofo(const str: UnicodeString): UnicodeString;
+function IsBopomofoToneMark(const ch: UnicodeChar): boolean; inline;
 
 implementation
 uses SysUtils;
@@ -1262,6 +1264,11 @@ begin
   if Result<255 then delete(s,1,1);
 end;
 
+function IsEncodedBopomofoTone(const ch: UnicodeChar): boolean;
+begin
+  Result := fpydetone(ch) < 10;
+end;
+
 {
 Converts raw database pin4yin4 to enhanced unicode pínín with marks.
 Only works for pure pinyin (no latin letters).
@@ -1525,6 +1532,14 @@ begin
     Result[i] := ch;
     Inc(i);
   end;
+end;
+
+//True if the character is one of the accepted visual tone marks in Bopomofo
+//Should at least cover the visual marks of this app.
+//If possible, it's preferable to simply make EvalChar sort the char as BOPOMOFO.
+function IsBopomofoToneMark(const ch: UnicodeChar): boolean;
+begin
+  Result := (ch = #$02CA) or (ch = #$02C7) or (ch = #$02CB) or (ch = #$02D9);
 end;
 
 
