@@ -197,8 +197,8 @@ type
     procedure LoadFromStrings(const sl: TStrings);
     function KanaToRomaji(const AString: UnicodeString; AFlags: TResolveFlags): string; virtual; abstract;
     function RomajiToKana(const AString: string; AFlags: TResolveFlags): UnicodeString; virtual; abstract;
-    function RomajiPartialMatch(const ASyllable: string): integer; virtual;
-    function RomajiBestMatch(const AText: string; out ARomaIdx: integer): integer; virtual;
+    function RomajiPartialMatch(const ASyllable: string): integer;
+    function RomajiBestMatch(const AText: string): TRomajiIndexEntry; inline;
   end;
 
   TKanaTranslator = class(TRomajiTranslator)
@@ -900,24 +900,19 @@ begin
   end;
 end;
 
-//Finds best matching entry for the pinyin syllable at the start of the text
+//Finds the best matching entry for the syllable at the start of the text
 //Text must be lowercased
-function TRomajiTranslator.RomajiBestMatch(const AText: string; out ARomaIdx: integer): integer;
-var i, j, cl: integer;
-  rom: string;
+function TRomajiTranslator.RomajiBestMatch(const AText: string): TRomajiIndexEntry;
+var bi: TBinTreeItem;
+  bir: TRomajiIndexEntry absolute bi;
 begin
-  Result := -1;
-  cl := 0;
-  for i:=0 to FTrans.Count-1 do
-    for j:=0 to Length(FTrans[i].romaji)-1 do begin
-      rom := FTrans[i].romaji[j];
-      if pos(rom, AText)=1 then
-        if Length(rom)>cl then
-        begin
-          cl:=Length(rom);
-          Result:=i;
-          ARomaIdx:=j;
-        end;
+  Result := nil;
+  //The binary tree is sorted by priority then length, so start from the top
+  //The first match we find IS the best match
+  for bi in FTrans.FRomajiIndex do
+    if StartsStr(bir.roma, AText) then begin
+      Result := bir;
+      break;
     end;
 end;
 
@@ -1058,8 +1053,7 @@ function TKanaTranslator.RomajiToKana(const AString: string; AFlags: TResolveFla
 var s2,s3,fn:string;
   kata:integer;
   l,i:integer;
-  bi: TBinTreeItem;
-  bir: TRomajiIndexEntry absolute bi;
+  bir: TRomajiIndexEntry;
 begin
   if length(AString)<=0 then begin
     Result := '';
@@ -1079,7 +1073,6 @@ begin
   while length(s2)>0 do
   begin
     fn:='';
-    l:=0;
 
     if s2[1]='H' then begin
       kata:=0;
@@ -1091,18 +1084,14 @@ begin
       l:=1;
       fn:='';
     end else begin
-
-      for bi in FTrans.FRomajiIndex do
-        if StartsStr(bir.roma, s2) then begin
-          l := Length(bir.roma);
-          if kata=0 then
-            fn := bir.entries[0].Phonetic
-          else
-            fn := ToKatakana(bir.entries[0].Phonetic);
-          break;
-        end;
-
-      if l=0 then begin
+      bir := RomajiBestMatch(s2);
+      if bir <> nil then begin
+        l := Length(bir.roma);
+        if kata=0 then
+          fn := bir.entries[0].Phonetic
+        else
+          fn := ToKatakana(bir.entries[0].Phonetic);
+      end else begin
         if rfDeleteInvalidChars in AFlags then
           fn := ''
         else
@@ -1110,7 +1099,7 @@ begin
           fn := '?'
         else
           fn := s2[1];
-        l:=1;
+        l:=1; //move to the next char, or we'll loop infinitely
       end;
 
     end;
@@ -1183,10 +1172,9 @@ end;
 
 function TPinYinTranslator.RomajiToKana(const AString: string; AFlags: TResolveFlags): UnicodeString;
 var s2:string;
-  cl:integer;
-  i,j:integer;
   ch:WideChar;
   curstr:string;
+  bir: TRomajiIndexEntry;
 begin
   curstr := LowerCase(AString);
   curstr := repl(curstr,'v','u:');
@@ -1194,15 +1182,10 @@ begin
   while curstr<>'' do
   begin
     //Find longest match for character sequence starting at this point
-    i := RomajiBestMatch(curstr,j);
-    if i>=0 then
-      cl := Length(FTrans[i].romaji[j])
-    else
-      cl := 0;
-
-    if i>=0 then begin
-      s2:=s2+FTrans[i].Phonetic;
-      delete(curstr,1,cl);
+    bir := RomajiBestMatch(curstr);
+    if bir <> nil then begin
+      s2:=s2+bir.entries[0].Phonetic;
+      delete(curstr,1,Length(bir.roma));
 
      //with ansi pinyin, we only try to extract tone after a syllable match
       if (length(curstr)>0) and (curstr[1]>='0') and (curstr[1]<='5') then
