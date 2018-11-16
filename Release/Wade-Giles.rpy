@@ -84,7 +84,12 @@
 ㄟ,Ei
 ㄣ,En
 ㄥ,Eng
-ㄦ,Erh
+; Super ugly Er handling. ㄦ2-4 is erh2-4, ㄦ1/ㄦ5 is -r
+ㄦˊ,Erh2
+ㄦˇ,Erh3
+ㄦˋ,Erh4
+ㄦ˙,R
+ㄦ,R1,Erh,R
 ㄈㄚ,Fa
 ㄈㄢ,Fan
 ㄈㄤ,Fang
@@ -122,7 +127,8 @@
 ㄏㄟ,Hei
 ㄏㄣ,Hen
 ㄏㄥ,Heng
-ㄏ006E0067,Hng
+ㄏㄇ,Hm
+ㄏㄣㄍ,Hng
 ㄏㄨㄥ,Hung
 ㄏㄡ,Hou
 ㄏㄨ,Hu
@@ -190,6 +196,7 @@
 ㄌㄩㄝ,Lueh:
 ㄌㄨㄣ,Lun
 ㄌㄨㄛ,Luo
+ㄇ,M
 ㄇㄚ,Ma
 ㄇㄞ,Mai
 ㄇㄢ,Man
@@ -219,7 +226,7 @@
 ㄋㄣ,Nen
 ㄋㄟ,Nei
 ㄋㄥ,Neng
-006E0067,Ng
+ㄣㄍ,Ng
 ㄋㄧ,Ni
 ㄋㄧㄢ,Nien
 ㄋㄧㄤ,Niang
@@ -235,7 +242,7 @@
 ㄋㄨㄢ,Nuan
 ㄋㄩㄝ,Nueh:
 ㄋㄨㄛ,No
-006F,O
+ㄛ,O
 ㄡ,Ou
 ㄆㄚ,P'a
 ㄆㄞ,P'ai
@@ -268,7 +275,7 @@
 ㄑㄩㄢ,Ch'uan:
 ㄑㄩㄝ,Ch'ueh:
 ㄑㄩㄣ,Ch'un:
-0072,Erh
+ㄦ,r
 ㄖㄢ,Jan
 ㄖㄤ,Jang
 ㄖㄠ,Jao
@@ -368,7 +375,7 @@
 ㄧ,I
 ㄧㄣ,Yin
 ㄧㄥ,Ying
-ㄧ006F,Yo
+ㄧㄛ,Yo
 ㄩㄥ,Yung
 ㄧㄡ,Yu
 ㄩ,Yu:
@@ -413,3 +420,6 @@
 ㄗㄨㄣ,Tsun
 ㄗㄨㄛ,Tso
 
+[Priority]
+; Any erh, r -> ㄦ, the tone is given manually
+R,ㄦ,ㄦ˙; Erh,ㄦ

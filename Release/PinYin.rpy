@@ -84,7 +84,12 @@
 ㄟ,ei
 ㄣ,en
 ㄥ,eng
-ㄦ,er
+; Super ugly Er handling. ㄦ2-4 is er2-4, ㄦ1/ㄦ5 is -r
+ㄦˊ,er2
+ㄦˇ,er3
+ㄦˋ,er4
+ㄦ˙,r
+ㄦ,r1,er,r
 ㄈㄚ,fa
 ㄈㄢ,fan
 ㄈㄤ,fang
@@ -122,7 +127,8 @@
 ㄏㄟ,hei
 ㄏㄣ,hen
 ㄏㄥ,heng
-ㄏng,hng
+ㄏㄇ,hm
+ㄏㄣㄍ,hng
 ㄏㄨㄥ,hong
 ㄏㄡ,hou
 ㄏㄨ,hu
@@ -190,6 +196,7 @@
 ㄌㄩㄝ,lue:
 ㄌㄨㄣ,lun
 ㄌㄨㄛ,luo
+ㄇ,m
 ㄇㄚ,ma
 ㄇㄞ,mai
 ㄇㄢ,man
@@ -219,7 +226,7 @@
 ㄋㄣ,nen
 ㄋㄟ,nei
 ㄋㄥ,neng
-ng,ng
+ㄣㄍ,ng
 ㄋㄧ,ni
 ㄋㄧㄢ,nian
 ㄋㄧㄤ,niang
@@ -235,7 +242,7 @@ ng,ng
 ㄋㄨㄢ,nuan
 ㄋㄩㄝ,nue:
 ㄋㄨㄛ,nuo
-o,o
+ㄛ,o
 ㄡ,ou
 ㄆㄚ,pa
 ㄆㄞ,pai
@@ -268,7 +275,6 @@ o,o
 ㄑㄩㄢ,quan
 ㄑㄩㄝ,que
 ㄑㄩㄣ,qun
-0072,r
 ㄖㄢ,ran
 ㄖㄤ,rang
 ㄖㄠ,rao
@@ -368,7 +374,7 @@ o,o
 ㄧ,yi
 ㄧㄣ,yin
 ㄧㄥ,ying
-ㄧo,yo
+ㄧㄛ,yo
 ㄩㄥ,yong
 ㄧㄡ,you
 ㄩ,yu
@@ -413,3 +419,6 @@ o,o
 ㄗㄨㄣ,zun
 ㄗㄨㄛ,zuo
 
+[Priority]
+; Any er, r -> ㄦ, the tone is given manually
+r,ㄦ,ㄦ˙; er,ㄦ
