@@ -1,2 +1,53 @@
 ﻿pinyin=ㄆㄧㄣㄧㄣ
 ㄆㄧㄣㄧㄣ=pinyin
+
+# O/YO
+# Simply rare
+yo=ㄧㄛ
+o=ㄛ
+ㄧㄛ=yo
+ㄛ=o
+
+# N
+n=ㄣ
+en=ㄣ
+ㄣ=en
+
+# NG/HNG/NM/HNM
+ng=ㄣㄍ
+hng=ㄏㄣㄍ
+m=ㄇ
+hm=ㄏㄇ
+ㄣㄍ=ng
+ㄏㄣㄍ=hng
+ㄇ=m
+ㄏㄇ=hm
+# These are unrelated standalone syllables
+ㄥ=eng
+ㄤ=ang
+eng=ㄥ
+ang=ㄤ
+ㄏㄥ=heng
+heng=ㄏㄥ
+
+
+# ER/R
+# Translate to Pinyin depending on the tone
+ㄦ=r1
+ㄦˊ=er2
+ㄦˇ=er3
+ㄦˋ=er4
+ㄦ˙=r
+# Translate to Bopomofo straight, preserving any tone
+er=ㄦ
+er1=ㄦ
+er2=ㄦˊ
+er3=ㄦˇ
+er4=ㄦˋ
+er5=ㄦ˙
+r=ㄦ
+r1=ㄦ
+r2=ㄦˊ
+r3=ㄦˇ
+r4=ㄦˋ
+r5=ㄦ˙
