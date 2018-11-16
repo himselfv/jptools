@@ -1567,6 +1567,9 @@ begin
   end;
 end;
 
+//True if the character is one of the accepted visual tone marks in Bopomofo
+//Should at least cover the visual marks of this app.
+//If possible, it's preferable to simply make EvalChar sort the char as BOPOMOFO.
 function IsBopomofoToneMark(const ch: UnicodeChar): boolean;
 begin
   Result := (ch = #$02CA) or (ch = #$02C7) or (ch = #$02CB) or (ch = #$02D9);
