@@ -4,11 +4,11 @@ This set contains several command-line tools intended to help those studying kan
 # AnkiList
 These tools generate tab-separated files suitable for importing into Anki or updating some fields of your Anki deck.
 
-  * [AnkiKanjiList](AnkiKanjiList) - converts raw kanji list to tab-separated list with ons/kuns/meanings (uses KANJIDIC compatible dictionary).
+  * [AnkiKanjiList](docs/AnkiKanjiList) - converts raw kanji list to tab-separated list with ons/kuns/meanings (uses KANJIDIC compatible dictionary).
 
-  * [AnkiWordList](AnkiWordList) - converts word/expression list to tab-separated list of words and translations (uses EDICT/CEDICT compatible dictionary)
+  * [AnkiWordList](docs/AnkiWordList) - converts word/expression list to tab-separated list of words and translations (uses EDICT/CEDICT compatible dictionary)
 
-  * [AnkiExampleList](AnkiList) - converts word/expression list to tab-separated list of words and example sentences (uses Tanaka corpus compatible corpus)
+  * [AnkiExampleList](docs/AnkiList) - converts word/expression list to tab-separated list of words and example sentences (uses Tanaka corpus compatible corpus)
 
 
 # [Warodai Convertor](Warodai)
@@ -36,17 +36,17 @@ Or download converted dictionary:
 
 These tools may be usable by itself or as an example when working with their underlying libraries.
 
-  * [KanjiStats](KanjiStats): list kanji by frequency in a given text.
+  * [KanjiStats](docs/KanjiStats): list kanji by frequency in a given text.
 
-  * **[kanjistats\_4Gb](kanjistats_4Gb)**: kanji sorted by frequency, as they appeared in 21000 of books in Japanese
+  * **[kanjistats\_4Gb](docs/kanjistats_4Gb)**: kanji sorted by frequency, as they appeared in 21000 of books in Japanese
 
-  * [KanjiList](KanjiList): manipulate kanji lists (trim/merge/intersect/etc)
+  * [KanjiList](docs/KanjiList): manipulate kanji lists (trim/merge/intersect/etc)
 
-  * [AozoraTxt](AozoraTxt): strips Aozora-Ruby from the text or gives some statistical info about it.
+  * [AozoraTxt](docs/AozoraTxt): strips Aozora-Ruby from the text or gives some statistical info about it.
 
-  * [MiscTxt](MiscTxt): gives some common statistical info about a text (# of kana, kanji, char and line count)
+  * [MiscTxt](docs/MiscTxt): gives some common statistical info about a text (# of kana, kanji, char and line count)
 
-  * [YarxiKanjiInfo](YarxiKanjiInfo): uses Yarxi database parser to extract kanji information.
+  * [YarxiKanjiInfo](docs/YarxiKanjiInfo): uses Yarxi database parser to extract kanji information.
 
 
 # Libraries
@@ -69,3 +69,20 @@ Libraries in Delphi for common CJK-related tasks.
 **[Latest jptools.zip](https://docs.google.com/uc?export=download&id=0B0jSbSrihj-yOXVOcnZ2ekRQYlE) (AnkiKanjiList/WordList, AozoraTxt, KanjiStats and more)**
 
 **[All downloads](https://drive.google.com/folderview?id=0B0jSbSrihj-ya0NOdEFiZmRTNkk&usp=sharing#list)**
+
+
+
+# Building
+
+May be required for some projects:
+ * Wakan
+ * SQLite3.pas
+ * SQLite3Dataset.pas
+
+At runtime:
+ * sqlite3.dll
+ * EDICT2
+ * kanjidic
+ * radkfile
+ * ewarodai.txt
+ * yarxi.db
