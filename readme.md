@@ -4,11 +4,11 @@ This set contains several command-line tools intended to help those studying kan
 # AnkiList
 These tools generate tab-separated files suitable for importing into Anki or updating some fields of your Anki deck.
 
-  * [AnkiKanjiList](docs/AnkiKanjiList) - converts raw kanji list to tab-separated list with ons/kuns/meanings (uses KANJIDIC compatible dictionary).
+  * [AnkiKanjiList](docs/AnkiKanjiList.md) - converts raw kanji list to tab-separated list with ons/kuns/meanings (uses KANJIDIC compatible dictionary).
 
-  * [AnkiWordList](docs/AnkiWordList) - converts word/expression list to tab-separated list of words and translations (uses EDICT/CEDICT compatible dictionary)
+  * [AnkiWordList](docs/AnkiWordList.md) - converts word/expression list to tab-separated list of words and translations (uses EDICT/CEDICT compatible dictionary)
 
-  * [AnkiExampleList](docs/AnkiList) - converts word/expression list to tab-separated list of words and example sentences (uses Tanaka corpus compatible corpus)
+  * AnkiExampleList - converts word/expression list to tab-separated list of words and example sentences (uses Tanaka corpus compatible corpus)
 
 
 # [Warodai Convertor](Warodai)
@@ -36,29 +36,29 @@ Or download converted dictionary:
 
 These tools may be usable by itself or as an example when working with their underlying libraries.
 
-  * [KanjiStats](docs/KanjiStats): list kanji by frequency in a given text.
+  * [KanjiStats](docs/KanjiStats.md): list kanji by frequency in a given text.
 
-  * **[kanjistats\_4Gb](docs/kanjistats_4Gb)**: kanji sorted by frequency, as they appeared in 21000 of books in Japanese
+  * **[kanjistats\_4Gb](docs/kanjistats_4Gb.md)**: kanji sorted by frequency, as they appeared in 21000 of books in Japanese
 
-  * [KanjiList](docs/KanjiList): manipulate kanji lists (trim/merge/intersect/etc)
+  * [KanjiList](docs/KanjiList.md): manipulate kanji lists (trim/merge/intersect/etc)
 
-  * [AozoraTxt](docs/AozoraTxt): strips Aozora-Ruby from the text or gives some statistical info about it.
+  * [AozoraTxt](docs/AozoraTxt.md): strips Aozora-Ruby from the text or gives some statistical info about it.
 
-  * [MiscTxt](docs/MiscTxt): gives some common statistical info about a text (# of kana, kanji, char and line count)
+  * [MiscTxt](docs/MiscTxt.md): gives some common statistical info about a text (# of kana, kanji, char and line count)
 
-  * [YarxiKanjiInfo](docs/YarxiKanjiInfo): uses Yarxi database parser to extract kanji information.
+  * [YarxiKanjiInfo](docs/YarxiKanjiInfo.md): uses Yarxi database parser to extract kanji information.
 
 
 # Libraries
 
 Libraries in Delphi for common CJK-related tasks.
 
-  * [JWBIO](/himselfv/jp-tools/src/tip/Share/JWBIO.pas) - fast stream reader/writer with encoding detection and a bunch of encodings out of the box, including JIS/Shift-JIS, GB, UTF16/8 and other common japanese ones.
-  * [KanjidicReader](/himselfv/jp-tools/src/tip/Share/KanjiDicReader.pas): KANJIDIC style dictionary parser + [basic in-memory representation](/himselfv/jp-tools/src/tip/Share/KanjiDic.pas) ("load and use")
-  * [EdictReader](/himselfv/jp-tools/src/tip/Share/EdictReader.pas): EDICT/CCEDICT dictionary format parser (very forgiving to deviations in formats) +  [in-memory representation](/himselfv/jp-tools/src/tip/Share/Edict.pas)
-  * [EdictWriter](/himselfv/jp-tools/src/tip/Share/EdictWriter.pas) - programmer friendly EDICT1/EDICT2/JMDICT file generator.
-  * [AozoraTxt](/himselfv/jp-tools/src/tip/AozoraTxt/) parser: - parses text files in Aozora Bunko format
-  * [UnihanReader](/himselfv/jp-tools/src/tip/Share/UnihanReader.pas) - simple [Unihan database](http://unicode.org/charts/unihan.html) parser.
+  * [JWBIO](/Share/JWBIO.pas) - fast stream reader/writer with encoding detection and a bunch of encodings out of the box, including JIS/Shift-JIS, GB, UTF16/8 and other common japanese ones.
+  * [KanjidicReader](/Share/KanjiDicReader.pas): KANJIDIC style dictionary parser + [basic in-memory representation](/Share/KanjiDic.pas) ("load and use")
+  * [EdictReader](/Share/EdictReader.pas): EDICT/CCEDICT dictionary format parser (very forgiving to deviations in formats) +  [in-memory representation](/Share/Edict.pas)
+  * [EdictWriter](/Share/EdictWriter.pas) - programmer friendly EDICT1/EDICT2/JMDICT file generator.
+  * [AozoraTxt](/AozoraTxt/) parser: - parses text files in Aozora Bunko format
+  * [UnihanReader](/Share/UnihanReader.pas) - simple [Unihan database](http://unicode.org/charts/unihan.html) parser.
   * KanaConv - romaji-katakana-hiragana conversions, supports common and custom romaji schemes, using multiple at once --- not yet moved here from Wakan project.
   * YarxiReader
 
