@@ -18,7 +18,7 @@ No political or economical literature, no special or professional literature, no
 No guarantee is given about the validity of the frequency assessment or its suitability for any particular task. Anyone is free to repeat the estimation on any set of texts by using KanjiStats utility.
 
 ## Download
-**[kanjistats\_4Gb.txt](https://bitbucket.org/himselfv/jp-tools/raw/tip/kanjistats_4Gb.txt)**
+**[kanjistats\_4Gb.txt](/kanjistats_4Gb.txt)**
 
 
 ## License
