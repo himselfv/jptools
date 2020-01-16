@@ -31,13 +31,6 @@ const
   //In the priority order
   CommonSuffixes: string = 'する をする に な の で と にする になる になって '
     +'なる した とした として ある のある である';
-{
-TODO NOTES:
-  - If multiple versions are available, list all (or at most X, as set via command line)
-  - If several versions have THE SAME TEXT, group them:
-     ~a, ~b [translation]
-  - version text wrapper (e.g. "<li>%s %s</li>" or "%s %s\n" or "<dt>%s</dt><dd>%s</dd>")
-}
 
 type
   TQuery = record
@@ -61,6 +54,13 @@ type
   PMatch = ^TMatch;
 
   TMatchMode = (mmBest, mmMultiple, mmSplit);
+
+  TMatchUniformityFlag = (
+    muMultiKanji,   //has matches with different kanji
+    muMultiKana,    //has matches with different kana
+    muMultiTail     //has matches with different tails
+  );
+  TMatchUniformityFlags = set of TMatchUniformityFlag;
 
   TOutputEntry = record
     key: string;
@@ -96,7 +96,9 @@ type
     function MatchKana(const AEntry: PEdictEntry; const AKana: TStringArray): integer;
     function FindMatches(const query: TQuery): TArray<TMatch>;
     procedure SortMatches(var AMatches: TArray<TMatch>);
-    procedure AddToOutput(var AOutput: TOutputEntry; AQuery: PQuery; AMatch: PMatch);
+    function ScanMatchUniformity(const AMatches: TArray<TMatch>): TMatchUniformityFlags;
+    procedure AddToOutput(var AOutput: TOutputEntry; AQuery: PQuery; AMatch: PMatch;
+      AUniformity: TMatchUniformityFlags);
   public
     procedure ShowUsage; override;
     procedure Run; override;
@@ -270,6 +272,28 @@ begin
 
   FreeAndNil(err);
 end;
+
+
+{
+Each entry in the dictionary has a number of writing:reading pairs as a flat list.
+We don't care about further substructure (W1[R1,R2],W2[R3] -> W1:R1, W1:R2, W2:R3)
+
+Same with input files.
+
+Input may or may not have readings. Expression may be kanji or kana-only kana.
+If readings are given, we should only match mismatching readings if no matching
+reading entries are found.
+
+Typical input cases and what we want to see:
+1 kanji + 1 kana          -> entries with this pair
+1 kanji [no kana column]  -> entries with this kanji + any readings, grouped by readings
+1 kana only               -> all entries which have this either as kana-only (preferred),
+                             or as kanji:kana, grouped by kanji
+1 kanji + multiple readings [same sense]
+                          -> all entries with either of these pairs, best ones (matching multiple readings) first
+multiple kanji for the same reading
+                          -> all entries with either of these pairs
+}
 
 
 { Parse expr/read into a query - a bunch of fully separated expression/reading
@@ -449,6 +473,12 @@ begin
   QuickSort(@AMatches, 0, AMatches.Count-1, MatchCmp, MatchXch);
 end;
 
+{ Checks whether the set of matches is uniform by kanji, kana and tails }
+function TAnkiWordList.ScanMatchUniformity(const AMatches: TArray<TMatch>): TMatchUniformityFlags;
+begin
+  //TODO:
+end;
+
 procedure TOutputEntry.Reset(const AKey: string);
 begin
   key := AKey;
@@ -467,11 +497,16 @@ begin
 end;
 
 procedure TAnkiWordList.AddToOutput(var AOutput: TOutputEntry; AQuery: PQuery;
-  AMatch: PMatch);
+  AMatch: PMatch; AUniformity: TMatchUniformityFlags);
 var //i: integer;
   kanji_text,
   kana_text: string;
+  tempEntry: TEdictEntry;
 begin
+  //TODO: Mind AUniformity and add "~tail", "reading" or "writing" or "writing[reading]"
+  //  prefixes to text-formatted entries.
+  //  Not sure what to do in XML mode. Add additional XML tags for these partial readings/writings?
+
  //If query mostly matched kana
   if MatchKana(AMatch.entry, AQuery.expr)>MatchKanji(AMatch.entry, AQuery.expr) then begin
    //then guess kanji (for now: use first, most popular one)
@@ -518,6 +553,7 @@ var inp: TStreamDecoder;
     multimatch: integer;
     badmatch: integer;
   end;
+  MatchUniformity: TMatchUniformityFlags;
 begin
   err.WriteLn('Parsing '+AFilename+'...');
   inp := OpenTextFile(AFilename);
@@ -557,6 +593,13 @@ begin
         err.WriteLn('Bad match: '+expr+' ['+read+']');
       end;
 
+      //In mmMultiple mode we may want to add ~prefixes
+      if Self.MatchMode = mmMultiple then
+        MatchUniformity := Self.ScanMatchUniformity(EdictMatches)
+      else
+      //mmSplit and mmBest are single-match-per-entry so all entries are uniform
+        MatchUniformity := [];
+
      //Split output as configured
       outp_e := nil;
       OutputEntries.Reset;
@@ -566,7 +609,7 @@ begin
           outp_e := POutputEntry(OutputEntries.AddNew);
           outp_e.Reset(expr);
         end;
-        AddToOutput(outp_e^, @query, PMatch(EdictMatches.P[i]));
+        AddToOutput(outp_e^, @query, PMatch(EdictMatches.P[i]), MatchUniformity);
         if Self.MatchMode = mmBest then
           break;
         //mmSplit, mmMultiple: continue
