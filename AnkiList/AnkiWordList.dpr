@@ -26,6 +26,19 @@ uses
   SysUtils, Classes, StrUtils, UniStrUtils, ConsoleToolbox, JWBIO,
   EdictReader, Edict, FastArray, SearchSort, EntryFormatting, ExprMatching;
 
+
+const
+  //In the priority order
+  CommonSuffixes: string = 'する をする に な の で と にする になる になって '
+    +'なる した とした として ある のある である';
+{
+TODO NOTES:
+  - If multiple versions are available, list all (or at most X, as set via command line)
+  - If several versions have THE SAME TEXT, group them:
+     ~a, ~b [translation]
+  - version text wrapper (e.g. "<li>%s %s</li>" or "%s %s\n" or "<dt>%s</dt><dd>%s</dd>")
+}
+
 type
   TQuery = record
    { For now we ignore <ruby>kanji<rt>kana constructs.
@@ -73,12 +86,14 @@ type
     ReadSep: char;
   protected
     OutputFile: string;
-    OutputXml: boolean;
     MatchMode: TMatchMode;
+    Suffixes: TUniStringArray;
     procedure Init; override;
     function HandleSwitch(const s: string; var i: integer): boolean; override;
     function HandleParam(const s: string; var i: integer): boolean; override;
     procedure SplitQuery(AExpr, ARead: string; out query: TQuery);
+    function MatchKanji(const AEntry: PEdictEntry; const AKanji: TStringArray): integer;
+    function MatchKana(const AEntry: PEdictEntry; const AKana: TStringArray): integer;
     function FindMatches(const query: TQuery): TArray<TMatch>;
     procedure SortMatches(var AMatches: TArray<TMatch>);
     procedure AddToOutput(var AOutput: TOutputEntry; AQuery: PQuery; AMatch: PMatch);
@@ -102,10 +117,14 @@ begin
   writeln('  -er regex         use this regex (PCRE) to match expressions (return "expr" and "read").');
   writeln('  -rr regex         use this regex (PCRE) to match readings (return "read").');
   writeln('');
+  writeln(ProgramName + 'can also match entries from the dictionary with common suffixes (~ni, ~de etc)');
+  writeln('  -suffixes <list>  space-separated list of suffixes (replaces the default one)');
+  writeln('  -nosuffixes       disables suffix matching');
+  writeln('');
   writeln('Output:');
   writeln('  -o output.file    specify output file (otherwise console)');
   writeln('  -xml              output xml instead of the default plaintext');
-  writeln('  -xslt <filename>  format dictionary entries according to this XSLT schema');
+  writeln('  -xslt <filename>  format dictionary entries according to this XSLT schema (XML)');
   writeln('  -match=<mode>     if there are multiple matches:');
   writeln('    best            output ONE best match');
   writeln('    multiple        output all matches as a single result');
@@ -117,6 +136,7 @@ begin
   ExprColumn := 0;
   ReadColumn := 1;
   MatchMode := mmBest;
+  Suffixes := StrSplit(PChar(CommonSuffixes), ' ');
 end;
 
 function TAnkiWordList.HandleSwitch(const s: string; var i: integer): boolean;
@@ -196,6 +216,16 @@ begin
       MatchMode := mmSplit
     else
       BadUsage('Invalid match mode: '+tmp);
+    Result := true;
+  end else
+  if s='-suffixes' then begin
+    if i>=ParamCount then BadUsage('-suffixes needs a suffix list string');
+    Inc(i);
+    Self.Suffixes := StrSplit(PChar(ParamStr(i)), ' ');
+    Result := true;
+  end else
+  if s='-nosuffixes' then begin
+    SetLength(Self.Suffixes, 0);
     Result := true;
   end else
     Result := inherited;
@@ -305,78 +335,85 @@ end;
 
 
 //How many AKanji variants AEntry matches.
-function MatchKanji(const AEntry: PEdictEntry; const AKanji: TStringArray): integer;
-var i: integer;
+function TAnkiWordList.MatchKanji(const AEntry: PEdictEntry; const AKanji: TStringArray): integer;
+var i, j: integer;
 begin
   Result := 0;
-  for i := 0 to Length(AKanji)-1 do
+  for i := 0 to Length(AKanji)-1 do begin
     if AEntry.GetKanjiIndex(AKanji[i])>=0 then
       Inc(Result);
+    //We also have to check suffixes. Cross-suffix matching is allowed too, and even nice!
+    for j := 0 to Length(Self.Suffixes)-1 do
+      if AEntry.GetKanjiIndex(AKanji[i]+Self.Suffixes[j])>=0 then
+        Inc(Result);
+  end;
 end;
 
 //How many AKana variants AEntry matches.
-function MatchKana(const AEntry: PEdictEntry; const AKana: TStringArray): integer;
-var i: integer;
+function TAnkiWordList.MatchKana(const AEntry: PEdictEntry; const AKana: TStringArray): integer;
+var i, j: integer;
 begin
   Result := 0;
-  for i := 0 to Length(AKana)-1 do
+  for i := 0 to Length(AKana)-1 do begin
     if AEntry.GetKanaIndex(AKana[i])>=0 then
       Inc(Result);
-end;
-
-function FindExistingMatch(var AMatches: TArray<TMatch>; AEntry: PEdictEntry): PMatch;
-var i: integer;
-begin
-  Result := nil;
-  for i := 0 to AMatches.Count-1 do
-    if AMatches[i].entry=AEntry then begin
-      Result := PMatch(AMatches.GetPointer(i));
-      break;
-    end;
+    //We also have to check suffixes. Cross-suffix matching is allowed too, and even nice!
+    for j := 0 to Length(Self.Suffixes)-1 do
+      if AEntry.GetKanaIndex(AKana[i]+Self.Suffixes[j])>=0 then
+        Inc(Result);
+  end;
 end;
 
 { Builds a list of all potential matches, trying to be as inclusive as possible.
  Filtering comes later }
 function TAnkiWordList.FindMatches(const query: TQuery): TArray<TMatch>;
-var entries: TEdictEntries;
+var entries, entries2: TEdictEntries;
   i, j: integer;
   match: PMatch;
 begin
   Result.Reset;
   if Length(query.expr)<=0 then exit; //it's even dangerous as we divide by it later
 
+  //query.expr contains either the "kanji" part of "kanji:reading" pair,
+  //or the only available part (usually "kana-only reading")
+
+  //Find all entries
+  //FindEntries searches both in kanji and in kana.
   for i := 0 to Length(query.expr)-1 do begin
-    entries := Edict.FindEntries(query.expr[i]);
-   { FindEntries looks for kanji and kana both.
-    Potentially we can also try to match something else, e.g. trim dubious
-    symbols like "~" and fetch the results with a lower score. }
+    entries2 := Edict.FindEntries(query.expr[i]);
+    MergeEntries(entries, entries2);
+    //Check all suffix variations
+    for j := 0 to Length(Self.Suffixes)-1 do begin
+      entries2 := Edict.FindEntries(query.expr[i]+Self.Suffixes[j]);
+      MergeEntries(entries, entries2);
+    end;
+    //Potentially we can also try to trim dubious symbols like "~" and fetch
+    //with a lower score, but we'll need to keep track of score.
+  end;
 
-    for j := 0 to Length(entries)-1 do begin
-      match := FindExistingMatch(Result, entries[j]);
-      if match<>nil then continue; //has already been added+scored
+  //Score results
+  for j := 0 to Length(entries)-1 do begin
+    match := PMatch(Result.AddNew);
+    match.entry := entries[j];
+   //How many of provided kanji/kana entries it matches
+    match.scoreKanji := MatchKanji(match.entry, query.expr) / Length(query.expr);
 
-      match := PMatch(Result.AddNew);
-      match.entry := entries[j];
-     //How many of provided kanji/kana entries it matches
-      match.scoreKanji := MatchKanji(match.entry, query.expr) / Length(query.expr);
-
-      if Length(query.read)=0 then begin
-       { If no reading was provided, give preference to the entries which match
-        *both* as kanji and as kana.
-        E.g. prefer しかし [しかし] to 私窩子 [しかし] when matching しかし }
-        if Length(match.entry.kana)<=0 then
-          match.scoreKana := 1
-        else
-        if MatchKana(match.entry, query.expr {sic!})>0 then
-          match.scoreKana := 1
-        else
-          match.scoreKana := 0;
-      end else begin
-        if Length(match.entry.kana)<=0 then //kana-only words store kana in Kanji field
-          match.scoreKana := MatchKanji(match.entry, query.read) / Length(query.read)
-        else
-          match.scoreKana := MatchKana(match.entry, query.read) / Length(query.read);
-      end;
+    if Length(query.read)=0 then begin
+     { If no reading was provided, give preference to the entries which match
+      *both* as kanji and as kana.
+      E.g. prefer しかし [しかし] to 私窩子 [しかし] when matching しかし }
+      if Length(match.entry.kana)<=0 then
+        match.scoreKana := 1
+      else
+      if MatchKana(match.entry, query.expr {sic!})>0 then
+        match.scoreKana := 1
+      else
+        match.scoreKana := 0;
+    end else begin
+      if Length(match.entry.kana)<=0 then //kana-only words store kana in Kanji field
+        match.scoreKana := MatchKanji(match.entry, query.read) / Length(query.read)
+      else
+        match.scoreKana := MatchKana(match.entry, query.read) / Length(query.read);
     end;
   end;
 end;
@@ -511,7 +548,7 @@ begin
 
       if EdictMatches.Count>1 then begin
         Inc(st.multimatch);
-        SortMatches(EdictMatches);
+        SortMatches(EdictMatches); //even in multiple-match mode, sort by best
       end;
 
       if EdictMatches[0].scoreKana<=0.1 then begin
@@ -521,10 +558,19 @@ begin
       end;
 
      //Split output as configured
+      outp_e := nil;
       OutputEntries.Reset;
-      outp_e := POutputEntry(OutputEntries.AddNew);
-      outp_e.Reset(expr);
-      AddToOutput(outp_e^, @query, PMatch(EdictMatches.P[0]));
+      for i := 0 to EdictMatches.Count-1 do begin
+        //mmSplit: New entry for every match
+        if (i = 0) or (Self.MatchMode = mmSplit) then begin
+          outp_e := POutputEntry(OutputEntries.AddNew);
+          outp_e.Reset(expr);
+        end;
+        AddToOutput(outp_e^, @query, PMatch(EdictMatches.P[i]));
+        if Self.MatchMode = mmBest then
+          break;
+        //mmSplit, mmMultiple: continue
+      end;
 
      //Output
       for i := 0 to OutputEntries.Count-1 do begin
